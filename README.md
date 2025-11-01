@@ -8,6 +8,12 @@ A smart LLM-powered job board that helps you find jobs and optimize your CV to m
 
 ## Quick Start
 
+### Installing dependencies
+
+```bash
+bazel run //:requirements.update
+```
+
 ### Build the project
 
 ```bash

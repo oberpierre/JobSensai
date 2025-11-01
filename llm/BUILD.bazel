@@ -1,8 +1,13 @@
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 py_binary(
     name = "main",
-    srcs = ["main.py"],
+    srcs = glob(["**/*.py"]),
+    imports = ["."],
+    deps = [
+        "@pip//langchain",
+        "@pip//langchain_ollama",
+    ],
     python_version = "PY3",
     visibility = ["//visibility:public"],
 )
