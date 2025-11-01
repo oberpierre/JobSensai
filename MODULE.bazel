@@ -1,0 +1,11 @@
+module(name = "jobsensai", version = "0.1")
+
+# Python rules
+bazel_dep(name = "rules_python", version = "1.6.3")
+
+# Configure Python 3.12
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    python_version = "3.12",
+)
+use_repo(python, "python_3_12")
