@@ -1,5 +1,7 @@
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
+package(default_visibility = ["//:__subpackages__"])
+
 compile_pip_requirements(
     name = "requirements",
     src = "requirements.in",
@@ -14,4 +16,11 @@ alias(
 alias(
     name = "format.check",
     actual = "//tools/format:format.check",
+)
+
+test_suite(
+    name = "format_tests",
+    tests = [
+        "//tools/format:format_tests",
+    ],
 )
