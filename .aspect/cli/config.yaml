@@ -1,0 +1,12 @@
+# Aspect CLI Configuration for JobSensai
+# Documentation: https://docs.aspect.build/cli
+
+# Lint configuration
+lint:
+  aspects:
+    # Python linting with Ruff
+    - //tools/lint:linters.bzl%ruff
+    
+    # Add more linters here as you configure them:
+    # - //tools/lint:linters.bzl%pylint
+    # - //tools/lint:linters.bzl%mypy

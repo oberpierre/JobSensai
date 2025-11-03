@@ -1,9 +1,33 @@
-# Set the line length
-line-length = 88
+# Ruff Configuration
+# Ruff is a fast Python linter and formatter written in Rust
+# Docs: https://docs.astral.sh/ruff/
+
+# Global settings
+line-length = 88  # Black-compatible line length
 
 [format]
-# Use single quotes for strings
-quote-style = "double"
+# Formatter-specific settings
+quote-style = "double"      # Use double quotes for strings
+indent-style = "space"      # Use spaces (not tabs) for indentation
+line-ending = "auto"        # Auto-detect line endings (LF on Unix, CRLF on Windows)
 
-# Indent with spaces
-indent-style = "space"
+[lint]
+# Enable specific rule sets (Ruff uses rule codes from multiple tools)
+select = [
+    "E",    # pycodestyle errors (PEP 8 violations)
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes (undefined names, unused imports, etc.)
+    "UP",   # pyupgrade (modernize Python code syntax)
+    "B",    # flake8-bugbear (likely bugs and design problems)
+    "SIM",  # flake8-simplify (simplification suggestions)
+    "C4",   # flake8-comprehensions (better list/dict/set comprehensions)
+    "I",    # isort (import sorting and organization)
+]
+
+[lint.isort]
+# Import sorting configuration
+# Mark project modules as first-party for correct import grouping:
+# 1. Standard library imports
+# 2. Third-party imports
+# 3. First-party imports (your project code)
+known-first-party = ["llm"]  # Add new top-level packages here as they're created

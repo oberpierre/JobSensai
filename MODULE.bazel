@@ -1,16 +1,17 @@
 module(name = "jobsensai", version = "0.1")
 
-# Python rules
+# Python rules for building and running Python applications
 bazel_dep(name = "rules_python", version = "1.6.3")
 
-# Configure Python 3.12
+# Configure Python 3.12 toolchain
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
     python_version = "3.12",
 )
 use_repo(python, "python_3_12")
 
-# Python dependencies
+# Python dependencies managed via pip and requirements.in
+# After changing dependencies, generate requirements_lock.txt with: bazel run //:requirements.update
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
     hub_name = "pip",
@@ -19,5 +20,6 @@ pip.parse(
 )
 use_repo(pip, "pip")
 
-# Aspect rules for linting and formatting  
+# Aspect rules for linting and formatting integration with Bazel
+# Provides: format targets, lint_test macro, and lint aspects
 bazel_dep(name = "aspect_rules_lint", version = "1.10.2")

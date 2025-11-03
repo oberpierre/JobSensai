@@ -2,12 +2,15 @@ load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 package(default_visibility = ["//:__subpackages__"])
 
+# Compiles requirements.in -> requirements_lock.txt with pinned versions
+# Run: bazel run //:requirements.update
 compile_pip_requirements(
     name = "requirements",
     src = "requirements.in",
     requirements_txt = "requirements_lock.txt",
 )
 
+# Convenience aliases for formatting commands
 alias(
     name = "format",
     actual = "//tools/format",
@@ -18,9 +21,28 @@ alias(
     actual = "//tools/format:format.check",
 )
 
+# Test suite for format validation (e.g., in CI pipelines)
 test_suite(
     name = "format_tests",
     tests = [
         "//tools/format:format_tests",
+    ],
+)
+
+# Export configuration files for use by lint/format aspects
+exports_files(
+    [
+        ".ruff.toml",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Aggregates all lint tests for easy execution: bazel test //lint_tests
+# Note: Lint tests require explicit target declarations in tools/lint/BUILD.bazel
+# Pattern matching like //... is not supported in lint test srcs
+test_suite(
+    name = "lint_tests",
+    tests = [
+        "//tools/lint:ruff_test",
     ],
 )

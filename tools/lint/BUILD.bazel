@@ -1,0 +1,16 @@
+load(":linters.bzl", "ruff_test")
+
+package(default_visibility = ["//:__subpackages__"])
+
+# Ruff lint test using Bazel aspects for incremental, cacheable linting
+# IMPORTANT: When adding new Python targets, add them to the srcs list below
+# Glob patterns (//...) are NOT supported - explicit target labels required
+# Targets must be py_binary or py_library rules that will be analyzed by the ruff aspect
+ruff_test(
+    name = "ruff_test",
+    size = "small",
+    srcs = [
+        "//llm:main",
+        # Add new targets here as your codebase grows
+    ],
+)

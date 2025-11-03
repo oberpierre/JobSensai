@@ -2,16 +2,17 @@ load("@aspect_rules_lint//format:defs.bzl", "format_multirun", "format_test")
 
 package(default_visibility = ["//:__subpackages__"])
 
+# Runs Ruff formatter on all files in the workspace
+# Usage: bazel run //tools/format (or via alias defined in root BUILD.bazel: bazel run format)
 format_multirun(
     name = "format",
     python = "@aspect_rules_lint//format:ruff",
 )
 
-# The test target should ideally specify a list of srcs for Bazel's hermeticity, however adding srcs is
-# easily forgotten when new files are added. Therefore we use no_sandbox=True to disable hermeticity
-# and point the workspace to the root of the repo so that all files are included.
-# This will run formatting over all files in the workspace which is only appropriate if the formatting
-# is sufficiently fast, see the hint in the documentation as well:
+# Format validation test for CI/CD pipelines
+# Design decision: Uses no_sandbox=True to include all workspace files without explicit srcs
+# Trade-off: Reduced hermeticity for simplicity, relying on fast formatting runs
+# Alternative: Explicitly list srcs for hermetic testing (requires maintenance when adding files)
 # See: https://github.com/aspect-build/rules_lint/blob/main/docs/formatting.md#2-test-target
 format_test(
     name = "format_tests",
