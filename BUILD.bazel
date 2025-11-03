@@ -5,3 +5,13 @@ compile_pip_requirements(
     src = "requirements.in",
     requirements_txt = "requirements_lock.txt",
 )
+
+alias(
+    name = "format",
+    actual = "//tools/format",
+)
+
+alias(
+    name = "format.check",
+    actual = "//tools/format:format.check",
+)

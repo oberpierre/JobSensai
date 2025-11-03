@@ -1,0 +1,9 @@
+# Set the line length
+line-length = 88
+
+[format]
+# Use single quotes for strings
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
