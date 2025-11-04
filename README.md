@@ -1,4 +1,4 @@
-# JobSensai
+# JobSensai &middot; [![Build & Test](https://github.com/oberpierre/JobSensai/actions/workflows/build.yaml/badge.svg)](https://github.com/oberpierre/JobSensai/actions/workflows/build.yaml)
 
 A smart LLM-powered job board that helps you find jobs and optimize your CV to match job descriptions.
 
