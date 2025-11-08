@@ -1,0 +1,29 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Scraper library containing core logic
+py_library(
+    name = "scraper_lib",
+    srcs = glob(
+        ["**/*.py"],
+        exclude = ["*_test.py", "main.py"],
+    ),
+    imports = ["."],
+    deps = [
+        "@pip//scrapy",
+        "@pip//scrapy_playwright",
+        "@pip//playwright",
+    ],
+)
+
+# Main scraper binary
+py_binary(
+    name = "main",
+    srcs = ["main.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
