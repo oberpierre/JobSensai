@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ASPECT_CLI_VERSION: v2025.46.6
+        ASPECT_CLI_DOWNLOAD_SHA: 4b0ea6d2193703ebc569834cdfaf77a489e87cd6951bbf320a408928eb16c3bc
+        BAZEL_VERSION: 8.4.2
+        BAZEL_DOWNLOAD_SHA: 58e6042fc54f3bf5704452b579f575ae935817d4b842a76123f05fae6b1f9a83
+    depends_on:
+      - postgres
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    network_mode: service:postgres
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    container_name: jobsensai-postgres
+    environment:
+      POSTGRES_DB: jobsensai
+      POSTGRES_USER: jobsensai
+      POSTGRES_PASSWORD: devpass
+    ports:
+      - "20001:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobsensai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
