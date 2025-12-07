@@ -32,7 +32,17 @@ bazel run //llm:main
 
 ## Development
 
-This project uses Bazel as its build system with Python 3.12. The `llm` module is the core component that will power the AI features for job matching and CV optimization.
+This project uses Bazel as its build system with Python 3.12. 
+
+**Modules:**
+- `llm/`: LLM integration for CV optimization and job analysis
+- `scraper/`: Web scraping infrastructure for job aggregation (see `scraper/README.md`)
+
+**Infrastructure:**
+```bash
+# Start PostgreSQL + Redis for development
+docker-compose up -d
+```
 
 ### Code Quality
 
