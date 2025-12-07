@@ -4,7 +4,7 @@ A smart LLM-powered job board that helps you find jobs and optimize your CV to m
 
 ## Prerequisites
 
-- **[Install Aspect CLI](https://github.com/aspect-build/aspect-cli)** providing the bazel binary with improvements like the `bazel lint` command for linting.
+- **[Install Aspect CLI](https://github.com/aspect-build/aspect-cli)** providing the `aspect` binary with improvements like the `aspect lint` command for linting.
 
 > **Note:** On MacOS you may install Aspect CLI via Homebrew: `brew install aspect-build/aspect/aspect`
 
@@ -56,20 +56,20 @@ We enforce code quality using **Ruff** for both formatting and linting, integrat
 ```bash
 bazel run format         # Auto-format all files in workspace
 bazel run format.check   # Check formatting without modifying files
-bazel test format_tests  # Run formatting checks as tests (CI-friendly)
+aspect test format_tests  # Run formatting checks as tests (CI-friendly)
 ```
 
 **Linting with Aspect CLI (Recommended):**
 ```bash
-bazel lint //...             # Lint all targets recursively
-bazel lint //llm:main        # Lint specific target
-bazel lint --fix //llm:main  # Auto-fix linting issues where possible
+aspect lint //...             # Lint all targets recursively
+aspect lint //llm:main        # Lint specific target
+aspect lint --fix //llm:main  # Auto-fix linting issues where possible
 ```
 
 **Linting as Bazel Tests:**
 ```bash
-bazel test lint_tests        # Run all lint tests defined in root BUILD.bazel
-bazel test //tools/lint/...  # Run all lint tests in tools/lint
+aspect test lint_tests        # Run all lint tests defined in root BUILD.bazel
+aspect test //tools/lint/...  # Run all lint tests in tools/lint
 ```
 
 #### Adding Linting to New Targets
