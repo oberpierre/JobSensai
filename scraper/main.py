@@ -9,14 +9,21 @@ Examples:
     bazel run //scraper:main -- linkedin
 """
 
-import settings
+from dotenv import load_dotenv
 from scrapy.crawler import CrawlerProcess
-from spiders.google_spider import GoogleSpider
+
+load_dotenv()
+# Build settings (must be imported AFTER load_dotenv)
 
 
 def main() -> None:
     """Run Scrapy crawler."""
-    process = CrawlerProcess(settings=vars(settings))
+    import settings
+    from spiders.google_spider import GoogleSpider
+    # Filter settings to only include valid configuration (uppercase variables)
+    # This avoids passing imported modules (like 'os') which cause pickling errors
+    conf = {k: v for k, v in vars(settings).items() if k.isupper()}
+    process = CrawlerProcess(settings=conf)
     process.crawl(GoogleSpider)
     process.start()
 

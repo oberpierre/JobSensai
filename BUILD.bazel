@@ -37,7 +37,7 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 
-# Aggregates all lint tests for easy execution: bazel test //lint_tests
+# Aggregates all lint tests for easy execution: bazel test lint_tests
 # Note: Lint tests require explicit target declarations in tools/lint/BUILD.bazel
 # Pattern matching like //... is not supported in lint test srcs
 test_suite(
@@ -45,4 +45,11 @@ test_suite(
     tests = [
         "//tools/lint:ruff_test",
     ],
+)
+
+filegroup(
+    name = "env",
+    srcs = glob([
+        ".env",
+    ]),
 )
