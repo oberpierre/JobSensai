@@ -20,6 +20,7 @@ def main() -> None:
     """Run Scrapy crawler."""
     import settings
     from spiders.google_spider import GoogleSpider
+
     # Filter settings to only include valid configuration (uppercase variables)
     # This avoids passing imported modules (like 'os') which cause pickling errors
     conf = {k: v for k, v in vars(settings).items() if k.isupper()}
