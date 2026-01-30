@@ -1,10 +1,9 @@
 {
-  "name": "JobSensai Dev Container",
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "app",
-  "workspaceFolder": "/workspace",
-  // "postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
-  
+	"name": "JobSensai Dev Container",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "app",
+	"workspaceFolder": "/workspace",
+	"postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
 	// Configure tool-specific properties.
 	"customizations": {
 		// Configure properties specific to VS Code.
@@ -15,9 +14,9 @@
 			]
 		}
 	},
-
-  "forwardPorts": ["postgres:20001"],
-  
+	"forwardPorts": [
+		"postgres:20001"
+	],
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 	// Use 'postCreateCommand' to run commands after the container is created.
