@@ -21,6 +21,8 @@ services:
     image: postgres:18-alpine
     restart: unless-stopped
     container_name: jobsensai-postgres
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       POSTGRES_DB: jobsensai
       POSTGRES_USER: jobsensai
