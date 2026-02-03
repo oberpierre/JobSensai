@@ -12,17 +12,19 @@ services:
         BAZEL_DOWNLOAD_SHA: 58e6042fc54f3bf5704452b579f575ae935817d4b842a76123f05fae6b1f9a83
     depends_on:
       - postgres
+      - redis
     volumes:
       - ..:/workspace:cached
     command: sleep infinity
-    network_mode: service:postgres
+    networks:
+      - jobsensai
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   postgres:
     image: postgres:18-alpine
     restart: unless-stopped
     container_name: jobsensai-postgres
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
       POSTGRES_DB: jobsensai
       POSTGRES_USER: jobsensai
@@ -31,6 +33,8 @@ services:
       - "20001:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jobsensai
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U jobsensai" ]
       interval: 5s
@@ -45,7 +49,14 @@ services:
       - "20002:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - jobsensai
+
+networks:
+  jobsensai:
+    driver: bridge
 
 volumes:
   postgres_data:
   redis_data:
+
