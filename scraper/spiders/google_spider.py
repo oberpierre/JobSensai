@@ -10,10 +10,9 @@ Actual implementation will require:
 
 import logging
 from collections.abc import Iterator
-from urllib.parse import parse_qs as urlparseqs
-from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import scrapy
+from adapters.google_v1 import GoogleJobAdapter
 
 from scraper.items import RawJobItem
 from scraper.spiders.base_spider import BaseJobSpider
@@ -32,41 +31,21 @@ class GoogleSpider(BaseJobSpider):
         # https://www.google.com/about/careers/applications/jobs/results/120830781164528326-program-manager-talent-outreach-talent-engagement?location=Switzerland&location=Singapore&sort_by=date
     ]
 
-    def _is_overview_page(self, url: str) -> bool:
-        """Determine if URL corresponds to a job overview page."""
-
-        path = urlsplit(url)[2]
-
-        return path.endswith("/jobs/results")
-
-    def next_page_url(self, url: str) -> str:
-        """Generate URL for the next page of results."""
-        # urlsplit returns a 5-tuple: (scheme, netloc, path, query, fragment)
-        urlparts = urlsplit(url)
-        qs = urlparseqs(qs=urlparts[3])
-        page = int(qs["page"][0]) if "page" in qs else 1
-        qs["page"] = [str(page + 1)]
-        return urlunsplit(
-            [
-                urlparts[0],
-                urlparts[1],
-                urlparts[2],
-                urlencode(qs, doseq=True),
-                urlparts[4],
-            ]
-        )
-
     def parse(self, response: scrapy.http.Response) -> Iterator[scrapy.Request]:
         """Extract job links from search results page."""
         logger.info(f"Parsing search page: {response.url}")
 
-        for listing in response.css("a[jsname='hSRGPd']"):
-            if listing.attrib["aria-label"].startswith("Learn more"):
-                yield response.follow(listing.attrib["href"], callback=self.parse_job)
-            elif listing.attrib["aria-label"].startswith("Go to next page"):
-                yield response.follow(
-                    self.next_page_url(response.url), callback=self.parse
-                )
+        adapter = GoogleJobAdapter()
+
+        # 1. Job Links
+        job_links = adapter.get_job_links(response.text, response.url)
+        for link in job_links:
+            yield response.follow(link, callback=self.parse_job)
+
+        # 2. Next Page
+        next_links = adapter.get_next_page_links(response.text, response.url)
+        for link in next_links:
+            yield response.follow(link, callback=self.parse)
 
     def parse_job(self, response: scrapy.http.Response) -> Iterator[RawJobItem]:
         """Extract job details and HTML content."""

@@ -18,6 +18,7 @@ py_library(
         "@pip//psycopg2_binary",
         "@pip//redis",
         "@pip//python_dotenv",
+        "//adapters:adapters",
     ],
 )
 
