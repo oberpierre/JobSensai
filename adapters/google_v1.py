@@ -1,4 +1,3 @@
-from typing import Dict, List
 from urllib.parse import parse_qs as urlparseqs
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -10,7 +9,7 @@ from adapters.base import BaseAdapter
 class GoogleJobAdapter(BaseAdapter):
     """Adapter for Google Careers job board (v1)."""
 
-    def get_job_links(self, html: str, url: str) -> List[str]:
+    def get_job_links(self, html: str, url: str) -> list[str]:
         selector = Selector(text=html)
         links = []
 
@@ -23,7 +22,7 @@ class GoogleJobAdapter(BaseAdapter):
 
         return links
 
-    def get_next_page_links(self, html: str, url: str) -> List[str]:
+    def get_next_page_links(self, html: str, url: str) -> list[str]:
         selector = Selector(text=html)
 
         for listing in selector.css("a[jsname='hSRGPd']"):
@@ -31,7 +30,7 @@ class GoogleJobAdapter(BaseAdapter):
             if aria_label.startswith("Go to next page"):
                 return [self._generate_next_page_url(url)]
 
-    def extract(self, html: str, url: str) -> Dict:
+    def extract(self, html: str, url: str) -> dict:
         # TODO: Implement extraction logic for silver data lake
         return {}
 

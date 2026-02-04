@@ -1,12 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List
 
 
 class BaseAdapter(ABC):
     """Abstract base class for all job board adapters."""
 
     @abstractmethod
-    def get_job_links(self, html: str, url: str) -> List[str]:
+    def get_job_links(self, html: str, url: str) -> list[str]:
         """Extracts job posting URLs from a job board listing page.
 
         Args:
@@ -19,7 +18,7 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
-    def get_next_page_links(self, html: str, url: str) -> List[str]:
+    def get_next_page_links(self, html: str, url: str) -> list[str]:
         """Extracts pagination URLs from a job board listing page.
 
         Args:
@@ -32,7 +31,7 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
-    def extract(self, html: str, url: str) -> Dict:
+    def extract(self, html: str, url: str) -> dict:
         """Extracts structured job data from a job detail page.
 
         Args:
