@@ -64,14 +64,15 @@ We enforce code quality using **Ruff** for both formatting and linting, integrat
 
 **Formatting:**
 ```bash
-bazel run format         # Auto-format all files in workspace
-bazel run format.check   # Check formatting without modifying files
+aspect format             # Auto-format all files in workspace
+bazel run format          # Auto-format all files in workspace
+bazel run format.check    # Check formatting without modifying files
 aspect test format_tests  # Run formatting checks as tests (CI-friendly)
 ```
 
 **Linting with Aspect CLI (Recommended):**
 ```bash
-aspect lint //...             # Lint all targets recursively
+aspect lint                   # Lint all targets recursively
 aspect lint //llm:main        # Lint specific target
 aspect lint --fix //llm:main  # Auto-fix linting issues where possible
 ```
