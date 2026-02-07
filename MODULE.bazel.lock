@@ -516,7 +516,7 @@
         ]
       },
       "os:osx,arch:aarch64": {
-        "bzlTransitiveDigest": "Fyu5oms1n/wr4+dLgA2dyQuamSp6HCF6nWpWIcpUpb0=",
+        "bzlTransitiveDigest": "oCTBNIZJ/ZeTKowU4kk3EnQIYNEI7IXLCW1PNfZCTSg=",
         "usagesDigest": "igIBXyqNg9Be63Cuu6kZxOeoDRDMqxSv8BcoWiqSh3w=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},

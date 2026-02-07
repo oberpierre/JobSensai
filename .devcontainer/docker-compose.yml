@@ -1,4 +1,4 @@
-version: '3.8'
+name: jobsensai
 
 services:
   app:
@@ -16,47 +16,5 @@ services:
     volumes:
       - ..:/workspace:cached
     command: sleep infinity
-    networks:
-      - jobsensai
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
-  postgres:
-    image: postgres:18-alpine
-    restart: unless-stopped
-    container_name: jobsensai-postgres
-    environment:
-      POSTGRES_DB: jobsensai
-      POSTGRES_USER: jobsensai
-      POSTGRES_PASSWORD: devpass
-    ports:
-      - "20001:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - jobsensai
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U jobsensai" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:8-alpine
-    restart: unless-stopped
-    container_name: jobsensai-redis
-    ports:
-      - "20002:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - jobsensai
-
-networks:
-  jobsensai:
-    driver: bridge
-
-volumes:
-  postgres_data:
-  redis_data:
-
