@@ -4,63 +4,88 @@ A smart LLM-powered job board that helps you find jobs and optimize your CV to m
 
 ## Prerequisites
 
-- **[Install Aspect CLI](https://github.com/aspect-build/aspect-cli)** providing the `aspect` binary with improvements like the `aspect lint` command for linting.
+### Required
+- **[Ollama](https://ollama.com/download/)**: Required for the LLM components.
+- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**: Required for database infrastructure (PostgreSQL, Redis) and Devcontainers.
 
-> **Note:** On MacOS you may install Aspect CLI via Homebrew: `brew install aspect-build/aspect/aspect`
+### Manual Setup Only (Not required for Devcontainer)
+- **[Bazel](https://bazel.build/install)**:
+  - Recommended: Use [Bazelisk](https://github.com/bazelbuild/bazelisk?tab=readme-ov-file#installation) to manage Bazel versions automatically.
+  - Refer to [.bazelversion](./.bazelversion) for the exact version to use.
+- **[Aspect CLI](https://github.com/aspect-build/aspect-cli/releases)**: Enhances Bazel with better developer experience and plugins.
+  - MacOS: `brew install aspect-build/aspect/aspect`
 
-## Quick Start
+> **Note:** Python and dependencies are managed by Bazel. You do **not** need to manually install Python or manage virtual environments to run the application.
 
-### Installing dependencies
+## Development Setup
 
-First update your dependencies in [`requirements.in`](./requirements.in), then run the following command to update the requirement lock file:
+### Option 1: Devcontainer (Recommended)
+
+This project is configured with a **Dev Container** for VS Code, which provides a pre-configured environment with all necessary tools (Bazel, Python, etc.) installed.
+
+1. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) in VS Code.
+2. Open the project folder in VS Code.
+3. Click **"Reopen in Container"** when prompted, or run the command via the Command Palette (`Cmd+Shift+P` -> `Dev Containers: Reopen in Container`).
+
+### Option 2: Manual Setup
+
+1. Install all [Prerequisites](#prerequisites) listed above.
+2. Start the infrastructure services (PostgreSQL + Redis):
+    ```bash
+    docker-compose -f .build/docker-compose.yml up -d
+    ```
+
+## Managing Dependencies
+
+Python dependencies are managed via `requirements.in`.
+
+1. **Update dependencies:** Edit [`requirements.in`](./requirements.in).
+2. **Lock dependencies:** Run the following command to update `requirements_lock.txt`:
+    ```bash
+    bazel run //:requirements.update
+    ```
+
+## Running the Application
+
+### 1. LLM Service
+The LLM service handles CV optimization and job analysis.
+
+**Prerequisite:** Ensure Ollama is running (`ollama serve`) and you have pulled the required model.
+> **Note:** The default model is `qwen3:4b` (see `llm/model.py`). You can customize this by modifying the `LLMModel` initialization.
 
 ```bash
-bazel run //:requirements.update
+ollama pull qwen3:4b # Pull the model(s) you intend to use
 ```
 
-### Build the project
-
-```bash
-bazel build //llm:main
-```
-
-### Run the application
-
+**Run the service:**
 ```bash
 bazel run //llm:main
 ```
 
-## Development
+### 2. Scraper Service
+The scraper aggregates job listings from various sources.
 
-This project uses Bazel as its build system with Python 3.12. 
-
-**Modules:**
-- `llm/`: LLM integration for CV optimization and job analysis
-- `scraper/`: Web scraping infrastructure for job aggregation (see `scraper/README.md`)
-
-**Infrastructure:**
+**Run the scraper:**
 ```bash
-# Start PostgreSQL + Redis for development
-docker-compose up -d
+bazel run //scraper:main
 ```
 
-### Code Quality
+**Run the scraper worker:**
+```bash
+bazel run //scraper:worker
+```
+
+## Code Quality
 
 We enforce code quality using **Ruff** for both formatting and linting, integrated via Bazel with [aspect_rules_lint](https://github.com/aspect-build/rules_lint). This approach provides incremental, cacheable builds and hermetic test environments.
 
-#### Architecture Overview
-
-**Configuration:**
+### Configuration
 - **`.ruff.toml`**: Central Ruff configuration
 - **`tools/lint/linters.bzl`**: Defines the aspect rules and test macro for linters
 - **`tools/lint/BUILD.bazel`**: Instantiates lint tests for specific targets
 - **`tools/format/BUILD.bazel`**: Defines the aspect rules and test macros for formatters
 
-**Key Design Decisions:**
-1. **Formatting**: Runs workspace-wide without explicit `srcs` (uses `no_sandbox=True`) for simplicity, assuming fast formatting
-2. **Linting**: Requires explicit target declarations per the Bazel aspect model to ensure incremental builds and caching
-
-#### Commands
+### Commands
 
 **Formatting:**
 ```bash
@@ -83,7 +108,7 @@ aspect test lint_tests        # Run all lint tests defined in root BUILD.bazel
 aspect test //tools/lint/...  # Run all lint tests in tools/lint
 ```
 
-#### Adding Linting to New Targets
+### Adding Linting to New Targets
 
 When you create new targets, add them to the corresponding linting suite:
 
@@ -109,7 +134,7 @@ When you create new targets, add them to the corresponding linting suite:
     )
    ```
 
-> **Important:** Lint tests use Bazel aspects and require explicit target references—they do **not** support glob patterns like `//...`. Always update `srcs` when adding new code to ensure comprehensive linting.
+> **Important:** Lint tests use Bazel aspects and require explicit target references—they do **not** support glob patterns like `//...`. Always update `srcs` when adding new code to ensure comprehensive linting or use `aspect lint` instead.
 
 ## License
 
