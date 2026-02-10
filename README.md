@@ -35,6 +35,30 @@ This project is configured with a **Dev Container** for VS Code, which provides 
     docker-compose -f .build/docker-compose.yml up -d
     ```
 
+## Environment Configuration
+
+Before running the application, you need to set up your environment variables:
+
+1. **Copy the example environment file:**
+    ```bash
+    cp .env.example .env
+    ```
+
+2. **Review and adjust the values in `.env` as needed:**
+    - **For Devcontainer users:** The default values in `.env.example` are pre-configured for the containerized environment and should work out of the box.
+    - **For Manual Setup users:** Update the following settings to connect to your local infrastructure:
+        - Uncomment and use `POSTGRES_HOST=localhost` and `POSTGRES_PORT=20001`
+        - Uncomment and use `REDIS_HOST=localhost` and `REDIS_PORT=20002`
+        - Set `OLLAMA_HOST=localhost` (instead of `host.docker.internal`)
+
+3. **Key configuration sections:**
+    - **Database:** PostgreSQL connection settings
+    - **Redis:** Cache and task queue connection settings
+    - **LLM (Ollama):** Connection to the Ollama service for LLM features
+    - **Scraper settings:** Control download delays and concurrent requests
+
+> **Note:** The `.env` file is required for all services to run successfully.
+
 ## Managing Dependencies
 
 Python dependencies are managed via `requirements.in`.
