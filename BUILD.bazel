@@ -49,7 +49,10 @@ test_suite(
 
 filegroup(
     name = "env",
-    srcs = glob([
-        ".env",
-    ]),
+    srcs = glob(
+        [
+            ".env",
+        ],
+        allow_empty = True,
+    ),
 )
