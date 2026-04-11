@@ -14,6 +14,7 @@ class TestJobWorker(unittest.TestCase):
             redis_host="localhost",
             redis_port=6379,
             queue_name="test_queue",
+            silver_queue_name="silver_generation_tasks",
             log_level="ERROR",
         )
         self.worker = JobWorker(self.config)
@@ -86,6 +87,11 @@ class TestJobWorker(unittest.TestCase):
         self.assertIsNotNone(job_item)
         self.assertEqual(job_item.url, item_url)
         self.assertEqual(job_item.last_seen_run_id, uuid.UUID(run_id))
+
+        # Verify pushing to silver queue
+        self.worker.redis.lpush.assert_called_once_with(
+            "silver_generation_tasks", json.dumps({"url": item_url})
+        )
 
     def test_tombstoning_logic(self):
         # Current run

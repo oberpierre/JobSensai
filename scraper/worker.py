@@ -23,6 +23,7 @@ class WorkerConfig:
     redis_host: str = os.getenv("REDIS_HOST", "localhost")
     redis_port: int = int(os.getenv("REDIS_PORT", 6379))
     queue_name: str = "raw_job_items"
+    silver_queue_name: str = "silver_generation_tasks"
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
 
@@ -162,6 +163,11 @@ class JobWorker:
             session.add(new_posting)
 
         session.commit()
+
+        # Push to silver generation queue
+        if self.redis:
+            self.redis.lpush(self.config.silver_queue_name, json.dumps({"url": url}))
+            logger.debug(f"Pushed {url} to {self.config.silver_queue_name}")
         # logger.debug(f"Processed item: {url}")
 
     def _handle_end_run(self, session: Session, data: dict[str, Any]):
