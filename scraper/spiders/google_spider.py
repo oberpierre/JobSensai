@@ -12,8 +12,7 @@ import logging
 from collections.abc import Iterator
 
 import scrapy
-from adapters.google_v1 import GoogleJobAdapter
-
+from adapters.registry import AdapterRegistry
 from scraper.items import RawJobItem
 from scraper.spiders.base_spider import BaseJobSpider
 
@@ -35,17 +34,32 @@ class GoogleSpider(BaseJobSpider):
         """Extract job links from search results page."""
         logger.info(f"Parsing search page: {response.url}")
 
-        adapter = GoogleJobAdapter()
+        registry = AdapterRegistry()
+        adapter = registry.get_adapter_for_url(response.url)
 
-        # 1. Job Links
-        job_links = adapter.get_job_links(response.text, response.url)
-        for link in job_links:
-            yield response.follow(link, callback=self.parse_job)
+        # If no adapter, log fallback and STOP spidering for this domain/url path
+        if not adapter:
+            logger.warning(
+                f"No adapter found for domain parsing jobs: {response.url}. "
+                "Triggering learning pipeline logic will not happen correctly without an adapter."
+            )
+            # You could theoretically emit a 'RAW_HTML' learning task from here for the INDEX page
+            # but Sliver Worker focuses on the JOB detail page for extraction usually
+            return
 
-        # 2. Next Page
-        next_links = adapter.get_next_page_links(response.text, response.url)
-        for link in next_links:
-            yield response.follow(link, callback=self.parse)
+        try:
+            # 1. Job Links
+            job_links = adapter.get_job_links(response.text, response.url)
+            for link in job_links:
+                yield response.follow(link, callback=self.parse_job)
+
+            # 2. Next Page
+            next_links = adapter.get_next_page_links(response.text, response.url)
+            if next_links:  # might be None or []
+                for link in next_links:
+                    yield response.follow(link, callback=self.parse)
+        except Exception as e:
+            logger.error(f"Adapter logic failed on index page {response.url}: {e}")
 
     def parse_job(self, response: scrapy.http.Response) -> Iterator[RawJobItem]:
         """Extract job details and HTML content."""

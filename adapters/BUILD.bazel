@@ -1,11 +1,22 @@
-load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 package(default_visibility = ["//visibility:public"])
 
 py_library(
     name = "adapters",
-    srcs = glob(["*.py"]),
+    srcs = glob(
+        ["*.py"],
+        exclude = ["*_test.py"],
+    ),
     deps = [
         "@pip//parsel",
+    ],
+)
+
+py_test(
+    name = "registry_test",
+    srcs = ["registry_test.py"],
+    deps = [
+        ":adapters",
     ],
 )
