@@ -15,6 +15,9 @@ ruff_test(
         "//scraper:scraper_lib",
         "//scraper:worker",
         "//scraper:worker_test",
+        "//scraper:silver_worker",
+        "//scraper:silver_worker_test",
         "//adapters:adapters",
+        "//adapters:registry_test",
     ],
 )

@@ -1,6 +1,5 @@
 import unittest
 import uuid
-from datetime import datetime, UTC
 
 from scraper.models import JobPosting
 

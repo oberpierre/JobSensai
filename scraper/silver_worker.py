@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 import redis
+from adapters.registry import AdapterRegistry
+from sqlalchemy.orm import Session
+
+from scraper.database import SessionLocal
+from scraper.models import JobPosting, RawJobPosting
 
 
 # Configuration
@@ -31,6 +36,7 @@ class SilverWorker:
         self.config = config
         self.should_exit = False
         self.redis: Optional[redis.Redis] = None
+        self.registry = AdapterRegistry()
 
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
@@ -87,13 +93,78 @@ class SilverWorker:
 
             logger.info(f"Processing silver generation task for URL: {url}")
 
-            # Slice 1 just acknowledges the task.
-            # Slice 2 will implement domain-to-adapter matching.
+            # Establish database session
+            db: Session = SessionLocal()
+            try:
+                # Fetch the raw job posting
+                raw_job = (
+                    db.query(RawJobPosting).filter(RawJobPosting.url == url).first()
+                )
+                if not raw_job:
+                    logger.warning(f"RawJobPosting not found for URL: {url}")
+                    return
+
+                adapter = self.registry.get_adapter_for_url(url)
+                if not adapter:
+                    self._handle_missing_or_failed_adapter(url, raw_job.html_content)
+                    return
+
+                try:
+                    extracted_data = adapter.extract(raw_job.html_content, url)
+
+                    if not extracted_data:
+                        raise ValueError("Extraction returned empty data")
+
+                    self._save_job_posting(db, url, extracted_data)
+
+                except Exception as e:
+                    logger.error(f"Adapter extraction failed for URL {url}: {e}")
+                    self._handle_missing_or_failed_adapter(url, raw_job.html_content)
+
+            finally:
+                db.close()
 
         except json.JSONDecodeError:
             logger.error(f"Failed to decode message: {message[:100]}...")
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
+
+    def _save_job_posting(self, db: Session, url: str, data: dict):
+        try:
+            # Update or create the JobPosting
+            job_posting = db.query(JobPosting).filter(JobPosting.url == url).first()
+            if not job_posting:
+                job_posting = JobPosting(url=url)
+                db.add(job_posting)
+
+            # Map extracted data to model
+            job_posting.title = data.get("title", "Unknown Title")
+            job_posting.company_name = data.get("company_name", "Unknown Company")
+            job_posting.employment_type = data.get("employment_type")
+            job_posting.locations = data.get("locations", [])
+            job_posting.categories = data.get("categories", [])
+            job_posting.description = data.get("description", "")
+            job_posting.metadata_ = data.get("metadata", {})
+
+            db.commit()
+            logger.info(f"Successfully saved JobPosting for URL: {url}")
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to save JobPosting for URL {url}: {e}")
+            raise
+
+    def _handle_missing_or_failed_adapter(self, url: str, html: str):
+        """Push to learning queue. Implement fully in Slice 3."""
+        logger.info(
+            f"Fallback triggered for URL: {url}. Sending to adapter_learning_tasks..."
+        )
+        payload = {
+            "url": url,
+            "html_content": html,
+        }
+        if self.redis:
+            # Slice 3 will refine this and add state check
+            self.redis.lpush("adapter_learning_tasks", json.dumps(payload))
 
 
 if __name__ == "__main__":

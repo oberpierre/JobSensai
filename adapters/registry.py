@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Optional, Type
+from typing import Optional
 from urllib.parse import urlparse
 
 from adapters.base import BaseAdapter
@@ -13,7 +13,7 @@ class AdapterRegistry:
 
     def __init__(self):
         # Map domain (e.g., 'google.com') to Adapter class
-        self._registry: Dict[str, Type[BaseAdapter]] = {}
+        self._registry: dict[str, type[BaseAdapter]] = {}
         self._register_defaults()
 
     def _register_defaults(self):
@@ -21,7 +21,7 @@ class AdapterRegistry:
         self.register("google.com", GoogleJobAdapter)
         self.register("www.google.com", GoogleJobAdapter)
 
-    def register(self, domain: str, adapter_cls: Type[BaseAdapter]):
+    def register(self, domain: str, adapter_cls: type[BaseAdapter]):
         """Register an adapter for a specific domain."""
         logger.info(f"Registering adapter {adapter_cls.__name__} for domain: {domain}")
         self._registry[domain] = adapter_cls
@@ -34,7 +34,8 @@ class AdapterRegistry:
 
             # Handle case where URL might not have a scheme
             if not domain and parsed.path:
-                # If parsed like 'google.com/jobs', netloc is empty and path is 'google.com/jobs'
+                # If parsed like 'google.com/jobs',
+                # netloc is empty and path is 'google.com/jobs'
                 domain = parsed.path.split("/")[0]
 
             if domain in self._registry:

@@ -1,7 +1,8 @@
 import json
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+from scraper.models import RawJobPosting
 from scraper.silver_worker import SilverWorker, SilverWorkerConfig
 
 
@@ -16,14 +17,61 @@ class TestSilverWorker(unittest.TestCase):
         self.worker = SilverWorker(self.config)
         self.worker.redis = MagicMock()
 
-    def test_process_message_valid(self):
-        # Slice 1: Should just process without error.
-        message = json.dumps({"url": "http://example.com/job/1"})
+    @patch("scraper.silver_worker.SessionLocal")
+    def test_process_message_valid(self, mock_session_local):
+        # Slice 2: Mock database and adapter extraction.
+        mock_db = MagicMock()
+        mock_session_local.return_value = mock_db
+
+        # Force JobPosting query to return None so it creates and adds a new one
+        def mock_query_first(model):
+            mock_query = MagicMock()
+            mock_filter = MagicMock()
+            if model == RawJobPosting:
+                mock_filter.first.return_value = RawJobPosting(
+                    url="https://google.com/job/1", html_content="<html></html>"
+                )
+            else:
+                mock_filter.first.return_value = None
+            mock_query.filter.return_value = mock_filter
+            return mock_query
+
+        mock_db.query.side_effect = mock_query_first
+
+        mock_adapter = MagicMock()
+        mock_adapter.extract.return_value = {"title": "Engineer"}
+        self.worker.registry.get_adapter_for_url = MagicMock(return_value=mock_adapter)
+
+        message = json.dumps({"url": "https://google.com/job/1"})
 
         try:
             self.worker.process_message(message)
         except Exception as e:
             self.fail(f"process_message raised Exception unexpectedly: {e}")
+
+        # Verify save was called implicitly
+        mock_db.add.assert_called()
+        mock_db.commit.assert_called()
+
+    @patch("scraper.silver_worker.SessionLocal")
+    def test_process_message_adapter_missing_calls_fallback(self, mock_session_local):
+        mock_db = MagicMock()
+        mock_session_local.return_value = mock_db
+
+        mock_raw_job = RawJobPosting(
+            url="https://unknown.com/job/1", html_content="<html></html>"
+        )
+        mock_db.query().filter().first.return_value = mock_raw_job
+
+        self.worker.registry.get_adapter_for_url = MagicMock(return_value=None)
+        self.worker._handle_missing_or_failed_adapter = MagicMock()
+
+        message = json.dumps({"url": "https://unknown.com/job/1"})
+        self.worker.process_message(message)
+
+        self.worker._handle_missing_or_failed_adapter.assert_called_once_with(
+            "https://unknown.com/job/1", "<html></html>"
+        )
 
     def test_process_message_missing_url(self):
         message = json.dumps({"other_data": "test"})

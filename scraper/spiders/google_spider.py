@@ -13,6 +13,7 @@ from collections.abc import Iterator
 
 import scrapy
 from adapters.registry import AdapterRegistry
+
 from scraper.items import RawJobItem
 from scraper.spiders.base_spider import BaseJobSpider
 
@@ -41,10 +42,12 @@ class GoogleSpider(BaseJobSpider):
         if not adapter:
             logger.warning(
                 f"No adapter found for domain parsing jobs: {response.url}. "
-                "Triggering learning pipeline logic will not happen correctly without an adapter."
+                "Triggering learning pipeline logic will not happen correctly without "
+                "an adapter."
             )
-            # You could theoretically emit a 'RAW_HTML' learning task from here for the INDEX page
-            # but Sliver Worker focuses on the JOB detail page for extraction usually
+            # You could theoretically emit a 'RAW_HTML' learning task
+            # from here for the INDEX page but Sliver Worker focuses on the
+            # JOB detail page for extraction usually
             return
 
         try:
