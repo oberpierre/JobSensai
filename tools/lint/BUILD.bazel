@@ -11,6 +11,8 @@ ruff_test(
     size = "small",
     srcs = [
         "//llm:main",
+        "//llm:worker_test",
+        "//llm:model_test",
         "//scraper:main",
         "//scraper:scraper_lib",
         "//scraper:worker",

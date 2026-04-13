@@ -1,4 +1,4 @@
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_binary(
     name = "main",
@@ -11,7 +11,27 @@ py_binary(
         "@pip//langchain",
         "@pip//langchain_ollama",
         "@pip//python_dotenv",
+        "@pip//redis",
     ],
     python_version = "PY3",
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_test",
+    srcs = ["worker_test.py"],
+    deps = [
+        ":main",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "model_test",
+    srcs = ["model_test.py"],
+    deps = [
+        ":main",
+    ],
     visibility = ["//visibility:public"],
 )
