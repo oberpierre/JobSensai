@@ -40,7 +40,9 @@ class TestSilverWorker(unittest.TestCase):
 
         mock_adapter = MagicMock()
         mock_adapter.extract.return_value = {"title": "Engineer"}
-        self.worker.registry.get_adapter_for_url = MagicMock(return_value=mock_adapter)
+        self.worker.registry.get_extraction_adapter = MagicMock(
+            return_value=mock_adapter
+        )
 
         message = json.dumps({"url": "https://google.com/job/1"})
 
@@ -63,7 +65,7 @@ class TestSilverWorker(unittest.TestCase):
         )
         mock_db.query().filter().first.return_value = mock_raw_job
 
-        self.worker.registry.get_adapter_for_url = MagicMock(return_value=None)
+        self.worker.registry.get_extraction_adapter = MagicMock(return_value=None)
         self.worker._handle_missing_or_failed_adapter = MagicMock()
 
         message = json.dumps({"url": "https://unknown.com/job/1"})

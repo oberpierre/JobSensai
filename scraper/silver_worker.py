@@ -104,7 +104,7 @@ class SilverWorker:
                     logger.warning(f"RawJobPosting not found for URL: {url}")
                     return
 
-                adapter = self.registry.get_adapter_for_url(url)
+                adapter = self.registry.get_extraction_adapter(url)
                 if not adapter:
                     self._handle_missing_or_failed_adapter(url, raw_job.html_content)
                     return
@@ -154,17 +154,14 @@ class SilverWorker:
             raise
 
     def _handle_missing_or_failed_adapter(self, url: str, html: str):
-        """Push to learning queue. Implement fully in Slice 3."""
-        logger.info(
-            f"Fallback triggered for URL: {url}. Sending to adapter_learning_tasks..."
-        )
+        """Push to learning queue."""
+        logger.info(f"Fallback triggered for URL: {url}. Sending to learning queue...")
         payload = {
             "url": url,
             "html_content": html,
         }
         if self.redis:
-            # Slice 3 will refine this and add state check
-            self.redis.lpush("adapter_learning_tasks", json.dumps(payload))
+            self.redis.lpush("extraction_learning_tasks", json.dumps(payload))
 
 
 if __name__ == "__main__":
