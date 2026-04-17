@@ -8,6 +8,14 @@ class TestAdapterRegistry(unittest.TestCase):
     def setUp(self):
         self.registry = AdapterRegistry()
 
+    def test_get_discovery_adapter(self):
+        adapter = self.registry.get_discovery_adapter("https://www.google.com/jobs")
+        self.assertIsInstance(adapter, GoogleJobAdapter)
+
+    def test_get_extraction_adapter(self):
+        adapter = self.registry.get_extraction_adapter("https://www.google.com/jobs")
+        self.assertIsInstance(adapter, GoogleJobAdapter)
+
     def test_get_adapter_valid_url(self):
         adapter = self.registry.get_adapter_for_url("https://www.google.com/jobs")
         self.assertIsInstance(adapter, GoogleJobAdapter)
