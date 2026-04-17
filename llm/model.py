@@ -35,14 +35,16 @@ Here is the BaseAdapter class you MUST inherit from and fully implement:
 
 Here is a sample of the raw HTML from the website:
 ```html
-{raw_html[:3000]} # Truncating to avoid passing massive HTML, but enough for structure
+{raw_html[:10000]}
 ```
 
 Requirements:
 1. Inherit from `BaseAdapter`.
-2. Implement ALL abstract methods, including `get_job_links` and `extract`.
+2. Implement ALL abstract methods, including `get_job_links`, `get_next_page_links`, and `extract`.
 3. The `extract` method MUST return a Pydantic `JobPosting` object.
-4. ONLY return valid Python code. Do NOT enclose it in markdown blocks.
-5. Provide a valid test case testing the `extract()` method.
-"""
+4. Use BeautifulSoup (bs4) for parsing if needed.
+5. ONLY return valid Python code. Do NOT enclose it in markdown blocks.
+6. Provide a valid Pytest unit test in the same output that uses the provided HTML to test the `extract()` method.
+7. Separate the adapter class and the test code with a comment `# --- TEST CODE ---`.
+"""  # noqa: E501
         return self.generate_response(prompt)
