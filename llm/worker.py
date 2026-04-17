@@ -79,17 +79,80 @@ class LLMWorker:
                 base_adapter_code = f.read()
 
             llm_model = LLMModel()
-            generated_code = llm_model.generate_adapter(
+            generated_response = llm_model.generate_adapter(
                 domain, raw_html, base_adapter_code
             )
 
-            logger.info("Generated adapter code length: %d", len(generated_code))
+            adapter_code, test_code = self.parse_llm_response(generated_response)
 
-            # TODO: Validate and save generated code
+            if not adapter_code:
+                logger.error(f"Failed to parse adapter code for {domain}")
+                return
 
-            # self.complete_learning(domain) # Only call when successful
+            logger.info("Parsed adapter code length: %d", len(adapter_code))
+
+            if self.validate_code(domain, adapter_code, test_code, raw_html):
+                self.save_and_commit(domain, adapter_code, test_code)
+                self.complete_learning(domain)
+            else:
+                logger.error(f"Validation failed for domain: {domain}")
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode task message: {e}")
         except Exception as e:
             logger.error(f"Error processing task: {e}")
+
+    def parse_llm_response(self, response: str) -> tuple[str | None, str | None]:
+        """Split the LLM response into adapter code and test code."""
+        if "# --- TEST CODE ---" in response:
+            parts = response.split("# --- TEST CODE ---")
+            return parts[0].strip(), parts[1].strip()
+        return response.strip(), None
+
+    def validate_code(
+        self, domain: str, adapter_code: str, test_code: str | None, raw_html: str
+    ) -> bool:
+        """Validate the generated code using AST and basic checks."""
+        import ast
+
+        try:
+            ast.parse(adapter_code)
+            if test_code:
+                ast.parse(test_code)
+        except SyntaxError as e:
+            logger.error(f"Syntax error in generated code for {domain}: {e}")
+            return False
+
+        if "BaseAdapter" not in adapter_code:
+            logger.error(f"Generated code for {domain} does not inherit BaseAdapter")
+            return False
+
+        return True
+
+    def save_and_commit(self, domain: str, adapter_code: str, test_code: str | None):
+        """Save the generated code to disk and commit to git."""
+        safe_domain = domain.replace(".", "_")
+        adapter_path = os.path.join("adapters", f"{safe_domain}_v1.py")
+        test_path = os.path.join("adapters", f"{safe_domain}_v1_test.py")
+
+        with open(adapter_path, "w") as f:
+            f.write(adapter_code)
+
+        if test_code:
+            with open(test_path, "w") as f:
+                f.write(test_code)
+
+        logger.info(f"Saved adapter to {adapter_path}")
+
+        # Git operations
+        # Note: This is a simplified git workflow for the current slice.
+        # In production, this would be handled by a dedicated service or a more
+        # robust CI/CD integration.
+        branch_name = f"feature/adapter-{safe_domain}-v1"
+        try:
+            os.system(f"git checkout -b {branch_name}")
+            os.system(f"git add {adapter_path} {test_path if test_code else ''}")
+            os.system(f'git commit -m "F Add generated adapter for {domain}"')
+            logger.info(f"Committed changes to branch {branch_name}")
+        except Exception as e:
+            logger.error(f"Failed to commit changes for {domain}: {e}")
