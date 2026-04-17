@@ -1,4 +1,4 @@
-from adapters.base import ExtractionAdapter
+from adapters.adapters.base import ExtractionAdapter
 
 
 class GoogleExtractionAdapter(ExtractionAdapter):

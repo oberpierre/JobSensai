@@ -151,7 +151,7 @@ class LLMWorker:
             module = ModuleType(module_name)
 
             # Inject BaseAdapter into the module namespace
-            from adapters.base import BaseAdapter
+            from adapaters.adapters.base import BaseAdapter
 
             module.__dict__["BaseAdapter"] = BaseAdapter
 

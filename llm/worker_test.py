@@ -83,7 +83,7 @@ class TestLLMWorker(unittest.TestCase):
 
     def test_validate_code_success(self):
         adapter_code = """
-from adapters.base import BaseAdapter
+from adapaters.adapters.base import BaseAdapter
 class NewAdapter(BaseAdapter):
     def get_job_links(self, html, url): return []
     def get_next_page_links(self, html, url): return []
@@ -145,7 +145,7 @@ class NewAdapter(BaseAdapter):
         mock_llm_instance = mock_llm_class.return_value
         # First call fails (invalid syntax), second call succeeds
         mock_llm_instance.generate_adapter.return_value = """
-from adapters.base import BaseAdapter
+from adapaters.adapters.base import BaseAdapter
 class NewAdapter(BaseAdapter):
     def get_job_links(self, html, url): return []
     def get_next_page_links(self, html, url): return []

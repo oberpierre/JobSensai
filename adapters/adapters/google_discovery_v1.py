@@ -3,7 +3,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from parsel import Selector
 
-from adapters.base import DiscoveryAdapter
+from adapters.adapters.base import DiscoveryAdapter
 
 
 class GoogleDiscoveryAdapter(DiscoveryAdapter):
