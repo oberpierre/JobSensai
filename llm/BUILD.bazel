@@ -17,6 +17,17 @@ py_binary(
     visibility = ["//visibility:public"],
 )
 
+py_binary(
+    name = "worker",
+    srcs = ["worker.py"],
+    imports = [".."],
+    deps = [
+        ":main",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 py_test(
     name = "worker_test",
     srcs = ["worker_test.py"],
