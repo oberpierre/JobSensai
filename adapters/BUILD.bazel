@@ -6,7 +6,7 @@ py_library(
     name = "adapters",
     srcs = glob(
         ["*.py", "adapters/*.py"],
-        exclude = ["*_test.py"],
+        exclude = ["**/*_test.py"],
     ),
     deps = [
         "@pip//parsel",
@@ -16,6 +16,14 @@ py_library(
 py_test(
     name = "registry_test",
     srcs = ["registry_test.py"],
+    deps = [
+        ":adapters",
+    ],
+)
+
+py_test(
+    name = "adapter_test",
+    srcs = glob(["adapters/*_test.py"]),
     deps = [
         ":adapters",
     ],
