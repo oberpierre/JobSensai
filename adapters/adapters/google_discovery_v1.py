@@ -3,11 +3,11 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from parsel import Selector
 
-from adapters.base import BaseAdapter
+from adapters.base import DiscoveryAdapter
 
 
-class GoogleJobAdapter(BaseAdapter):
-    """Adapter for Google Careers job board (v1)."""
+class GoogleDiscoveryAdapter(DiscoveryAdapter):
+    """Discovery adapter for Google Careers."""
 
     def get_job_links(self, html: str, url: str) -> list[str]:
         selector = Selector(text=html)
@@ -29,10 +29,7 @@ class GoogleJobAdapter(BaseAdapter):
             aria_label = listing.attrib.get("aria-label", "")
             if aria_label.startswith("Go to next page"):
                 return [self._generate_next_page_url(url)]
-
-    def extract(self, html: str, url: str) -> dict:
-        # TODO: Implement extraction logic for silver data lake
-        return {}
+        return []
 
     def _generate_next_page_url(self, url: str) -> str:
         """Generate URL for the next page of results."""

@@ -1,6 +1,7 @@
 import unittest
 
-from adapters.common.google import GoogleDiscoveryAdapter, GoogleExtractionAdapter
+from adapters.adapters.google_discovery_v1 import GoogleDiscoveryAdapter
+from adapters.adapters.google_extraction_v1 import GoogleExtractionAdapter
 from adapters.registry import AdapterRegistry
 
 
