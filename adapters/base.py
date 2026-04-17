@@ -56,9 +56,3 @@ class ExtractionAdapter(ABC):
     def version(self) -> int:
         """Returns the version of this adapter."""
         return 1
-
-
-class BaseAdapter(DiscoveryAdapter, ExtractionAdapter):
-    """Legacy interface for backward compatibility."""
-
-    pass

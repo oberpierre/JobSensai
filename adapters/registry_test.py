@@ -1,6 +1,6 @@
 import unittest
 
-from adapters.google_v1 import GoogleJobAdapter
+from adapters.common.google import GoogleDiscoveryAdapter, GoogleExtractionAdapter
 from adapters.registry import AdapterRegistry
 
 
@@ -10,22 +10,23 @@ class TestAdapterRegistry(unittest.TestCase):
 
     def test_get_discovery_adapter(self):
         adapter = self.registry.get_discovery_adapter("https://www.google.com/jobs")
-        self.assertIsInstance(adapter, GoogleJobAdapter)
+        self.assertIsInstance(adapter, GoogleDiscoveryAdapter)
 
     def test_get_extraction_adapter(self):
         adapter = self.registry.get_extraction_adapter("https://www.google.com/jobs")
-        self.assertIsInstance(adapter, GoogleJobAdapter)
+        self.assertIsInstance(adapter, GoogleExtractionAdapter)
 
     def test_get_adapter_valid_url(self):
+        # google.com registered for both, but legacy method returns None
         adapter = self.registry.get_adapter_for_url("https://www.google.com/jobs")
-        self.assertIsInstance(adapter, GoogleJobAdapter)
+        self.assertIsNone(adapter)
 
         adapter2 = self.registry.get_adapter_for_url("http://google.com/careers")
-        self.assertIsInstance(adapter2, GoogleJobAdapter)
+        self.assertIsNone(adapter2)
 
     def test_get_adapter_no_scheme(self):
-        adapter = self.registry.get_adapter_for_url("www.google.com/search")
-        self.assertIsInstance(adapter, GoogleJobAdapter)
+        adapter = self.registry.get_discovery_adapter("www.google.com/search")
+        self.assertIsInstance(adapter, GoogleDiscoveryAdapter)
 
     def test_get_adapter_unregistered_domain(self):
         adapter = self.registry.get_adapter_for_url("https://www.example.com")

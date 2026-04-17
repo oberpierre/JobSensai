@@ -5,7 +5,7 @@ package(default_visibility = ["//visibility:public"])
 py_library(
     name = "adapters",
     srcs = glob(
-        ["*.py"],
+        ["*.py", "common/*.py"],
         exclude = ["*_test.py"],
     ),
     deps = [
