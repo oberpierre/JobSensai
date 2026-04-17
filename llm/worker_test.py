@@ -82,11 +82,21 @@ class TestLLMWorker(unittest.TestCase):
         self.assertIsNone(test)
 
     def test_validate_code_success(self):
-        adapter_code = "class NewAdapter(BaseAdapter): pass"
+        adapter_code = """
+from adapters.base import BaseAdapter
+class NewAdapter(BaseAdapter):
+    def get_job_links(self, html, url): return []
+    def get_next_page_links(self, html, url): return []
+    def extract(self, html, url): return {"title": "Job"}
+"""
         test_code = "def test_new(): pass"
         self.assertTrue(
             self.worker.validate_code(
-                "example.com", adapter_code, test_code, "<html></html>"
+                "example.com",
+                adapter_code,
+                test_code,
+                "<html></html>",
+                "http://example.com",
             )
         )
 
@@ -94,7 +104,7 @@ class TestLLMWorker(unittest.TestCase):
         adapter_code = "class NewAdapter(BaseAdapter): invalid syntax"
         self.assertFalse(
             self.worker.validate_code(
-                "example.com", adapter_code, None, "<html></html>"
+                "example.com", adapter_code, None, "<html></html>", "http://example.com"
             )
         )
 
@@ -102,9 +112,61 @@ class TestLLMWorker(unittest.TestCase):
         adapter_code = "class NewAdapter: pass"
         self.assertFalse(
             self.worker.validate_code(
-                "example.com", adapter_code, None, "<html></html>"
+                "example.com", adapter_code, None, "<html></html>", "http://example.com"
             )
         )
+
+    @patch("subprocess.run")
+    def test_run_generated_tests_success(self, mock_run):
+        mock_run.return_value.returncode = 0
+        mock_run.return_value.stdout = "PASSED"
+
+        adapter_code = "class NewAdapter(BaseAdapter): pass"
+        test_code = "def test_logic(): assert True"
+
+        self.assertTrue(
+            self.worker.run_generated_tests("example.com", adapter_code, test_code)
+        )
+
+    @patch("subprocess.run")
+    def test_run_generated_tests_failure(self, mock_run):
+        mock_run.return_value.returncode = 1
+        mock_run.return_value.stdout = "FAILED"
+
+        adapter_code = "class NewAdapter(BaseAdapter): pass"
+        test_code = "def test_logic(): assert False"
+
+        self.assertFalse(
+            self.worker.run_generated_tests("example.com", adapter_code, test_code)
+        )
+
+    @patch("llm.worker.LLMModel")
+    def test_validate_code_retry_success(self, mock_llm_class):
+        mock_llm_instance = mock_llm_class.return_value
+        # First call fails (invalid syntax), second call succeeds
+        mock_llm_instance.generate_adapter.return_value = """
+from adapters.base import BaseAdapter
+class NewAdapter(BaseAdapter):
+    def get_job_links(self, html, url): return []
+    def get_next_page_links(self, html, url): return []
+    def extract(self, html, url): return {"title": "Fixed Job"}
+"""
+
+        # Initial code with syntax error
+        bad_adapter_code = "class NewAdapter(BaseAdapter): invalid syntax"
+
+        # We need to mock open for retry_generation
+        with patch("builtins.open", mock_open(read_data="class BaseAdapter: pass")):
+            result = self.worker.validate_code(
+                "example.com",
+                bad_adapter_code,
+                None,
+                "<html></html>",
+                "http://example.com",
+            )
+
+        self.assertTrue(result)
+        self.assertEqual(mock_llm_instance.generate_adapter.call_count, 1)
 
     @patch("builtins.open", new_callable=mock_open)
     @patch("os.system")
