@@ -4,9 +4,13 @@ py_binary(
     name = "main",
     srcs = glob(["**/*.py"]),
     imports = ["."],
+    data = [
+        "//:env",
+    ],
     deps = [
         "@pip//langchain",
         "@pip//langchain_ollama",
+        "@pip//python_dotenv",
     ],
     python_version = "PY3",
     visibility = ["//visibility:public"],

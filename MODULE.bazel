@@ -22,4 +22,4 @@ use_repo(pip, "pip")
 
 # Aspect rules for linting and formatting integration with Bazel
 # Provides: format targets, lint_test macro, and lint aspects
-bazel_dep(name = "aspect_rules_lint", version = "1.10.2")
+bazel_dep(name = "aspect_rules_lint", version = "2.0.0")

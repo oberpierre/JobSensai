@@ -11,6 +11,10 @@ ruff_test(
     size = "small",
     srcs = [
         "//llm:main",
-        # Add new targets here as your codebase grows
+        "//scraper:main",
+        "//scraper:scraper_lib",
+        "//scraper:worker",
+        "//scraper:worker_test",
+        "//adapters:adapters",
     ],
 )

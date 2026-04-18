@@ -1,0 +1,64 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Scraper library containing core logic
+py_library(
+    name = "scraper_lib",
+    srcs = glob(
+        ["**/*.py"],
+        exclude = ["*_test.py", "main.py"],
+    ),
+    imports = ["."],
+    deps = [
+        "@pip//scrapy",
+        "@pip//scrapy_playwright",
+        "@pip//playwright",
+        "@pip//sqlalchemy",
+        "@pip//psycopg2_binary",
+        "@pip//redis",
+        "@pip//python_dotenv",
+        "//adapters:adapters",
+    ],
+)
+
+# Main scraper binary
+py_binary(
+    name = "main",
+    srcs = ["main.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+        "@pip//python_dotenv",
+    ],
+    data = [
+        "//:env",
+    ],
+    python_version = "PY3",
+)
+
+# Worker binary
+py_binary(
+    name = "worker",
+    srcs = ["worker.py"],
+    imports = ["."],
+    data = [
+        "//:env",
+    ],
+    deps = [
+        ":scraper_lib",
+        "@pip//python_dotenv",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "worker_test",
+    srcs = ["worker_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+

@@ -1,2 +1,16 @@
+# LLM dependencies
 langchain==1.0.2
 langchain-ollama==1.0.0
+
+# Web scraping
+scrapy==2.13.3
+playwright==1.55.0
+scrapy-playwright==0.0.44
+
+# Database
+sqlalchemy==2.0.44
+psycopg2-binary==2.9.11
+redis==7.1.0
+
+# Environment
+python-dotenv==1.2.1
