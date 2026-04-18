@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 import redis
-from adapters.registry import AdapterRegistry
 from sqlalchemy.orm import Session
 
+from adapters.registry import AdapterRegistry
 from scraper.database import SessionLocal
 from scraper.models import JobPosting, RawJobPosting
 

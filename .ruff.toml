@@ -30,4 +30,4 @@ select = [
 # 1. Standard library imports
 # 2. Third-party imports
 # 3. First-party imports (your project code)
-known-first-party = ["llm", "scraper"]  # Add new top-level packages here as they're created
+known-first-party = ["adapters", "llm", "scraper"]  # Add new top-level packages here as they're created

@@ -15,8 +15,8 @@ from datetime import UTC, datetime
 
 import redis
 import scrapy
-from adapters.registry import AdapterRegistry
 
+from adapters.registry import AdapterRegistry
 from scraper.items import RawJobItem
 from scraper.spiders.base_spider import BaseJobSpider
 
