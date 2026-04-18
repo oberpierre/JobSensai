@@ -9,6 +9,7 @@ py_library(
         exclude = ["**/*_test.py"],
     ),
     deps = [
+        "@pip//beautifulsoup4",
         "@pip//parsel",
     ],
 )
