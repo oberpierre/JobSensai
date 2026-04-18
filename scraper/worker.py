@@ -174,7 +174,9 @@ class JobWorker:
         client_run_id = data.get("run_id")
         logger.info(f"Run {client_run_id} finished. Initiating tombstoning.")
 
-        db_run_id = self._get_or_create_run(session, client_run_id, "unknown")
+        db_run_id = self._get_or_create_run(
+            session, client_run_id, data.get("spider_name", "unknown")
+        )
         self._perform_tombstoning(session, db_run_id)
 
     def _get_or_create_run(

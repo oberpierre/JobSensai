@@ -15,7 +15,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 
 # Installing python 3.12 and pip
 RUN apt-get install -y software-properties-common \
-    && add-apt-repository -y ppa:deadsnakes/ppa \ 
+    && add-apt-repository -y ppa:deadsnakes/ppa \
     && apt-get update \
     && apt-get install -y python3.12 python3-pip \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
