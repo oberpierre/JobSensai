@@ -32,7 +32,7 @@ py_binary(
     imports = [".."],
     deps = [
         ":main",
-        "@pip//redis",
+        "//adapters:adapters_base",
     ],
     visibility = ["//visibility:public"],
 )
