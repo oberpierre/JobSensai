@@ -12,9 +12,11 @@ import json
 import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from typing import Any
 
 import redis
 import scrapy
+from scrapy.crawler import Crawler
 
 from adapters.registry import AdapterRegistry
 from scraper.items import RawJobItem
@@ -37,11 +39,30 @@ class GoogleSpider(BaseJobSpider):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.registry = AdapterRegistry()
-        self.redis_client = redis.Redis(
-            host=kwargs.get("redis_host", "localhost"),
-            port=int(kwargs.get("redis_port", 6379)),
+        self.redis_client: redis.Redis | None = None
+
+    @classmethod
+    def from_crawler(cls, crawler: Crawler, *args: Any, **kwargs: Any):
+        """Initialize spider and wire dependencies from Scrapy settings."""
+        spider = super().from_crawler(crawler, *args, **kwargs)
+
+        redis_host = crawler.settings.get("REDIS_HOST", "localhost")
+        redis_port = crawler.settings.getint("REDIS_PORT", 6379)
+
+        spider.redis_client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
             decode_responses=True,
         )
+
+        logger.info(
+            "Initialized Redis client for spider %s at %s:%s",
+            spider.name,
+            redis_host,
+            redis_port,
+        )
+
+        return spider
 
     def parse(self, response: scrapy.http.Response) -> Iterator[scrapy.Request]:
         """Extract job links from search results page."""
@@ -80,6 +101,12 @@ class GoogleSpider(BaseJobSpider):
             "html": response.text,
             "timestamp": datetime.now(UTC).isoformat(),
         }
+
+        if not self.redis_client:
+            logger.error(
+                "Redis client is not initialized; cannot enqueue learning task"
+            )
+            exit(1)
 
         try:
             self.redis_client.lpush("discovery_learning_tasks", json.dumps(payload))
