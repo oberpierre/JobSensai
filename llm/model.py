@@ -21,16 +21,42 @@ class LLMModel:
         return self.llm.invoke(prompt)
 
     def generate_adapter(
-        self, domain: str, raw_html: str, base_adapter_code: str
+        self,
+        domain: str,
+        raw_html: str,
+        adapter_type: str,
+        base_code: str,
+        test_base_code: str,
     ) -> str:
-        """Generate a BaseAdapter implementation for the given domain and HTML."""
+        """Generate an adapter implementation for the given domain and HTML."""
+
+        if adapter_type == "discovery":
+            base_class = "DiscoveryAdapter"
+            test_base_class = "BaseDiscoveryAdapterTest"
+            methods_to_implement = "`get_job_links` and `get_next_page_links`"
+            test_desc = (
+                f"test the extraction methods based on the `{test_base_class}` contract"
+            )
+        else:
+            base_class = "ExtractionAdapter"
+            test_base_class = "BaseExtractionAdapterTest"
+            methods_to_implement = "`extract`"
+            test_desc = (
+                f"test the `extract` method based on the `{test_base_class}` contract"
+            )
+
         prompt = f"""
 You are an expert Python web scraping engineer.
 Your task is to create a Python web scraper adapter for the domain: {domain}
 
-Here is the BaseAdapter class you MUST inherit from and fully implement:
+Here is the {base_class} class you MUST inherit from and fully implement:
 ```python
-{base_adapter_code}
+{base_code}
+```
+
+Here is the {test_base_class} class your test MUST inherit from:
+```python
+{test_base_code}
 ```
 
 Here is a sample of the raw HTML from the website:
@@ -39,12 +65,13 @@ Here is a sample of the raw HTML from the website:
 ```
 
 Requirements:
-1. Inherit from `BaseAdapter`.
-2. Implement ALL abstract methods, including `get_job_links`, `get_next_page_links`, and `extract`.
-3. The `extract` method MUST return a Pydantic `JobPosting` object.
-4. Use BeautifulSoup (bs4) for parsing if needed.
-5. ONLY return valid Python code. Do NOT enclose it in markdown blocks.
-6. Provide a valid Pytest unit test in the same output that uses the provided HTML to test the `extract()` method.
-7. Separate the adapter class and the test code with a comment `# --- TEST CODE ---`.
+1. Inherit from `{base_class}`.
+2. Implement ALL abstract methods: {methods_to_implement}.
+3. Use BeautifulSoup (bs4) for parsing if needed.
+4. ONLY return valid Python code. Do NOT enclose it in markdown blocks.
+5. Provide a valid unittest file using the `unittest` library that inherits from `{test_base_class}`.
+   You must implement all abstract methods of `{test_base_class}` to {test_desc}.
+   You must import {test_base_class} like `from adapaters.adapters.base_test import {test_base_class}`.
+6. Separate the adapter class and the test code with a comment `# --- TEST CODE ---`.
 """  # noqa: E501
         return self.generate_response(prompt)

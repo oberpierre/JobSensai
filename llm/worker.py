@@ -15,10 +15,13 @@ class LLMWorker:
         self,
         redis_host: str = "localhost",
         redis_port: int = 6379,
-        queue_name: str = "adapter_learning_tasks",
+        queue_names: list[str] | None = None,
     ):
         self.redis_client = redis.Redis(host=redis_host, port=redis_port)
-        self.queue_name = queue_name
+        self.queue_names = queue_names or [
+            "discovery_learning_tasks",
+            "extraction_learning_tasks",
+        ]
         self.running = False
 
     def is_learning_in_progress(self, domain: str) -> bool:
@@ -41,21 +44,22 @@ class LLMWorker:
     def run(self):
         """Run the worker loop."""
         self.running = True
-        logger.info(f"Starting LLM Worker, listening to {self.queue_name}")
+        logger.info(f"Starting LLM Worker, listening to {self.queue_names}")
 
         while self.running:
             self.process_next_task()
 
     def process_next_task(self):
         """Process a single task from the queue."""
-        result = self.redis_client.brpop(self.queue_name, timeout=1)
+        result = self.redis_client.brpop(self.queue_names, timeout=1)
         if not result:
             return
 
-        _, message = result
-        self.process_task(message)
+        queue, message = result
+        queue_name = queue.decode("utf-8") if isinstance(queue, bytes) else queue
+        self.process_task(message, queue_name)
 
-    def process_task(self, message: bytes):
+    def process_task(self, message: bytes, queue_name: str):
         """Process a task payload."""
         domain = None
         try:
@@ -77,13 +81,20 @@ class LLMWorker:
                 "raw_html", "<html><body>No HTML provided</body></html>"
             )
 
-            # LLM generation pipeline
-            with open(os.path.join("adapters", "base.py")) as f:
-                base_adapter_code = f.read()
+            # Determine adapter type from queue name
+            adapter_type = "discovery" if "discovery" in queue_name else "extraction"
 
+            # LLM generation pipeline
+            with open(os.path.join("adapters", "adapters", "base.py")) as f:
+                base_code_full = f.read()
+            with open(os.path.join("adapters", "adapters", "base_test.py")) as f:
+                test_base_code_full = f.read()
+
+            # We pass the full base file contents to provide context about
+            # what to import
             llm_model = LLMModel()
             generated_response = llm_model.generate_adapter(
-                domain, raw_html, base_adapter_code
+                domain, raw_html, adapter_type, base_code_full, test_base_code_full
             )
 
             adapter_code, test_code = self.parse_llm_response(generated_response)
@@ -95,8 +106,15 @@ class LLMWorker:
 
             logger.info("Parsed adapter code length: %d", len(adapter_code))
 
-            if self.validate_code(domain, adapter_code, test_code, raw_html, url):
-                self.save_and_commit(domain, adapter_code, test_code)
+            if self.validate_code(
+                domain,
+                adapter_code,
+                test_code,
+                raw_html,
+                url,
+                adapter_type=adapter_type,
+            ):
+                self.save_and_commit(domain, adapter_code, test_code, adapter_type)
                 self.complete_learning(domain)
             else:
                 logger.error(f"Validation failed for domain: {domain}")
@@ -126,12 +144,17 @@ class LLMWorker:
         raw_html: str,
         url: str,
         retry_count: int = 0,
+        adapter_type: str = "extraction",
     ) -> bool:
         """Validate the generated code using AST and basic checks."""
         import ast
         from types import ModuleType
 
         max_retries = 2
+        base_class_name = (
+            "DiscoveryAdapter" if adapter_type == "discovery" else "ExtractionAdapter"
+        )
+
         try:
             # 1. AST Validation
             ast.parse(adapter_code)
@@ -139,9 +162,9 @@ class LLMWorker:
                 ast.parse(test_code)
 
             # 2. Basic content checks
-            if "BaseAdapter" not in adapter_code:
+            if base_class_name not in adapter_code:
                 logger.error(
-                    f"Generated code for {domain} does not inherit BaseAdapter"
+                    f"Generated code for {domain} does not inherit {base_class_name}"
                 )
                 return False
 
@@ -150,30 +173,35 @@ class LLMWorker:
             module_name = f"dynamic_adapter_{domain.replace('.', '_')}"
             module = ModuleType(module_name)
 
-            # Inject BaseAdapter into the module namespace
-            from adapaters.adapters.base import BaseAdapter
+            # Inject base classes into the module namespace
+            from adapters.adapters.base import DiscoveryAdapter, ExtractionAdapter
 
-            module.__dict__["BaseAdapter"] = BaseAdapter
+            if adapter_type == "discovery":
+                module.__dict__["DiscoveryAdapter"] = DiscoveryAdapter
+                base_class = DiscoveryAdapter
+            else:
+                module.__dict__["ExtractionAdapter"] = ExtractionAdapter
+                base_class = ExtractionAdapter
 
             # Execute the code in the module's namespace
             exec(adapter_code, module.__dict__)
 
             # Find the adapter class
-            # (it should inherit from BaseAdapter and not be BaseAdapter itself)
             adapter_class = None
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
                 if (
                     isinstance(attr, type)
-                    and issubclass(attr, BaseAdapter)
-                    and attr is not BaseAdapter
+                    and issubclass(attr, base_class)
+                    and attr is not base_class
                 ):
                     adapter_class = attr
                     break
 
             if not adapter_class:
                 logger.error(
-                    f"No BaseAdapter subclass found in generated code for {domain}"
+                    f"No {base_class_name} subclass found in generated code for"
+                    f" {domain}"
                 )
                 return False
 
@@ -181,20 +209,35 @@ class LLMWorker:
             adapter_instance = adapter_class()
             logger.info(f"Successfully instantiated adapter for {domain}")
 
-            # 4. Runtime Verification (extract() call)
-            result = adapter_instance.extract(raw_html, url)
-            if not isinstance(result, dict):
-                logger.error(
-                    f"extract() for {domain} returned {type(result)}, expected dict"
-                )
-                return False
+            # 4. Runtime Verification
+            if adapter_type == "discovery":
+                result = adapter_instance.get_job_links(raw_html, url)  # type: ignore
+                if not isinstance(result, list):
+                    logger.error(
+                        f"get_job_links() for {domain} returned"
+                        f" {type(result)}, expected list"
+                    )
+                    return False
+                next_page = adapter_instance.get_next_page_links(raw_html, url)  # type: ignore
+                if not isinstance(next_page, list):
+                    logger.error(
+                        f"get_next_page_links() for {domain} returned"
+                        f" {type(next_page)}, expected list"
+                    )
+                    return False
+            else:
+                result = adapter_instance.extract(raw_html, url)  # type: ignore
+                if not isinstance(result, dict):
+                    logger.error(
+                        f"extract() for {domain} returned {type(result)}, expected dict"
+                    )
+                    return False
+                if not result:
+                    logger.warning(
+                        f"extract() for {domain} returned an empty dictionary"
+                    )
 
-            # Minimal silver schema check (expecting some fields to be present)
-            # This is a basic check to ensure it's not returning an empty dict
-            if not result:
-                logger.warning(f"extract() for {domain} returned an empty dictionary")
-
-            logger.info(f"Successfully verified extract() for {domain}")
+            logger.info(f"Successfully verified methods for {domain}")
 
             # 5. Runtime Verification (LLM-generated Tests)
             if test_code:
@@ -216,22 +259,26 @@ class LLMWorker:
         return True
 
     def retry_generation(
-        self, domain: str, raw_html: str, error_message: str, retry_count: int
+        self,
+        domain: str,
+        raw_html: str,
+        error_message: str,
+        retry_count: int,
+        adapter_type: str = "extraction",
     ) -> bool:
         """Attempt to fix the generated code by feeding error back to LLM."""
-        with open(os.path.join("adapters", "base.py")) as f:
-            base_adapter_code = f.read()
+        with open(os.path.join("adapters", "adapters", "base.py")) as f:
+            base_code_full = f.read()
+        with open(os.path.join("adapters", "adapters", "base_test.py")) as f:
+            test_base_code_full = f.read()
 
         llm_model = LLMModel()
         # In a real implementation, we would provide the previous code and the error
         # For this slice, we simulate a retry by calling generate_adapter again.
-        # Ideally, LLMModel should have a 'fix_adapter' method.
         logger.info(f"Retrying generation for {domain} with error: {error_message}")
 
-        # Simulate feeding error back by including it in the prompt if possible.
-        # For now, we just call the same generation again as a placeholder.
         generated_response = llm_model.generate_adapter(
-            domain, raw_html, base_adapter_code
+            domain, raw_html, adapter_type, base_code_full, test_base_code_full
         )
 
         adapter_code, test_code = self.parse_llm_response(generated_response)
@@ -240,7 +287,7 @@ class LLMWorker:
 
         url = f"https://{domain}"  # Default URL for retry
         return self.validate_code(
-            domain, adapter_code, test_code, raw_html, url, retry_count
+            domain, adapter_code, test_code, raw_html, url, retry_count, adapter_type
         )
 
     def run_generated_tests(
@@ -291,11 +338,22 @@ class LLMWorker:
                 logger.error(f"Error running pytest for {domain}: {e}")
                 return False
 
-    def save_and_commit(self, domain: str, adapter_code: str, test_code: str | None):
+    def save_and_commit(
+        self,
+        domain: str,
+        adapter_code: str,
+        test_code: str | None,
+        adapter_type: str = "extraction",
+    ):
         """Save the generated code to disk and commit to git."""
         safe_domain = domain.replace(".", "_")
-        adapter_path = os.path.join("adapters", f"{safe_domain}_v1.py")
-        test_path = os.path.join("adapters", f"{safe_domain}_v1_test.py")
+        adapter_prefix = "discovery" if adapter_type == "discovery" else "extraction"
+        adapter_path = os.path.join(
+            "adapters", "adapters", f"{safe_domain}_{adapter_prefix}_v1.py"
+        )
+        test_path = os.path.join(
+            "adapters", "adapters", f"{safe_domain}_{adapter_prefix}_v1_test.py"
+        )
 
         with open(adapter_path, "w") as f:
             f.write(adapter_code)
@@ -306,15 +364,13 @@ class LLMWorker:
 
         logger.info(f"Saved adapter to {adapter_path}")
 
-        # Git operations
-        # Note: This is a simplified git workflow for the current slice.
-        # In production, this would be handled by a dedicated service or a more
-        # robust CI/CD integration.
-        branch_name = f"feature/adapter-{safe_domain}-v1"
+        branch_name = f"feature/{adapter_prefix}-adapter-{safe_domain}-v1"
         try:
             os.system(f"git checkout -b {branch_name}")
             os.system(f"git add {adapter_path} {test_path if test_code else ''}")
-            os.system(f'git commit -m "F Add generated adapter for {domain}"')
+            os.system(
+                f'git commit -m "F Add generated {adapter_prefix} adapter for {domain}"'
+            )
             logger.info(f"Committed changes to branch {branch_name}")
         except Exception as e:
             logger.error(f"Failed to commit changes for {domain}: {e}")
