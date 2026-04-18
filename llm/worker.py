@@ -5,9 +5,11 @@ import sys
 from urllib.parse import urlsplit
 
 import redis
+from dotenv import load_dotenv
 
 from llm.model import LLMModel
 
+load_dotenv()
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
@@ -17,10 +19,12 @@ logger = logging.getLogger(__name__)
 class LLMWorker:
     def __init__(
         self,
+        llm_url: str = "localhost:11434",
         redis_host: str = "localhost",
         redis_port: int = 6379,
         queue_names: list[str] | None = None,
     ):
+        self.llm_url = llm_url
         self.redis_client = redis.Redis(host=redis_host, port=redis_port)
         self.queue_names = queue_names or [
             "discovery_learning_tasks",
@@ -100,7 +104,9 @@ class LLMWorker:
 
             # We pass the full base file contents to provide context about
             # what to import
-            llm_model = LLMModel()
+            llm_model = LLMModel(
+                base_url=self.llm_url,
+            )
             generated_response = llm_model.generate_adapter(
                 domain, raw_html, adapter_type, base_code_full, test_base_code_full
             )
@@ -280,7 +286,9 @@ class LLMWorker:
         with open(os.path.join("adapters", "adapters", "base_test.py")) as f:
             test_base_code_full = f.read()
 
-        llm_model = LLMModel()
+        llm_model = LLMModel(
+            base_url=self.llm_url,
+        )
         # In a real implementation, we would provide the previous code and the error
         # For this slice, we simulate a retry by calling generate_adapter again.
         logger.info(f"Retrying generation for {domain} with error: {error_message}")
@@ -385,5 +393,12 @@ class LLMWorker:
 
 
 if __name__ == "__main__":
-    worker = LLMWorker()
+    llm_url = (
+        f"{os.getenv('OLLAMA_HOST', 'localhost')}:{os.getenv('OLLAMA_PORT', '11434')}"
+    )
+    worker = LLMWorker(
+        llm_url=llm_url,
+        redis_host=os.getenv("REDIS_HOST", "localhost"),
+        redis_port=int(os.getenv("REDIS_PORT", 6379)),
+    )
     worker.run()
