@@ -2,7 +2,13 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_binary(
     name = "main",
-    srcs = glob(["**/*.py"]),
+    srcs = glob(
+        ["**/*.py"],
+         exclude = [
+             "worker.py",
+             "**/*_test.py",
+         ]
+    ),
     imports = ["."],
     data = [
         "//:env",
@@ -19,7 +25,10 @@ py_binary(
 
 py_binary(
     name = "worker",
-    srcs = ["worker.py"],
+    srcs = glob(
+        ["worker.py"],
+        exclude = ["**/*_test.py"],
+    ),
     imports = [".."],
     deps = [
         ":main",
@@ -32,7 +41,7 @@ py_test(
     name = "worker_test",
     srcs = ["worker_test.py"],
     deps = [
-        ":main",
+        ":worker",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],

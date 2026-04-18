@@ -2,11 +2,15 @@ import json
 import logging
 import os
 import sys
+from urllib.parse import urlsplit
 
 import redis
 
 from llm.model import LLMModel
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -64,12 +68,16 @@ class LLMWorker:
         domain = None
         try:
             task = json.loads(message)
-            domain = task.get("domain")
-            url = task.get("url", f"https://{domain}")
+            url = task.get("url")
 
-            if not domain:
-                logger.error("Task missing domain: %s", task)
+            if not url:
+                logger.error("Task missing URL: %s", task)
                 return
+
+            domain = urlsplit(url).netloc
+            logger.info(
+                f"Processing task for domain: {domain} from queue: {queue_name}"
+            )
 
             if not self.start_learning(domain):
                 logger.info("Learning already in progress for domain: %s", domain)
@@ -374,3 +382,8 @@ class LLMWorker:
             logger.info(f"Committed changes to branch {branch_name}")
         except Exception as e:
             logger.error(f"Failed to commit changes for {domain}: {e}")
+
+
+if __name__ == "__main__":
+    worker = LLMWorker()
+    worker.run()
