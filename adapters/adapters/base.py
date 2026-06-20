@@ -4,6 +4,9 @@ from abc import ABC, abstractmethod
 class DiscoveryAdapter(ABC):
     """Abstract base class for job discovery (finding links)."""
 
+    # Declare the domains handled, e.g. ["example.com", "www.example.com"].
+    domains: list[str] = []
+
     @abstractmethod
     def get_job_links(self, html: str, url: str) -> list[str]:
         """Extracts job posting URLs from a job board listing page.
@@ -38,6 +41,9 @@ class DiscoveryAdapter(ABC):
 
 class ExtractionAdapter(ABC):
     """Abstract base class for job data extraction."""
+
+    # declares the domains handled, e.g. ["example.com", "www.example.com"].
+    domains: list[str] = []
 
     @abstractmethod
     def extract(self, html: str, url: str) -> dict:

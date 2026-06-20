@@ -9,6 +9,8 @@ from adapters.adapters.base import DiscoveryAdapter
 class GoogleDiscoveryAdapter(DiscoveryAdapter):
     """Discovery adapter for Google Careers."""
 
+    domains = ["google.com", "www.google.com"]
+
     def get_job_links(self, html: str, url: str) -> list[str]:
         selector = Selector(text=html)
         links = []

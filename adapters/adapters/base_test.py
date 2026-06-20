@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+from adapters.adapters.base import DiscoveryAdapter, ExtractionAdapter
+
 
 class BaseDiscoveryAdapterTest(ABC):
     """Base test suite for DiscoveryAdapters.
@@ -9,7 +11,7 @@ class BaseDiscoveryAdapterTest(ABC):
     """
 
     @abstractmethod
-    def get_adapter(self):
+    def get_adapter(self) -> DiscoveryAdapter:
         """Return the adapter instance to test."""
         pass
 
@@ -76,7 +78,7 @@ class BaseExtractionAdapterTest(ABC):
     """
 
     @abstractmethod
-    def get_adapter(self):
+    def get_adapter(self) -> ExtractionAdapter:
         """Return the adapter instance to test."""
         pass
 

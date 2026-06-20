@@ -33,6 +33,7 @@ py_binary(
     deps = [
         ":main",
         "//adapters:adapters_base",
+        "@pip//pytest",
     ],
     visibility = ["//visibility:public"],
 )
