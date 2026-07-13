@@ -34,6 +34,7 @@ class GoogleSpider(BaseJobSpider):
     start_urls = [
         "https://www.google.com/about/careers/applications/jobs/results/?location=Switzerland&location=Singapore&sort_by=date",
         # https://www.google.com/about/careers/applications/jobs/results/120830781164528326-program-manager-talent-outreach-talent-engagement?location=Switzerland&location=Singapore&sort_by=date
+        "https://job-boards.greenhouse.io/anthropic?error=true&departments%5B%5D=4002061008&departments%5B%5D=4010154008&departments%5B%5D=4050633008&departments%5B%5D=4019632008",
     ]
 
     def __init__(self, *args, **kwargs):
@@ -95,8 +96,19 @@ class GoogleSpider(BaseJobSpider):
             self._trigger_discovery_learning(response)
 
     def _trigger_discovery_learning(self, response: scrapy.http.Response):
-        """Push listing HTML to discovery_learning_tasks queue."""
+        """Push listing HTML to discovery_learning_tasks queue.
+
+        Payload schema (consumed by LLM worker):
+          domain    – netloc extracted from the URL (required for deduplication lock)
+          url       – full URL for context
+          html      – raw page HTML
+          timestamp – ISO-8601 string
+        """
+        from urllib.parse import urlsplit
+
+        domain = urlsplit(response.url).netloc
         payload = {
+            "domain": domain,
             "url": response.url,
             "html": response.text,
             "timestamp": datetime.now(UTC).isoformat(),
@@ -104,15 +116,16 @@ class GoogleSpider(BaseJobSpider):
 
         if not self.redis_client:
             logger.error(
-                "Redis client is not initialized; cannot enqueue learning task"
+                "Redis client is not initialized; cannot enqueue learning task for %s",
+                response.url,
             )
-            exit(1)
+            return
 
         try:
             self.redis_client.lpush("discovery_learning_tasks", json.dumps(payload))
-            logger.info(f"Pushed discovery learning task for {response.url}")
+            logger.info("Pushed discovery learning task for domain %s", domain)
         except Exception as e:
-            logger.error(f"Failed to push discovery learning task: {e}")
+            logger.error("Failed to push discovery learning task: %s", e)
 
     def parse_job(self, response: scrapy.http.Response) -> Iterator[RawJobItem]:
         """Extract job details and HTML content."""

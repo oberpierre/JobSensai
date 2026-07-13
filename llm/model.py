@@ -1,23 +1,32 @@
 import logging
+from pathlib import Path
 
 from langchain_ollama import OllamaLLM
 
 logger = logging.getLogger(__name__)
 
+_PROMPT_FILE = Path(__file__).parent / "prompts" / "runtime_agent.txt"
+_PROMPT_TEMPLATE: str | None = None
+
+
+def _load_prompt_template() -> str:
+    global _PROMPT_TEMPLATE
+    if _PROMPT_TEMPLATE is None:
+        _PROMPT_TEMPLATE = _PROMPT_FILE.read_text()
+    return _PROMPT_TEMPLATE
+
 
 class LLMModel:
     def __init__(
-        self, model_name: str = "qwen3:4b", base_url: str | None = None, **kwargs
+        self, model_name: str = "qwen3-coder:30b", base_url: str | None = None, **kwargs
     ):
-        """Initialize with Ollama."""
-        logger.info(f"Initializing Ollama with model: {model_name}")
+        logger.info("Initializing Ollama with model: %s", model_name)
         if base_url is None:
             base_url = "http://localhost:11434"
-        logger.info(f"Connecting to Ollama at: {base_url}")
+        logger.info("Connecting to Ollama at: %s", base_url)
         self.llm = OllamaLLM(model=model_name, base_url=base_url, **kwargs)
 
     def generate_response(self, prompt: str) -> str:
-        """Generate a response from the LLM."""
         return self.llm.invoke(prompt)
 
     def generate_adapter(
@@ -27,51 +36,45 @@ class LLMModel:
         adapter_type: str,
         base_code: str,
         test_base_code: str,
+        previous_code: str | None = None,
+        error_message: str | None = None,
     ) -> str:
-        """Generate an adapter implementation for the given domain and HTML."""
-
+        """Generate (or fix) an adapter for *domain* using the runtime_agent prompt."""
         if adapter_type == "discovery":
-            base_class = "DiscoveryAdapter"
             test_base_class = "BaseDiscoveryAdapterTest"
-            methods_to_implement = "`get_job_links` and `get_next_page_links`"
-            test_desc = (
-                f"test the extraction methods based on the `{test_base_class}` contract"
+            base_class_section = (
+                "Generate a DiscoveryAdapter that:\n"
+                "  • implements get_job_links(html, url) -> list[str]\n"
+                "  • implements get_next_page_links(html, url) -> list[str]\n"
+                "Both methods must return absolute URLs only."
             )
         else:
-            base_class = "ExtractionAdapter"
             test_base_class = "BaseExtractionAdapterTest"
-            methods_to_implement = "`extract`"
-            test_desc = (
-                f"test the `extract` method based on the `{test_base_class}` contract"
+            base_class_section = (
+                "Generate an ExtractionAdapter that:\n"
+                "  • implements extract(html, url) -> dict\n"
+                "The dict must conform to the Silver Schema defined below."
             )
 
-        prompt = f"""
-You are an expert Python web scraping engineer.
-Your task is to create a Python web scraper adapter for the domain: {domain}
+        if previous_code and error_message:
+            refinement_section = (
+                "PREVIOUS ATTEMPT — FIX THE FOLLOWING ERROR\n"
+                "==========================================\n\n"
+                f"Error:\n{error_message}\n\n"
+                f"Previous code:\n{previous_code}"
+            )
+        else:
+            refinement_section = ""
 
-Here is the {base_class} class you MUST inherit from and fully implement:
-```python
-{base_code}
-```
-
-Here is the {test_base_class} class your test MUST inherit from:
-```python
-{test_base_code}
-```
-
-Here is a sample of the raw HTML from the website:
-```html
-{raw_html[:10000]}
-```
-
-Requirements:
-1. Inherit from `{base_class}`.
-2. Implement ALL abstract methods: {methods_to_implement}.
-3. Use BeautifulSoup (bs4) for parsing if needed.
-4. ONLY return valid Python code. Do NOT enclose it in markdown blocks.
-5. Provide a valid unittest file using the `unittest` library that inherits from `{test_base_class}`.
-   You must implement all abstract methods of `{test_base_class}` to {test_desc}.
-   You must import {test_base_class} like `from adapaters.adapters.base_test import {test_base_class}`.
-6. Separate the adapter class and the test code with a comment `# --- TEST CODE ---`.
-"""  # noqa: E501
+        template = _load_prompt_template()
+        prompt = template.format(
+            domain=domain,
+            adapter_type=adapter_type.upper(),
+            base_class_section=base_class_section,
+            html_snippet=raw_html[:8000],
+            base_code=base_code,
+            test_base_code=test_base_code,
+            test_base_class=test_base_class,
+            refinement_section=refinement_section,
+        )
         return self.generate_response(prompt)

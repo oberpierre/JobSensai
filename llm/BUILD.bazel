@@ -4,14 +4,14 @@ py_binary(
     name = "main",
     srcs = glob(
         ["**/*.py"],
-         exclude = [
-             "worker.py",
-             "**/*_test.py",
-         ]
+        exclude = [
+            "worker.py",
+            "**/*_test.py",
+        ],
     ),
-    imports = ["."],
     data = [
         "//:env",
+        "//llm:prompts",
     ],
     deps = [
         "@pip//langchain",
@@ -23,15 +23,23 @@ py_binary(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "prompts",
+    srcs = glob(["prompts/**"]),
+    visibility = ["//visibility:public"],
+)
+
 py_binary(
     name = "worker",
-    srcs = glob(
-        ["worker.py"],
-        exclude = ["**/*_test.py"],
-    ),
+    srcs = ["worker.py"],
     imports = [".."],
+    data = [
+        "//:env",
+        "//llm:prompts",
+    ],
     deps = [
         ":main",
+        "//adapters:adapters",
         "//adapters:adapters_base",
         "@pip//pytest",
     ],
@@ -41,8 +49,10 @@ py_binary(
 py_test(
     name = "worker_test",
     srcs = ["worker_test.py"],
+    imports = [".."],
     deps = [
         ":worker",
+        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],
@@ -51,6 +61,7 @@ py_test(
 py_test(
     name = "model_test",
     srcs = ["model_test.py"],
+    data = ["//llm:prompts"],
     deps = [
         ":main",
     ],
