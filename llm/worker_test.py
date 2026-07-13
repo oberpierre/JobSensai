@@ -13,27 +13,47 @@ class TestLLMWorker(unittest.TestCase):
 
     def test_is_learning_in_progress(self):
         self.mock_redis.get.return_value = b"1"
-        self.assertTrue(self.worker.is_learning_in_progress("google.com"))
-        self.mock_redis.get.assert_called_with("LEARNING_IN_PROGRESS:google.com")
+        self.assertTrue(self.worker.is_learning_in_progress("google.com", "discovery"))
+        self.mock_redis.get.assert_called_with(
+            "LEARNING_IN_PROGRESS:discovery:google.com"
+        )
 
         self.mock_redis.get.return_value = None
-        self.assertFalse(self.worker.is_learning_in_progress("yahoo.com"))
+        self.assertFalse(self.worker.is_learning_in_progress("yahoo.com", "extraction"))
 
     def test_start_learning_success(self):
         self.mock_redis.set.return_value = True
-        self.assertTrue(self.worker.start_learning("bing.com"))
+        self.assertTrue(self.worker.start_learning("bing.com", "discovery"))
         self.mock_redis.set.assert_called_with(
-            "LEARNING_IN_PROGRESS:bing.com", "1", nx=True, ex=1800
+            "LEARNING_IN_PROGRESS:discovery:bing.com", "1", nx=True, ex=1800
         )
 
     def test_start_learning_failure_already_exists(self):
         self.mock_redis.set.return_value = None
-        self.assertFalse(self.worker.start_learning("bing.com"))
+        self.assertFalse(self.worker.start_learning("bing.com", "discovery"))
+
+    def test_learning_lock_is_namespaced_by_adapter_type(self):
+        """Discovery and extraction locks for one domain must not collide."""
+        self.mock_redis.set.return_value = True
+        self.worker.start_learning("acme.com", "discovery")
+        self.worker.start_learning("acme.com", "extraction")
+        keys = {call.args[0] for call in self.mock_redis.set.call_args_list}
+        self.assertEqual(
+            keys,
+            {
+                "LEARNING_IN_PROGRESS:discovery:acme.com",
+                "LEARNING_IN_PROGRESS:extraction:acme.com",
+            },
+        )
 
     def test_complete_learning(self):
-        self.worker.complete_learning("google.com")
-        self.mock_redis.delete.assert_called_with("LEARNING_IN_PROGRESS:google.com")
-        self.mock_redis.set.assert_called_with("LEARNING_COMPLETE:google.com", "1")
+        self.worker.complete_learning("google.com", "extraction")
+        self.mock_redis.delete.assert_called_with(
+            "LEARNING_IN_PROGRESS:extraction:google.com"
+        )
+        self.mock_redis.set.assert_called_with(
+            "LEARNING_COMPLETE:extraction:google.com", "1"
+        )
 
     @patch("llm.worker.LLMModel")
     def test_process_task_full_pipeline(self, mock_llm_class):
@@ -64,7 +84,9 @@ class TestLLMWorker(unittest.TestCase):
         self.worker.process_task(task_payload, "discovery_learning_tasks")
 
         self.worker._write_test_and_verify.assert_called_once()
-        self.worker.complete_learning.assert_called_once_with("newboard.com")
+        self.worker.complete_learning.assert_called_once_with(
+            "newboard.com", "discovery"
+        )
 
     def test_parse_llm_response_with_separator(self):
         response = "adapter code\n# --- TEST CODE ---\ntest code"
@@ -204,8 +226,9 @@ class TestLLMWorker(unittest.TestCase):
         ).encode("utf-8")
         self.worker.process_task(task_payload)
 
+        # No queue name → defaults to the extraction learning loop.
         self.mock_redis.set.assert_called_once_with(
-            "LEARNING_IN_PROGRESS:newboard.com", "1", nx=True, ex=1800
+            "LEARNING_IN_PROGRESS:extraction:newboard.com", "1", nx=True, ex=1800
         )
 
     @patch("llm.worker.logger")

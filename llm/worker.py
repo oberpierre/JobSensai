@@ -51,20 +51,28 @@ class LLMWorker:
         ]
         self.running = False
 
-    def is_learning_in_progress(self, domain: str) -> bool:
-        return self.redis_client.get(f"LEARNING_IN_PROGRESS:{domain}") is not None
+    def is_learning_in_progress(self, domain: str, adapter_type: str) -> bool:
+        return (
+            self.redis_client.get(f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}")
+            is not None
+        )
 
-    def start_learning(self, domain: str, ttl: int = 1800) -> bool:
-        """Acquire a learning lock for *domain*. Returns True if lock was acquired."""
+    def start_learning(self, domain: str, adapter_type: str, ttl: int = 1800) -> bool:
+        """Acquire a learning lock for *domain* + *adapter_type*.
+
+        Discovery and extraction learn independently, so the lock is namespaced by
+        adapter type to stop one type's task from blocking the other's for the same
+        domain. Returns True if the lock was acquired.
+        """
         return bool(
             self.redis_client.set(
-                f"LEARNING_IN_PROGRESS:{domain}", "1", nx=True, ex=ttl
+                f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}", "1", nx=True, ex=ttl
             )
         )
 
-    def complete_learning(self, domain: str) -> None:
-        self.redis_client.delete(f"LEARNING_IN_PROGRESS:{domain}")
-        self.redis_client.set(f"LEARNING_COMPLETE:{domain}", "1")
+    def complete_learning(self, domain: str, adapter_type: str) -> None:
+        self.redis_client.delete(f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}")
+        self.redis_client.set(f"LEARNING_COMPLETE:{adapter_type}:{domain}", "1")
 
     def run(self) -> None:
         self.running = True
@@ -82,7 +90,11 @@ class LLMWorker:
 
     def process_task(self, message: bytes, queue_name: str = "") -> None:
         """Parse a Redis message and run the full adapter-generation pipeline."""
+        # Resolve the adapter type up-front so the learning lock is namespaced by it
+        # and stays reachable for cleanup in the except blocks below.
+        adapter_type = "discovery" if "discovery" in queue_name else "extraction"
         domain: str | None = None
+        lock_key: str | None = None
         adapter_code: str | None = None
         test_code: str | None = None
 
@@ -97,6 +109,8 @@ class LLMWorker:
                 logger.error("Task has no resolvable domain: %s", task)
                 return
 
+            lock_key = f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}"
+
             raw_html = (
                 task.get("html")
                 or task.get("html_content")
@@ -104,11 +118,9 @@ class LLMWorker:
                 or "<html><body>No HTML provided</body></html>"
             )
 
-            adapter_type = "discovery" if "discovery" in queue_name else "extraction"
-
             logger.info("Processing %s task for domain: %s", adapter_type, domain)
 
-            if not self.start_learning(domain):
+            if not self.start_learning(domain, adapter_type):
                 logger.info("Learning already in progress for domain: %s", domain)
                 return
 
@@ -128,7 +140,7 @@ class LLMWorker:
                 logger.error(
                     "Failed to parse adapter code from LLM response for %s", domain
                 )
-                self.redis_client.delete(f"LEARNING_IN_PROGRESS:{domain}")
+                self.redis_client.delete(lock_key)
                 return
 
             if not self._quick_validate(
@@ -138,7 +150,7 @@ class LLMWorker:
                 task.get("url", f"https://{domain}"),
                 adapter_type,
             ):
-                self.redis_client.delete(f"LEARNING_IN_PROGRESS:{domain}")
+                self.redis_client.delete(lock_key)
                 return
 
             # -- Write files + BUILD.bazel patch + bazel test loop -------------
@@ -156,18 +168,18 @@ class LLMWorker:
 
             if success:
                 self._commit(domain, adapter_type)
-                self.complete_learning(domain)
+                self.complete_learning(domain, adapter_type)
             else:
                 logger.error("Permanent failure generating adapter for %s", domain)
                 self._cleanup_files(domain, adapter_type)
-                self.redis_client.delete(f"LEARNING_IN_PROGRESS:{domain}")
+                self.redis_client.delete(lock_key)
 
         except json.JSONDecodeError as exc:
             logger.error("Failed to decode task message: %s", exc)
         except Exception as exc:
             logger.error("Unexpected error processing task: %s", exc, exc_info=True)
-            if domain:
-                self.redis_client.delete(f"LEARNING_IN_PROGRESS:{domain}")
+            if lock_key:
+                self.redis_client.delete(lock_key)
 
     def _write_test_and_verify(
         self,
