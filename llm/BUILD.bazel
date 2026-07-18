@@ -14,6 +14,7 @@ py_binary(
         "//llm:prompts",
     ],
     deps = [
+        "@pip//beautifulsoup4",
         "@pip//langchain",
         "@pip//langchain_ollama",
         "@pip//python_dotenv",
@@ -62,6 +63,15 @@ py_test(
     name = "model_test",
     srcs = ["model_test.py"],
     data = ["//llm:prompts"],
+    deps = [
+        ":main",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "html_cleaner_test",
+    srcs = ["html_cleaner_test.py"],
     deps = [
         ":main",
     ],
