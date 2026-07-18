@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from llm.worker import LLMWorker, _domain_slug
+from llm.worker import LLMWorker, _adapter_names, _domain_slug
 
 
 class TestLLMWorker(unittest.TestCase):
@@ -261,6 +261,28 @@ class TestDomainSlug(unittest.TestCase):
 
     def test_no_leading_or_trailing_underscores(self):
         self.assertEqual(_domain_slug(".weird..domain."), "weird_domain")
+
+
+class TestAdapterNames(unittest.TestCase):
+    def test_simple_discovery(self):
+        names = _adapter_names("google.com", "discovery")
+        self.assertEqual(names.basename, "google_com_discovery_v1")
+        self.assertEqual(names.adapter_class, "GoogleComDiscoveryAdapter")
+        self.assertEqual(names.test_class, "TestGoogleComDiscoveryAdapter")
+        self.assertEqual(names.module_path, f"adapters.adapters.{names.basename}")
+
+    def test_hyphenated_extraction_with_version(self):
+        names = _adapter_names("job-boards.greenhouse.io", "extraction", version=2)
+        self.assertEqual(names.basename, "job_boards_greenhouse_io_extraction_v2")
+        self.assertEqual(
+            names.adapter_class, "JobBoardsGreenhouseIoExtractionAdapter"
+        )
+
+    def test_names_are_valid_python_identifiers(self):
+        names = _adapter_names("job-boards.greenhouse.io", "discovery")
+        self.assertTrue(names.basename.isidentifier())
+        self.assertTrue(names.adapter_class.isidentifier())
+        self.assertTrue(names.test_class.isidentifier())
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 from types import ModuleType
-from typing import cast
+from typing import NamedTuple, cast
 from urllib.parse import urlsplit
 
 import redis
@@ -45,6 +45,31 @@ def _domain_slug(domain: str) -> str:
     names for hyphenated boards.
     """
     return re.sub(r"[^a-z0-9]+", "_", domain.lower()).strip("_")
+
+
+class AdapterNames(NamedTuple):
+    basename: str
+    module_path: str
+    adapter_class: str
+    test_class: str
+
+
+def _adapter_names(domain: str, adapter_type: str, version: int = 1) -> AdapterNames:
+    """Derive the file/module/class names for a generated adapter.
+
+    Both agents receive these names up-front, so the generated test's import line and
+    the adapter's class definition line up without either agent seeing the other.
+    """
+    slug = _domain_slug(domain)
+    basename = f"{slug}_{adapter_type}_v{version}"
+    pascal = "".join(part.capitalize() for part in slug.split("_") if part)
+    adapter_class = f"{pascal}{adapter_type.capitalize()}Adapter"
+    return AdapterNames(
+        basename=basename,
+        module_path=f"adapters.adapters.{basename}",
+        adapter_class=adapter_class,
+        test_class=f"Test{adapter_class}",
+    )
 
 
 class LLMWorker:
