@@ -1,10 +1,16 @@
 import logging
+import os
 from pathlib import Path
 from string import Template
 
 from langchain_ollama import OllamaLLM
 
 logger = logging.getLogger(__name__)
+
+# How much cleaned HTML to put in a prompt. The old 8k cap dropped everything on real
+# pages — a listing's job links can start ~70k chars in — so the model saw only the
+# header/nav. Keep within the model's context window (see OLLAMA_NUM_CTX).
+_HTML_CHAR_BUDGET = int(os.getenv("LLM_HTML_CHARS", "120000"))
 
 _PROMPT_DIR = Path(__file__).parent / "prompts"
 _PROMPT_FILE = _PROMPT_DIR / "runtime_agent.txt"
@@ -89,7 +95,7 @@ def build_expected_prompt(adapter_type: str, cleaned_html: str, url: str) -> str
         role_instructions=role["instructions"],
         output_shape=role["output_shape"],
         url=url,
-        cleaned_html=cleaned_html[:8000],
+        cleaned_html=cleaned_html[:_HTML_CHAR_BUDGET],
     )
 
 
@@ -112,19 +118,39 @@ def build_code_prompt(
         domains=list(domains),
         base_code=base_code,
         test_source=test_source,
-        cleaned_html=cleaned_html[:8000],
+        cleaned_html=cleaned_html[:_HTML_CHAR_BUDGET],
     )
 
 
 class LLMModel:
     def __init__(
-        self, model_name: str = "qwen3-coder:30b", base_url: str | None = None, **kwargs
+        self,
+        model_name: str = "qwen3-coder:30b",
+        base_url: str | None = None,
+        num_ctx: int | None = None,
+        temperature: float = 0.0,
+        **kwargs,
     ):
         logger.info("Initializing Ollama with model: %s", model_name)
         if base_url is None:
             base_url = "http://localhost:11434"
-        logger.info("Connecting to Ollama at: %s", base_url)
-        self.llm = OllamaLLM(model=model_name, base_url=base_url, **kwargs)
+        if num_ctx is None:
+            # Ollama otherwise defaults to a ~2-4k token window that silently truncates
+            # large pages regardless of the model's real capacity.
+            num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "32768"))
+        logger.info(
+            "Connecting to Ollama at %s (num_ctx=%d, temperature=%s)",
+            base_url,
+            num_ctx,
+            temperature,
+        )
+        self.llm = OllamaLLM(
+            model=model_name,
+            base_url=base_url,
+            num_ctx=num_ctx,
+            temperature=temperature,
+            **kwargs,
+        )
 
     def generate_response(self, prompt: str) -> str:
         return self.llm.invoke(prompt)
