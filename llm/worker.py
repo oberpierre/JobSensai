@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 import redis
 from dotenv import load_dotenv
 
+from llm.html_cleaner import clean_html
 from llm.model import LLMModel
 
 load_dotenv()
@@ -72,6 +73,36 @@ def _adapter_names(domain: str, adapter_type: str, version: int = 1) -> AdapterN
     )
 
 
+def _parse_json_object(raw: str) -> dict:
+    """Parse an LLM JSON reply into a dict, tolerating stray prose or code fences."""
+    candidates = [raw]
+    start, end = raw.find("{"), raw.rfind("}")
+    if start != -1 and end != -1:
+        candidates.append(raw[start : end + 1])
+    for candidate in candidates:
+        try:
+            result = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(result, dict):
+            return result
+    return {}
+
+
+# The discovery test is deterministic boilerplate: all grounded assertions live in the
+# snapshot the DiscoverySnapshotTest base compares against.
+_DISCOVERY_TEST_TEMPLATE = '''import unittest
+
+from adapters.adapters.snapshot import DiscoverySnapshotTest
+from {module_path} import {adapter_class}
+
+
+class {test_class}(DiscoverySnapshotTest, unittest.TestCase):
+    adapter_cls = {adapter_class}
+    fixture_dir = "{basename}"
+'''
+
+
 class LLMWorker:
     def __init__(
         self,
@@ -110,6 +141,47 @@ class LLMWorker:
     def complete_learning(self, domain: str, adapter_type: str) -> None:
         self.redis_client.delete(f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}")
         self.redis_client.set(f"LEARNING_COMPLETE:{adapter_type}:{domain}", "1")
+
+    def _write_fixture(self, basename: str, filename: str, content: str) -> Path:
+        fixture_dir = _ADAPTERS_DIR / "fixtures" / basename
+        fixture_dir.mkdir(parents=True, exist_ok=True)
+        path = fixture_dir / filename
+        path.write_text(content)
+        return path
+
+    def _write_discovery_snapshot(
+        self, domain: str, url: str, html: str
+    ) -> AdapterNames:
+        """Run the truth agent for a listing page and write its snapshot + test.
+
+        Writes the cleaned page, the LLM's grounded ``expected.json``, and a
+        deterministic test bound to them. The adapter is produced by the code agent
+        afterwards, so this output only becomes runnable once that lands.
+        """
+        names = _adapter_names(domain, "discovery")
+        cleaned = clean_html(html)
+
+        llm = LLMModel(base_url=self.llm_url)
+        truth = _parse_json_object(llm.generate_expected("discovery", cleaned, url))
+        expected = {
+            "url": url,
+            "job_links": truth.get("job_links", []),
+            "next_page_links": truth.get("next_page_links", []),
+        }
+
+        self._write_fixture(names.basename, "index.html", cleaned)
+        self._write_fixture(
+            names.basename, "expected.json", json.dumps(expected, indent=2)
+        )
+        test_source = _DISCOVERY_TEST_TEMPLATE.format(
+            module_path=names.module_path,
+            adapter_class=names.adapter_class,
+            test_class=names.test_class,
+            basename=names.basename,
+        )
+        (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
+        logger.info("Wrote discovery snapshot and test for %s", names.basename)
+        return names
 
     def run(self) -> None:
         self.running = True

@@ -36,6 +36,8 @@ py_test(
         ["adapters/*_test.py"],
         exclude = ["adapters/snapshot_test.py"],
     ),
+    # Generated snapshot fixtures (index.html / expected.json) the tests read at runtime.
+    data = glob(["adapters/fixtures/**"], allow_empty = True),
     deps = [
         ":adapters",
     ],

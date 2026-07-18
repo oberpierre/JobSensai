@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from string import Template
 
 from langchain_ollama import OllamaLLM
 
@@ -55,23 +56,39 @@ _ROLE = {
 }
 
 
-def build_test_prompt(
-    adapter_type: str,
-    cleaned_html: str,
-    adapter_module: str,
-    adapter_class: str,
-    test_base_code: str,
-) -> str:
-    """Render the test-agent prompt."""
-    role = _ROLE[adapter_type]
-    return _load_template("test_agent.txt").format(
+# What the truth agent must enumerate per adapter type. Kept as a `$`-template (not
+# str.format) because the output shapes contain literal JSON braces.
+_EXPECTED = {
+    "discovery": {
+        "instructions": (
+            "List every job-detail link and every next-page (pagination) link on this "
+            "listing page."
+        ),
+        "output_shape": (
+            '{"job_links": ["<absolute url>", ...], '
+            '"next_page_links": ["<absolute url>", ...]}'
+        ),
+    },
+    "extraction": {
+        "instructions": "Extract the job posting's fields into the Silver schema.",
+        "output_shape": (
+            '{"title": "...", "company_name": "...", '
+            '"employment_type": "... or null", "locations": ["..."], '
+            '"categories": ["..."], "description": "...", "metadata": {}}'
+        ),
+    },
+}
+
+
+def build_expected_prompt(adapter_type: str, cleaned_html: str, url: str) -> str:
+    """Render the truth-agent prompt asking for a grounded expected.json."""
+    role = _EXPECTED[adapter_type]
+    template = Template(_load_template("expected_agent.md"))
+    return template.safe_substitute(
         adapter_type=adapter_type,
-        adapter_module=adapter_module,
-        adapter_class=adapter_class,
-        test_base_class=role["test_base_class"],
-        role_requirements=role["requirements"],
-        silver_schema=role["schema"],
-        test_base_code=test_base_code,
+        role_instructions=role["instructions"],
+        output_shape=role["output_shape"],
+        url=url,
         cleaned_html=cleaned_html[:8000],
     )
 
@@ -112,23 +129,10 @@ class LLMModel:
     def generate_response(self, prompt: str) -> str:
         return self.llm.invoke(prompt)
 
-    def generate_test(
-        self,
-        adapter_type: str,
-        cleaned_html: str,
-        adapter_module: str,
-        adapter_class: str,
-        test_base_code: str,
-    ) -> str:
-        """Generate the unittest test for an adapter (test-first)."""
+    def generate_expected(self, adapter_type: str, cleaned_html: str, url: str) -> str:
+        """Generate the grounded snapshot (expected.json body) for a page."""
         return self.generate_response(
-            build_test_prompt(
-                adapter_type,
-                cleaned_html,
-                adapter_module,
-                adapter_class,
-                test_base_code,
-            )
+            build_expected_prompt(adapter_type, cleaned_html, url)
         )
 
     def generate_code(

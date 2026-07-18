@@ -1,8 +1,15 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from llm.worker import LLMWorker, _adapter_names, _domain_slug
+from llm.worker import (
+    LLMWorker,
+    _adapter_names,
+    _domain_slug,
+    _parse_json_object,
+)
 
 
 class TestLLMWorker(unittest.TestCase):
@@ -283,6 +290,57 @@ class TestAdapterNames(unittest.TestCase):
         self.assertTrue(names.basename.isidentifier())
         self.assertTrue(names.adapter_class.isidentifier())
         self.assertTrue(names.test_class.isidentifier())
+
+
+class TestParseJsonObject(unittest.TestCase):
+    def test_plain_json(self):
+        self.assertEqual(_parse_json_object('{"a": 1}'), {"a": 1})
+
+    def test_json_wrapped_in_fence_and_prose(self):
+        raw = 'Here you go:\n```json\n{"a": 1}\n```'
+        self.assertEqual(_parse_json_object(raw), {"a": 1})
+
+    def test_non_object_returns_empty(self):
+        self.assertEqual(_parse_json_object("not json at all"), {})
+        self.assertEqual(_parse_json_object("[1, 2]"), {})
+
+
+class TestWriteDiscoverySnapshot(unittest.TestCase):
+    @patch("llm.worker.LLMModel")
+    def test_writes_snapshot_and_deterministic_test(self, mock_llm_cls):
+        mock_llm_cls.return_value.generate_expected.return_value = json.dumps(
+            {
+                "job_links": ["https://acme.com/jobs/1"],
+                "next_page_links": ["https://acme.com/jobs?page=2"],
+            }
+        )
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
+        ):
+            names = worker._write_discovery_snapshot(
+                "acme.com",
+                "https://acme.com/jobs",
+                "<html><body><a href='/jobs/1'>Job</a></body></html>",
+            )
+            fixtures = Path(tmp) / "fixtures" / names.basename
+            expected = json.loads((fixtures / "expected.json").read_text())
+            index_exists = (fixtures / "index.html").exists()
+            test_src = (Path(tmp) / f"{names.basename}_test.py").read_text()
+
+        self.assertEqual(names.basename, "acme_com_discovery_v1")
+        self.assertTrue(index_exists)
+        self.assertEqual(expected["url"], "https://acme.com/jobs")
+        self.assertEqual(expected["job_links"], ["https://acme.com/jobs/1"])
+        self.assertIn("DiscoverySnapshotTest", test_src)
+        self.assertIn("AcmeComDiscoveryAdapter", test_src)
+        self.assertIn('fixture_dir = "acme_com_discovery_v1"', test_src)
+
+        call = mock_llm_cls.return_value.generate_expected.call_args
+        self.assertEqual(call.args[0], "discovery")
 
 
 if __name__ == "__main__":
