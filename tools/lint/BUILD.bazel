@@ -15,6 +15,7 @@ ruff_test(
         "//llm:worker_test",
         "//llm:model_test",
         "//llm:html_cleaner_test",
+        "//llm:dom_test",
         "//scraper:main",
         "//scraper:scraper_lib",
         "//scraper:worker",

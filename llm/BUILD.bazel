@@ -77,3 +77,14 @@ py_test(
     ],
     visibility = ["//visibility:public"],
 )
+
+py_test(
+    name = "dom_test",
+    srcs = ["dom_test.py"],
+    deps = [
+        ":main",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+

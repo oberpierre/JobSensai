@@ -324,23 +324,31 @@ class TestWriteDiscoverySnapshot(unittest.TestCase):
             names = worker._write_discovery_snapshot(
                 "acme.com",
                 "https://acme.com/jobs",
-                "<html><body><a href='/jobs/1'>Job</a></body></html>",
+                "<html><body>"
+                "<div class='jobs'><a href='/jobs/1'>Job</a></div>"
+                "<div class='filler'><p>prose, no links</p></div>"
+                "</body></html>",
             )
             fixtures = Path(tmp) / "fixtures" / names.basename
             expected = json.loads((fixtures / "expected.json").read_text())
-            index_exists = (fixtures / "index.html").exists()
+            index_html = (fixtures / "index.html").read_text()
             test_src = (Path(tmp) / f"{names.basename}_test.py").read_text()
 
         self.assertEqual(names.basename, "acme_com_discovery_v1")
-        self.assertTrue(index_exists)
         self.assertEqual(expected["url"], "https://acme.com/jobs")
         self.assertEqual(expected["job_links"], ["https://acme.com/jobs/1"])
         self.assertIn("DiscoverySnapshotTest", test_src)
         self.assertIn("AcmeComDiscoveryAdapter", test_src)
         self.assertIn('fixture_dir = "acme_com_discovery_v1"', test_src)
 
+        # index.html keeps the full page (over-selection is caught later against it)...
+        self.assertIn("prose, no links", index_html)
+        # ...while the truth agent sees only the pruned, link-bearing skeleton.
         call = mock_llm_cls.return_value.generate_expected.call_args
         self.assertEqual(call.args[0], "discovery")
+        lean = call.args[1]
+        self.assertIn("/jobs/1", lean)
+        self.assertNotIn("prose, no links", lean)
 
 
 if __name__ == "__main__":

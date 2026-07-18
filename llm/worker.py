@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 import redis
 from dotenv import load_dotenv
 
+from llm.dom import prune_to_links, resolve_hrefs
 from llm.html_cleaner import clean_html
 from llm.model import LLMModel
 
@@ -154,15 +155,18 @@ class LLMWorker:
     ) -> AdapterNames:
         """Run the truth agent for a listing page and write its snapshot + test.
 
-        Writes the cleaned page, the LLM's grounded ``expected.json``, and a
-        deterministic test bound to them. The adapter is produced by the code agent
-        afterwards, so this output only becomes runnable once that lands.
+        The truth agent sees the page pruned to its link-bearing skeleton (small enough
+        to reason over), while the stored ``index.html`` is the full cleaned page, so an
+        adapter's selectors are later tested against everything a real page holds. The
+        adapter is produced by the code agent afterwards.
         """
         names = _adapter_names(domain, "discovery")
-        cleaned = clean_html(html)
+        cleaned = clean_html(resolve_hrefs(html, url))
+        lean = prune_to_links(cleaned)
 
         llm = LLMModel(base_url=self.llm_url)
-        truth = _parse_json_object(llm.generate_expected("discovery", cleaned, url))
+        truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
+        logger.debug("Truth agent output for %s:\n%s\n", domain, truth)
         expected = {
             "url": url,
             "job_links": truth.get("job_links", []),
