@@ -62,7 +62,7 @@ def build_test_prompt(
     adapter_class: str,
     test_base_code: str,
 ) -> str:
-    """Render the test-agent prompt (see prompts/test_agent.txt)."""
+    """Render the test-agent prompt."""
     role = _ROLE[adapter_type]
     return _load_template("test_agent.txt").format(
         adapter_type=adapter_type,
@@ -84,7 +84,7 @@ def build_code_prompt(
     base_code: str,
     test_source: str,
 ) -> str:
-    """Render the code-agent prompt (see prompts/code_agent.txt)."""
+    """Render the code-agent prompt."""
     role = _ROLE[adapter_type]
     return _load_template("code_agent.txt").format(
         adapter_type=adapter_type,
