@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from llm.worker import LLMWorker
+from llm.worker import LLMWorker, _domain_slug
 
 
 class TestLLMWorker(unittest.TestCase):
@@ -244,6 +244,23 @@ class TestLLMWorker(unittest.TestCase):
             "Learning already in progress for domain: %s", "newboard.com"
         )
         self.mock_redis.set.assert_called_once()
+
+
+class TestDomainSlug(unittest.TestCase):
+    def test_simple_domain(self):
+        self.assertEqual(_domain_slug("www.google.com"), "www_google_com")
+
+    def test_hyphenated_domain_is_a_valid_module_name(self):
+        slug = _domain_slug("job-boards.greenhouse.io")
+        self.assertEqual(slug, "job_boards_greenhouse_io")
+        # The basename derived from the slug must import cleanly.
+        self.assertTrue(f"{slug}_discovery_v1".isidentifier())
+
+    def test_uppercase_is_normalised(self):
+        self.assertEqual(_domain_slug("Google.COM"), "google_com")
+
+    def test_no_leading_or_trailing_underscores(self):
+        self.assertEqual(_domain_slug(".weird..domain."), "weird_domain")
 
 
 if __name__ == "__main__":

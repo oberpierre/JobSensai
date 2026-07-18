@@ -4,6 +4,7 @@ import ast
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -33,6 +34,17 @@ _ADAPTERS_DIR = _WORKSPACE_ROOT / "adapters" / "adapters"
 _BUILD_BAZEL = _WORKSPACE_ROOT / "adapters" / "BUILD.bazel"
 
 _MAX_REPAIR_ITERATIONS = 3
+
+
+def _domain_slug(domain: str) -> str:
+    """Turn a domain into a valid Python module-name fragment.
+
+    Lowercases and replaces every run of non-alphanumeric characters with a single
+    underscore, e.g. ``job-boards.greenhouse.io`` -> ``job_boards_greenhouse_io``.
+    ``domain.replace(".", "_")`` left hyphens in place and produced illegal module
+    names for hyphenated boards.
+    """
+    return re.sub(r"[^a-z0-9]+", "_", domain.lower()).strip("_")
 
 
 class LLMWorker:
@@ -247,7 +259,7 @@ class LLMWorker:
         test_code: str | None,
         adapter_type: str,
     ) -> tuple[Path, Path | None]:
-        safe = domain.replace(".", "_")
+        safe = _domain_slug(domain)
         stem = f"{safe}_{adapter_type}_v1"
 
         adapter_path = _ADAPTERS_DIR / f"{stem}.py"
@@ -264,7 +276,7 @@ class LLMWorker:
 
     def _patch_build_bazel(self, domain: str, adapter_type: str) -> None:
         """Append a dedicated py_test target to adapters/BUILD.bazel."""
-        safe = domain.replace(".", "_")
+        safe = _domain_slug(domain)
         stem = f"{safe}_{adapter_type}_v1"
         target_name = f"{stem}_test"
 
@@ -316,7 +328,7 @@ class LLMWorker:
         return (result.stdout + "\n" + result.stderr).strip()
 
     def _cleanup_files(self, domain: str, adapter_type: str) -> None:
-        safe = domain.replace(".", "_")
+        safe = _domain_slug(domain)
         stem = f"{safe}_{adapter_type}_v1"
         for suffix in [".py", "_test.py"]:
             p = _ADAPTERS_DIR / f"{stem}{suffix}"
@@ -325,7 +337,7 @@ class LLMWorker:
                 logger.info("Cleaned up %s", p)
 
     def _commit(self, domain: str, adapter_type: str) -> None:
-        safe = domain.replace(".", "_")
+        safe = _domain_slug(domain)
         stem = f"{safe}_{adapter_type}_v1"
         adapter_path = _ADAPTERS_DIR / f"{stem}.py"
         test_path = _ADAPTERS_DIR / f"{stem}_test.py"
@@ -387,7 +399,7 @@ class LLMWorker:
                 return False
 
             # Execute in an isolated module namespace
-            mod_name = f"_dynamic_{domain.replace('.', '_')}"
+            mod_name = f"_dynamic_{_domain_slug(domain)}"
             mod = ModuleType(mod_name)
             mod.__dict__["DiscoveryAdapter"] = DiscoveryAdapter
             mod.__dict__["ExtractionAdapter"] = ExtractionAdapter
@@ -456,7 +468,7 @@ class LLMWorker:
         """Run generated pytest tests in a temp directory (used by tests)."""
         import tempfile
 
-        safe = domain.replace(".", "_")
+        safe = _domain_slug(domain)
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             (tmp / f"adapter_{safe}.py").write_text(adapter_code)
