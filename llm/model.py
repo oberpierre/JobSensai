@@ -5,8 +5,10 @@ from langchain_ollama import OllamaLLM
 
 logger = logging.getLogger(__name__)
 
-_PROMPT_FILE = Path(__file__).parent / "prompts" / "runtime_agent.txt"
+_PROMPT_DIR = Path(__file__).parent / "prompts"
+_PROMPT_FILE = _PROMPT_DIR / "runtime_agent.txt"
 _PROMPT_TEMPLATE: str | None = None
+_TEMPLATE_CACHE: dict[str, str] = {}
 
 
 def _load_prompt_template() -> str:
@@ -14,6 +16,87 @@ def _load_prompt_template() -> str:
     if _PROMPT_TEMPLATE is None:
         _PROMPT_TEMPLATE = _PROMPT_FILE.read_text()
     return _PROMPT_TEMPLATE
+
+
+def _load_template(name: str) -> str:
+    if name not in _TEMPLATE_CACHE:
+        _TEMPLATE_CACHE[name] = (_PROMPT_DIR / name).read_text()
+    return _TEMPLATE_CACHE[name]
+
+
+# Injected verbatim into the extraction prompts (kept brace-free so str.format leaves it
+# untouched). Discovery adapters get an empty schema section.
+_SILVER_SCHEMA = (
+    "\nThe extract() dict must match this Silver schema (all keys required):\n"
+    "    title: str, company_name: str, employment_type: str | None,\n"
+    "    locations: list[str], categories: list[str],\n"
+    "    description: str, metadata: dict\n"
+)
+
+_ROLE = {
+    "discovery": {
+        "base_class": "DiscoveryAdapter",
+        "test_base_class": "BaseDiscoveryAdapterTest",
+        "requirements": (
+            "Implement get_job_links(html, url) -> list[str] and "
+            "get_next_page_links(html, url) -> list[str]; "
+            "both return absolute URLs only."
+        ),
+        "schema": "",
+    },
+    "extraction": {
+        "base_class": "ExtractionAdapter",
+        "test_base_class": "BaseExtractionAdapterTest",
+        "requirements": (
+            "Implement extract(html, url) -> dict matching the Silver schema below."
+        ),
+        "schema": _SILVER_SCHEMA,
+    },
+}
+
+
+def build_test_prompt(
+    adapter_type: str,
+    cleaned_html: str,
+    adapter_module: str,
+    adapter_class: str,
+    test_base_code: str,
+) -> str:
+    """Render the test-agent prompt (see prompts/test_agent.txt)."""
+    role = _ROLE[adapter_type]
+    return _load_template("test_agent.txt").format(
+        adapter_type=adapter_type,
+        adapter_module=adapter_module,
+        adapter_class=adapter_class,
+        test_base_class=role["test_base_class"],
+        role_requirements=role["requirements"],
+        silver_schema=role["schema"],
+        test_base_code=test_base_code,
+        cleaned_html=cleaned_html[:8000],
+    )
+
+
+def build_code_prompt(
+    adapter_type: str,
+    cleaned_html: str,
+    adapter_class: str,
+    domains: list[str],
+    base_code: str,
+    test_source: str,
+) -> str:
+    """Render the code-agent prompt (see prompts/code_agent.txt)."""
+    role = _ROLE[adapter_type]
+    return _load_template("code_agent.txt").format(
+        adapter_type=adapter_type,
+        adapter_class=adapter_class,
+        base_class=role["base_class"],
+        role_requirements=role["requirements"],
+        silver_schema=role["schema"],
+        domains=list(domains),
+        base_code=base_code,
+        test_source=test_source,
+        cleaned_html=cleaned_html[:8000],
+    )
 
 
 class LLMModel:
@@ -28,6 +111,46 @@ class LLMModel:
 
     def generate_response(self, prompt: str) -> str:
         return self.llm.invoke(prompt)
+
+    def generate_test(
+        self,
+        adapter_type: str,
+        cleaned_html: str,
+        adapter_module: str,
+        adapter_class: str,
+        test_base_code: str,
+    ) -> str:
+        """Generate the unittest test for an adapter (test-first)."""
+        return self.generate_response(
+            build_test_prompt(
+                adapter_type,
+                cleaned_html,
+                adapter_module,
+                adapter_class,
+                test_base_code,
+            )
+        )
+
+    def generate_code(
+        self,
+        adapter_type: str,
+        cleaned_html: str,
+        adapter_class: str,
+        domains: list[str],
+        base_code: str,
+        test_source: str,
+    ) -> str:
+        """Generate the adapter implementation that must satisfy *test_source*."""
+        return self.generate_response(
+            build_code_prompt(
+                adapter_type,
+                cleaned_html,
+                adapter_class,
+                domains,
+                base_code,
+                test_source,
+            )
+        )
 
     def generate_adapter(
         self,

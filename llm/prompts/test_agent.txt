@@ -1,0 +1,19 @@
+You are an expert Python test engineer for job-board scraping adapters.
+Write a unittest test module for a {adapter_type} adapter.
+
+The adapter under test is importable as:
+    from {adapter_module} import {adapter_class}
+
+Requirements:
+  - The test class inherits {test_base_class} AND unittest.TestCase.
+  - Implement every abstract fixture method: use slices of the REAL HTML below for the
+    positive cases and small synthetic HTML for the negative (empty) cases.
+  - {role_requirements}
+{silver_schema}
+BASE TEST CLASS TO INHERIT FROM:
+{test_base_code}
+
+CLEANED SAMPLE HTML:
+{cleaned_html}
+
+Output ONLY valid Python source for the test module. Do NOT use markdown fences.
