@@ -32,7 +32,19 @@ py_test(
 
 py_test(
     name = "adapter_test",
-    srcs = glob(["adapters/*_test.py"]),
+    srcs = glob(
+        ["adapters/*_test.py"],
+        exclude = ["adapters/snapshot_test.py"],
+    ),
+    deps = [
+        ":adapters",
+    ],
+)
+
+# Snapshot test infrastructure is tested on its own, not as an adapter test.
+py_test(
+    name = "snapshot_test",
+    srcs = ["adapters/snapshot_test.py"],
     deps = [
         ":adapters",
     ],

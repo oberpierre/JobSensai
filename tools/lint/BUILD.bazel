@@ -23,6 +23,7 @@ ruff_test(
         "//scraper:silver_worker_test",
         "//adapters:adapters",
         "//adapters:adapter_test",
+        "//adapters:snapshot_test",
         "//adapters:registry_test",
     ],
 )
