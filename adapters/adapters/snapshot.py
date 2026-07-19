@@ -17,9 +17,11 @@ class DiscoverySnapshotTest:
     ``index.html`` (cleaned page) and ``expected.json``
     (``{"url", "job_links", "next_page_links"}``).
 
-    Links are compared as sets, requiring the adapter to cover the snapshot. That
-    tolerates a truth agent under-enumerating a long page while still catching a
-    broken selector.
+    Links are compared as **exact** sets: the adapter must return neither fewer (a
+    broken or too-narrow selector) nor more (over-selection — a selector matching
+    elements the lean input pruned away but the full ``index.html`` still contains) than
+    the snapshot. When the truth agent under-enumerates, the human corrects
+    ``expected.json`` during review.
     """
 
     adapter_cls = None
@@ -37,15 +39,23 @@ class DiscoverySnapshotTest:
     def _url(self) -> str:
         return self.snapshot.get("url", "https://example.com/jobs")
 
-    def test_job_links_cover_snapshot(self):
-        found = set(self.adapter.get_job_links(self.snapshot_html, self._url()))
-        missing = set(self.snapshot["job_links"]) - found
-        self.assertFalse(missing, f"adapter missed job links: {sorted(missing)}")
+    def _assert_matches(self, found: list, expected: list, label: str):
+        found_set, expected_set = set(found), set(expected)
+        self.assertEqual(
+            found_set,
+            expected_set,
+            f"{label} — missing: {sorted(expected_set - found_set)}; "
+            f"extra: {sorted(found_set - expected_set)}",
+        )
 
-    def test_next_page_links_cover_snapshot(self):
-        found = set(self.adapter.get_next_page_links(self.snapshot_html, self._url()))
-        missing = set(self.snapshot.get("next_page_links", [])) - found
-        self.assertFalse(missing, f"adapter missed next-page links: {sorted(missing)}")
+    def test_job_links_match_snapshot(self):
+        found = self.adapter.get_job_links(self.snapshot_html, self._url())
+        self._assert_matches(found, self.snapshot["job_links"], "job links")
+
+    def test_next_page_links_match_snapshot(self):
+        found = self.adapter.get_next_page_links(self.snapshot_html, self._url())
+        expected = self.snapshot.get("next_page_links", [])
+        self._assert_matches(found, expected, "next page")
 
     def test_empty_page_returns_no_links(self):
         empty = "<html><body></body></html>"

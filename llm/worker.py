@@ -90,9 +90,19 @@ def _parse_json_object(raw: str) -> dict:
     return {}
 
 
+def _strip_code_fences(text: str) -> str:
+    """Drop a leading/trailing markdown code fence if the model wrapped its output."""
+    lines = text.strip().splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip() + "\n"
+
+
 # The discovery test is deterministic boilerplate: all grounded assertions live in the
 # snapshot the DiscoverySnapshotTest base compares against.
-_DISCOVERY_TEST_TEMPLATE = '''import unittest
+_DISCOVERY_TEST_TEMPLATE = """import unittest
 
 from adapters.adapters.snapshot import DiscoverySnapshotTest
 from {module_path} import {adapter_class}
@@ -101,7 +111,7 @@ from {module_path} import {adapter_class}
 class {test_class}(DiscoverySnapshotTest, unittest.TestCase):
     adapter_cls = {adapter_class}
     fixture_dir = "{basename}"
-'''
+"""
 
 
 class LLMWorker:
@@ -150,29 +160,44 @@ class LLMWorker:
         path.write_text(content)
         return path
 
-    def _write_discovery_snapshot(
-        self, domain: str, url: str, html: str
-    ) -> AdapterNames:
-        """Run the truth agent for a listing page and write its snapshot + test.
+    def _learn_discovery(self, domain: str, url: str, html: str) -> AdapterNames:
+        """Generate a discovery adapter for a listing page, test-first.
 
-        The truth agent sees the page pruned to its link-bearing skeleton (small enough
-        to reason over), while the stored ``index.html`` is the full cleaned page, so an
-        adapter's selectors are later tested against everything a real page holds. The
-        adapter is produced by the code agent afterwards.
+        Prune the page to its link-bearing skeleton, have the truth agent snapshot the
+        job/next-page links from it and write the deterministic test, then have the code
+        agent write the adapter from the same lean HTML — never from the snapshot.
         """
         names = _adapter_names(domain, "discovery")
         cleaned = clean_html(resolve_hrefs(html, url))
         lean = prune_to_links(cleaned)
-
         llm = LLMModel(base_url=self.llm_url)
+
+        self._write_discovery_snapshot(names, cleaned, lean, url, llm)
+        self._write_discovery_adapter(names, lean, [domain], llm)
+        logger.info("Generated discovery adapter and snapshot for %s", names.basename)
+        return names
+
+    def _write_discovery_snapshot(
+        self,
+        names: AdapterNames,
+        cleaned: str,
+        lean: str,
+        url: str,
+        llm: LLMModel,
+    ) -> None:
+        """Truth agent → full-page fixture, grounded ``expected.json``, and the test.
+
+        The truth agent sees only the lean skeleton; the stored ``index.html`` is the
+        full cleaned page, so an adapter's selectors are later tested against everything
+        a real page holds (catching over-selection).
+        """
         truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
-        logger.debug("Truth agent output for %s:\n%s\n", domain, truth)
+        logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
         expected = {
             "url": url,
             "job_links": truth.get("job_links", []),
             "next_page_links": truth.get("next_page_links", []),
         }
-
         self._write_fixture(names.basename, "index.html", cleaned)
         self._write_fixture(
             names.basename, "expected.json", json.dumps(expected, indent=2)
@@ -184,8 +209,33 @@ class LLMWorker:
             basename=names.basename,
         )
         (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
-        logger.info("Wrote discovery snapshot and test for %s", names.basename)
-        return names
+
+    def _write_discovery_adapter(
+        self, names: AdapterNames, lean: str, domains: list[str], llm: LLMModel
+    ) -> None:
+        """Code agent → the adapter that must satisfy the (withheld) snapshot."""
+        base_code = (_ADAPTERS_DIR / "base.py").read_text()
+        adapter_src = _strip_code_fences(
+            llm.generate_code(
+                "discovery", lean, names.adapter_class, domains, base_code
+            )
+        )
+        (_ADAPTERS_DIR / f"{names.basename}.py").write_text(adapter_src)
+
+    def _run_adapter_tests(self) -> bool:
+        """Run the adapter suite once; True if it passed."""
+        result = subprocess.run(
+            ["bazel", "test", "//adapters:adapter_test", "--test_output=errors"],
+            cwd=str(_WORKSPACE_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            logger.error(
+                "Adapter tests failed:\n%s", (result.stdout + result.stderr)[-2000:]
+            )
+        return result.returncode == 0
 
     def run(self) -> None:
         self.running = True
@@ -237,7 +287,20 @@ class LLMWorker:
                 logger.info("Learning already in progress for domain: %s", domain)
                 return
 
-            # -- Read base files -----------------------------------------------
+            url = task.get("url") or f"https://{domain}"
+
+            if adapter_type == "discovery":
+                self._learn_discovery(domain, url, raw_html)
+                passed = self._run_adapter_tests()
+                logger.info(
+                    "Discovery adapter for %s: snapshot test %s",
+                    domain,
+                    "passed" if passed else "FAILED (left for review)",
+                )
+                self.complete_learning(domain, adapter_type)
+                return
+
+            # -- extraction: legacy single-blob flow (replaced in Vertical 2) --
             base_code = (_ADAPTERS_DIR / "base.py").read_text()
             test_base_code = (_ADAPTERS_DIR / "base_test.py").read_text()
 

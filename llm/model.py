@@ -105,11 +105,14 @@ def build_code_prompt(
     adapter_class: str,
     domains: list[str],
     base_code: str,
-    test_source: str,
 ) -> str:
-    """Render the code-agent prompt."""
+    """Render the code-agent prompt.
+
+    The code agent never sees ``expected.json`` — only the base class and the HTML — so
+    it must parse rather than hardcode.
+    """
     role = _ROLE[adapter_type]
-    return _load_template("code_agent.txt").format(
+    return Template(_load_template("code_agent.md")).safe_substitute(
         adapter_type=adapter_type,
         adapter_class=adapter_class,
         base_class=role["base_class"],
@@ -117,7 +120,6 @@ def build_code_prompt(
         silver_schema=role["schema"],
         domains=list(domains),
         base_code=base_code,
-        test_source=test_source,
         cleaned_html=cleaned_html[:_HTML_CHAR_BUDGET],
     )
 
@@ -168,17 +170,11 @@ class LLMModel:
         adapter_class: str,
         domains: list[str],
         base_code: str,
-        test_source: str,
     ) -> str:
-        """Generate the adapter implementation that must satisfy *test_source*."""
+        """Generate the adapter implementation for *adapter_class*."""
         return self.generate_response(
             build_code_prompt(
-                adapter_type,
-                cleaned_html,
-                adapter_class,
-                domains,
-                base_code,
-                test_source,
+                adapter_type, cleaned_html, adapter_class, domains, base_code
             )
         )
 

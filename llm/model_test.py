@@ -82,22 +82,22 @@ class TestPromptBuilders(unittest.TestCase):
         self.assertIn("company_name", prompt)
         self.assertIn("locations", prompt)
 
-    def test_build_code_prompt_includes_test_source_and_domains(self):
+    def test_build_code_prompt_has_class_domains_and_html_but_not_answer(self):
         prompt = build_code_prompt(
             "discovery",
-            "<html>H</html>",
+            "<html>MARKER_HTML</html>",
             "AcmeDiscoveryAdapter",
             ["acme.com", "www.acme.com"],
             "class BaseX: pass",
-            "def test_x(): assert True",
         )
-        self.assertIn("def test_x(): assert True", prompt)
         self.assertIn("AcmeDiscoveryAdapter", prompt)
         self.assertIn("acme.com", prompt)
         self.assertIn("DiscoveryAdapter", prompt)
+        self.assertIn("MARKER_HTML", prompt)
+        self.assertNotIn("$cleaned_html", prompt)  # all placeholders substituted
 
     @patch("llm.model.OllamaLLM")
-    def test_generate_code_invokes_llm_once_with_test(self, mock_ollama):
+    def test_generate_code_invokes_llm_once(self, mock_ollama):
         instance = MagicMock()
         instance.invoke.return_value = "class A(DiscoveryAdapter): pass"
         mock_ollama.return_value = instance
@@ -105,15 +105,14 @@ class TestPromptBuilders(unittest.TestCase):
         model = LLMModel()
         out = model.generate_code(
             "discovery",
-            "<html></html>",
+            "<html>MARKER_HTML</html>",
             "AcmeDiscoveryAdapter",
             ["acme.com"],
             "base",
-            "def test(): pass",
         )
         self.assertEqual(out, "class A(DiscoveryAdapter): pass")
         instance.invoke.assert_called_once()
-        self.assertIn("def test(): pass", instance.invoke.call_args[0][0])
+        self.assertIn("MARKER_HTML", instance.invoke.call_args[0][0])
 
     @patch("llm.model.OllamaLLM")
     def test_generate_expected_invokes_llm_once(self, mock_ollama):

@@ -62,35 +62,27 @@ class TestLLMWorker(unittest.TestCase):
             "LEARNING_COMPLETE:extraction:google.com", "1"
         )
 
-    @patch("llm.worker.LLMModel")
-    def test_process_task_full_pipeline(self, mock_llm_class):
+    def test_process_task_discovery_routes_to_snapshot_flow(self):
         self.mock_redis.set.return_value = True
 
-        mock_llm_instance = mock_llm_class.return_value
-        mock_llm_instance.generate_adapter.return_value = (
-            "class NewAdapter(DiscoveryAdapter): pass\n"
-            "# --- TEST CODE ---\n"
-            "def test_new(): pass"
-        )
-
-        # Replace sub-methods with mocks so we test orchestration only
-        self.worker.parse_llm_response = MagicMock(
-            return_value=(
-                "class NewAdapter(DiscoveryAdapter): pass",
-                "def test_new(): pass",
-            )
-        )
-        self.worker._quick_validate = MagicMock(return_value=True)
-        self.worker._write_test_and_verify = MagicMock(return_value=True)
-        self.worker._commit = MagicMock()
+        # Orchestration only: the discovery flow generates then runs the suite once.
+        self.worker._learn_discovery = MagicMock()
+        self.worker._run_adapter_tests = MagicMock(return_value=True)
         self.worker.complete_learning = MagicMock()
 
         task_payload = json.dumps(
-            {"domain": "newboard.com", "html": "<html></html>"}
+            {
+                "domain": "newboard.com",
+                "url": "https://newboard.com/jobs",
+                "html": "<html/>",
+            }
         ).encode("utf-8")
         self.worker.process_task(task_payload, "discovery_learning_tasks")
 
-        self.worker._write_test_and_verify.assert_called_once()
+        self.worker._learn_discovery.assert_called_once_with(
+            "newboard.com", "https://newboard.com/jobs", "<html/>"
+        )
+        self.worker._run_adapter_tests.assert_called_once()
         self.worker.complete_learning.assert_called_once_with(
             "newboard.com", "discovery"
         )
@@ -281,9 +273,7 @@ class TestAdapterNames(unittest.TestCase):
     def test_hyphenated_extraction_with_version(self):
         names = _adapter_names("job-boards.greenhouse.io", "extraction", version=2)
         self.assertEqual(names.basename, "job_boards_greenhouse_io_extraction_v2")
-        self.assertEqual(
-            names.adapter_class, "JobBoardsGreenhouseIoExtractionAdapter"
-        )
+        self.assertEqual(names.adapter_class, "JobBoardsGreenhouseIoExtractionAdapter")
 
     def test_names_are_valid_python_identifiers(self):
         names = _adapter_names("job-boards.greenhouse.io", "discovery")
@@ -305,14 +295,19 @@ class TestParseJsonObject(unittest.TestCase):
         self.assertEqual(_parse_json_object("[1, 2]"), {})
 
 
-class TestWriteDiscoverySnapshot(unittest.TestCase):
+class TestLearnDiscovery(unittest.TestCase):
     @patch("llm.worker.LLMModel")
-    def test_writes_snapshot_and_deterministic_test(self, mock_llm_cls):
-        mock_llm_cls.return_value.generate_expected.return_value = json.dumps(
+    def test_writes_snapshot_test_and_adapter(self, mock_llm_cls):
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = json.dumps(
             {
                 "job_links": ["https://acme.com/jobs/1"],
                 "next_page_links": ["https://acme.com/jobs?page=2"],
             }
+        )
+        # Wrapped in a markdown fence to prove _strip_code_fences runs.
+        llm.generate_code.return_value = (
+            "```python\nclass AcmeComDiscoveryAdapter: pass\n```"
         )
         with patch("redis.Redis", return_value=MagicMock()):
             worker = LLMWorker()
@@ -321,7 +316,8 @@ class TestWriteDiscoverySnapshot(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
         ):
-            names = worker._write_discovery_snapshot(
+            (Path(tmp) / "base.py").write_text("class DiscoveryAdapter: pass\n")
+            names = worker._learn_discovery(
                 "acme.com",
                 "https://acme.com/jobs",
                 "<html><body>"
@@ -333,22 +329,22 @@ class TestWriteDiscoverySnapshot(unittest.TestCase):
             expected = json.loads((fixtures / "expected.json").read_text())
             index_html = (fixtures / "index.html").read_text()
             test_src = (Path(tmp) / f"{names.basename}_test.py").read_text()
+            adapter_src = (Path(tmp) / f"{names.basename}.py").read_text()
 
         self.assertEqual(names.basename, "acme_com_discovery_v1")
-        self.assertEqual(expected["url"], "https://acme.com/jobs")
         self.assertEqual(expected["job_links"], ["https://acme.com/jobs/1"])
         self.assertIn("DiscoverySnapshotTest", test_src)
         self.assertIn("AcmeComDiscoveryAdapter", test_src)
-        self.assertIn('fixture_dir = "acme_com_discovery_v1"', test_src)
+        # The code fence was stripped from the written adapter source.
+        self.assertEqual(adapter_src.strip(), "class AcmeComDiscoveryAdapter: pass")
 
-        # index.html keeps the full page (over-selection is caught later against it)...
+        # index.html keeps the full page; both agents saw only the pruned skeleton.
         self.assertIn("prose, no links", index_html)
-        # ...while the truth agent sees only the pruned, link-bearing skeleton.
-        call = mock_llm_cls.return_value.generate_expected.call_args
-        self.assertEqual(call.args[0], "discovery")
-        lean = call.args[1]
-        self.assertIn("/jobs/1", lean)
-        self.assertNotIn("prose, no links", lean)
+        lean_truth = llm.generate_expected.call_args.args[1]
+        lean_code = llm.generate_code.call_args.args[1]
+        self.assertNotIn("prose, no links", lean_truth)
+        self.assertNotIn("prose, no links", lean_code)
+        self.assertIn("/jobs/1", lean_code)
 
 
 if __name__ == "__main__":

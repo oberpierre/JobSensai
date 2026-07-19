@@ -30,6 +30,17 @@ class _MissingAdapter(DiscoveryAdapter):
         return []
 
 
+class _OverSelectingAdapter(DiscoveryAdapter):
+    domains = ["example.com"]
+
+    def get_job_links(self, html: str, url: str) -> list[str]:
+        extra = "https://example.com/not-a-job"
+        return [*_JOB_LINKS, extra] if "JOBS" in html else []
+
+    def get_next_page_links(self, html: str, url: str) -> list[str]:
+        return list(_NEXT_LINKS) if "JOBS" in html else []
+
+
 def _run(test_cls) -> unittest.TestResult:
     suite = unittest.TestLoader().loadTestsFromTestCase(test_cls)
     return suite.run(unittest.TestResult())
@@ -69,6 +80,14 @@ class TestDiscoverySnapshotTest(unittest.TestCase):
         self.assertFalse(result.wasSuccessful())
         # Both the job-link and next-page assertions should fail.
         self.assertEqual(len(result.failures), 2)
+
+    def test_fails_when_adapter_over_selects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._snapshot_case(_OverSelectingAdapter, Path(tmp) / "sample")
+            result = _run(case)
+        self.assertFalse(result.wasSuccessful())
+        # Exact-set equality catches the one extra (over-selected) job link.
+        self.assertEqual(len(result.failures), 1)
 
 
 if __name__ == "__main__":
