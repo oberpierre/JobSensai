@@ -123,6 +123,13 @@ class _DropsMetadataExtraction(ExtractionAdapter):
         return {k: v for k, v in _SILVER.items() if k != "metadata"}
 
 
+class _DropsDescriptionExtraction(ExtractionAdapter):
+    domains = ["example.com"]
+
+    def extract(self, html: str, url: str) -> dict:
+        return {k: v for k, v in _SILVER.items() if k != "description"}
+
+
 class TestExtractionSnapshotTest(unittest.TestCase):
     def _snapshot_case(self, adapter_cls, fixtures: Path):
         fixtures.mkdir(parents=True)
@@ -146,24 +153,24 @@ class TestExtractionSnapshotTest(unittest.TestCase):
             result = _run(self._snapshot_case(_WrongTitleExtraction, Path(tmp) / "s"))
         self.assertFalse(result.wasSuccessful())
 
-    def test_fails_when_adapter_drops_a_field_the_snapshot_never_pinned(self):
-        """A required key missing from the output must fail even if unpinned.
+    def test_fails_when_required_field_missing_though_snapshot_unpinned(self):
+        """A non-nullable field missing from the output must fail even if unpinned.
 
         The value checks skip a field the truth agent could not ground, so without a
-        presence check an adapter could ship a non-conformant dict undetected.
+        presence check an adapter could ship a null-bound dict undetected.
         """
         with tempfile.TemporaryDirectory() as tmp:
             fixtures = Path(tmp) / "s"
             fixtures.mkdir(parents=True)
             (fixtures / "detail.html").write_text("<html><body>a job</body></html>")
-            unpinned = {k: v for k, v in _SILVER.items() if k != "metadata"}
+            unpinned = {k: v for k, v in _SILVER.items() if k != "description"}
             (fixtures / "expected.json").write_text(json.dumps(unpinned))
 
             class _Case(ExtractionSnapshotTest, unittest.TestCase):
                 def _fixtures_dir(self_inner) -> Path:
                     return fixtures
 
-            _Case.adapter_cls = _DropsMetadataExtraction
+            _Case.adapter_cls = _DropsDescriptionExtraction
             result = _run(_Case)
 
         self.assertFalse(result.wasSuccessful())
@@ -171,6 +178,14 @@ class TestExtractionSnapshotTest(unittest.TestCase):
             any("required_field" in str(f[0]) for f in result.failures),
             result.failures,
         )
+
+    def test_passes_when_optional_field_omitted(self):
+        """A nullable/DB-defaulted field (metadata) may be omitted by the adapter."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _run(
+                self._snapshot_case(_DropsMetadataExtraction, Path(tmp) / "s")
+            )
+        self.assertTrue(result.wasSuccessful(), result.failures)
 
 
 if __name__ == "__main__":
