@@ -227,5 +227,53 @@ class TestLearnDiscovery(unittest.TestCase):
         self.assertIn("/jobs/1", lean_code)
 
 
+class TestLearnExtraction(unittest.TestCase):
+    @patch("llm.worker.LLMModel")
+    def test_writes_detail_fixture_and_snapshot_test(self, mock_llm_cls):
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = json.dumps(
+            {
+                "title": "Staff Engineer",
+                "company_name": "Acme",
+                "employment_type": "Full-time",
+                "locations": ["Remote"],
+                "categories": ["Engineering"],
+                "description": "We build things.",
+                "metadata": {},
+            }
+        )
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
+        ):
+            names = worker._learn_extraction(
+                "acme.com",
+                "https://acme.com/job/1",
+                "<html><body><h1>Staff Engineer</h1></body></html>",
+            )
+            fixtures = Path(tmp) / "fixtures" / names.basename
+            expected = json.loads((fixtures / "expected.json").read_text())
+            detail_html = (fixtures / "detail.html").read_text()
+            test_src = (Path(tmp) / f"{names.basename}_test.py").read_text()
+            adapter_written = (Path(tmp) / f"{names.basename}.py").exists()
+
+        self.assertEqual(names.basename, "acme_com_extraction_v1")
+        self.assertEqual(expected["url"], "https://acme.com/job/1")
+        self.assertEqual(expected["title"], "Staff Engineer")
+        self.assertIn("ExtractionSnapshotTest", test_src)
+        self.assertIn("AcmeComExtractionAdapter", test_src)
+
+        # The truth agent reads the cleaned detail page, and it is stored verbatim.
+        self.assertIn("Staff Engineer", detail_html)
+        self.assertEqual(llm.generate_expected.call_args.args[0], "extraction")
+        self.assertIn("Staff Engineer", llm.generate_expected.call_args.args[1])
+
+        # This slice snapshots only; the code agent that writes the adapter comes next.
+        self.assertFalse(adapter_written)
+
+
 if __name__ == "__main__":
     unittest.main()

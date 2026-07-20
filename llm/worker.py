@@ -106,6 +106,30 @@ class {test_class}(DiscoverySnapshotTest, unittest.TestCase):
     fixture_dir = "{basename}"
 """
 
+# Same deterministic boilerplate for extraction; ExtractionSnapshotTest holds the
+# grounded per-field comparison against the snapshot.
+_EXTRACTION_TEST_TEMPLATE = """import unittest
+
+from adapters.adapters.snapshot import ExtractionSnapshotTest
+from {module_path} import {adapter_class}
+
+
+class {test_class}(ExtractionSnapshotTest, unittest.TestCase):
+    adapter_cls = {adapter_class}
+    fixture_dir = "{basename}"
+"""
+
+# The Silver-schema keys the extraction truth agent enumerates into expected.json.
+_SILVER_FIELDS = (
+    "title",
+    "company_name",
+    "employment_type",
+    "locations",
+    "categories",
+    "description",
+    "metadata",
+)
+
 
 class LLMWorker:
     def __init__(
@@ -196,6 +220,47 @@ class LLMWorker:
             names.basename, "expected.json", json.dumps(expected, indent=2)
         )
         test_source = _DISCOVERY_TEST_TEMPLATE.format(
+            module_path=names.module_path,
+            adapter_class=names.adapter_class,
+            test_class=names.test_class,
+            basename=names.basename,
+        )
+        (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
+
+    def _learn_extraction(self, domain: str, url: str, html: str) -> AdapterNames:
+        """Snapshot an extraction detail page, test-first.
+
+        Unlike discovery, the page is cleaned but never pruned: extraction reads the
+        posting's content, so the truth agent needs the whole page rather than a
+        link-only skeleton.
+        """
+        names = _adapter_names(domain, "extraction")
+        cleaned = clean_html(html)
+        llm = LLMModel(base_url=self.llm_url)
+
+        self._write_extraction_snapshot(names, cleaned, url, llm)
+        logger.info("Generated extraction snapshot for %s", names.basename)
+        return names
+
+    def _write_extraction_snapshot(
+        self, names: AdapterNames, cleaned: str, url: str, llm: LLMModel
+    ) -> None:
+        """Truth agent → detail-page fixture, grounded ``expected.json``, and the test.
+
+        Only the Silver fields the truth agent actually reports are pinned, so the
+        snapshot test checks what the page states and stays silent on the rest.
+        """
+        truth = _parse_json_object(llm.generate_expected("extraction", cleaned, url))
+        logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
+        expected = {"url": url}
+        for field in _SILVER_FIELDS:
+            if field in truth:
+                expected[field] = truth[field]
+        self._write_fixture(names.basename, "detail.html", cleaned)
+        self._write_fixture(
+            names.basename, "expected.json", json.dumps(expected, indent=2)
+        )
+        test_source = _EXTRACTION_TEST_TEMPLATE.format(
             module_path=names.module_path,
             adapter_class=names.adapter_class,
             test_class=names.test_class,
