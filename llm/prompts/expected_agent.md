@@ -1,7 +1,6 @@
 # Extract the ground-truth snapshot for a $adapter_type page
 
-You are extracting the **ground truth** from a real job-board page so an automated test can
-check an adapter against it. Read the cleaned HTML below and report exactly what is present.
+You are extracting the **ground truth** from a real job-board page so an automated test can check an adapter against it. Read the cleaned HTML below and report exactly what is present.
 
 ## Task
 
