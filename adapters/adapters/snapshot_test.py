@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from adapters.adapters.base import DiscoveryAdapter
-from adapters.adapters.snapshot import DiscoverySnapshotTest
+from adapters.adapters.base import DiscoveryAdapter, ExtractionAdapter
+from adapters.adapters.snapshot import DiscoverySnapshotTest, ExtractionSnapshotTest
 
 _JOB_LINKS = ["https://example.com/a", "https://example.com/b"]
 _NEXT_LINKS = ["https://example.com/jobs?page=2"]
@@ -88,6 +88,56 @@ class TestDiscoverySnapshotTest(unittest.TestCase):
         self.assertFalse(result.wasSuccessful())
         # Exact-set equality catches the one extra (over-selected) job link.
         self.assertEqual(len(result.failures), 1)
+
+
+_SILVER = {
+    "url": "https://example.com/job/1",
+    "title": "Staff Engineer",
+    "company_name": "Acme",
+    "employment_type": "Full-time",
+    "locations": ["Remote", "NYC"],
+    "categories": ["Engineering"],
+    "description": "We build things.",
+    "metadata": {},
+}
+
+
+class _MatchingExtraction(ExtractionAdapter):
+    domains = ["example.com"]
+
+    def extract(self, html: str, url: str) -> dict:
+        return dict(_SILVER)
+
+
+class _WrongTitleExtraction(ExtractionAdapter):
+    domains = ["example.com"]
+
+    def extract(self, html: str, url: str) -> dict:
+        return {**_SILVER, "title": "Something Else"}
+
+
+class TestExtractionSnapshotTest(unittest.TestCase):
+    def _snapshot_case(self, adapter_cls, fixtures: Path):
+        fixtures.mkdir(parents=True)
+        (fixtures / "detail.html").write_text("<html><body>a job</body></html>")
+        (fixtures / "expected.json").write_text(json.dumps(_SILVER))
+
+        class _Case(ExtractionSnapshotTest, unittest.TestCase):
+            def _fixtures_dir(self_inner) -> Path:
+                return fixtures
+
+        _Case.adapter_cls = adapter_cls
+        return _Case
+
+    def test_passes_when_adapter_reproduces_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _run(self._snapshot_case(_MatchingExtraction, Path(tmp) / "s"))
+        self.assertTrue(result.wasSuccessful(), result.failures)
+
+    def test_fails_on_wrong_scalar_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = _run(self._snapshot_case(_WrongTitleExtraction, Path(tmp) / "s"))
+        self.assertFalse(result.wasSuccessful())
 
 
 if __name__ == "__main__":

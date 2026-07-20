@@ -61,3 +61,51 @@ class DiscoverySnapshotTest:
         empty = "<html><body></body></html>"
         self.assertEqual(self.adapter.get_job_links(empty, self._url()), [])
         self.assertEqual(self.adapter.get_next_page_links(empty, self._url()), [])
+
+
+class ExtractionSnapshotTest:
+    """Assert an ExtractionAdapter reproduces a captured detail-page snapshot.
+
+    Combine with ``unittest.TestCase``. Subclasses set ``adapter_cls`` and
+    ``fixture_dir``; fixtures live at ``<test dir>/fixtures/<fixture_dir>/`` as
+    ``detail.html`` (cleaned page) and ``expected.json`` (the Silver dict). Fields are
+    compared by type: scalars exactly, list fields as sets, and ``description`` by
+    containment (long text is too brittle). Only fields in the snapshot are checked.
+    """
+
+    adapter_cls = None
+    fixture_dir = None
+
+    _SCALAR_FIELDS = ("title", "company_name", "employment_type")
+    _LIST_FIELDS = ("locations", "categories")
+
+    def _fixtures_dir(self) -> Path:
+        return Path(inspect.getfile(type(self))).parent / "fixtures" / self.fixture_dir
+
+    def setUp(self):
+        fixtures = self._fixtures_dir()
+        self.snapshot_html = (fixtures / "detail.html").read_text()
+        self.snapshot = json.loads((fixtures / "expected.json").read_text())
+        url = self.snapshot.get("url", "https://example.com/job/1")
+        self.data = self.adapter_cls().extract(self.snapshot_html, url)
+
+    def test_returns_a_dict(self):
+        self.assertIsInstance(self.data, dict)
+
+    def test_scalar_fields_match(self):
+        for field in self._SCALAR_FIELDS:
+            if field in self.snapshot:
+                self.assertEqual(self.data.get(field), self.snapshot[field], field)
+
+    def test_list_fields_match(self):
+        for field in self._LIST_FIELDS:
+            if field in self.snapshot:
+                self.assertEqual(
+                    set(self.data.get(field) or []), set(self.snapshot[field]), field
+                )
+
+    def test_description_contains_snapshot(self):
+        expected = " ".join(self.snapshot.get("description", "").split())
+        if expected:
+            actual = " ".join((self.data.get("description") or "").split())
+            self.assertIn(expected, actual, "description")
