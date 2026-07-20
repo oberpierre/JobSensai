@@ -70,7 +70,12 @@ class ExtractionSnapshotTest:
     ``fixture_dir``; fixtures live at ``<test dir>/fixtures/<fixture_dir>/`` as
     ``detail.html`` (cleaned page) and ``expected.json`` (the Silver dict). Fields are
     compared by type: scalars exactly, list fields as sets, and ``description`` by
-    containment (long text is too brittle). Only fields in the snapshot are checked.
+    containment (long text is too brittle).
+
+    Every required Silver key must be present in the output or the test fails loudly —
+    a dropped field ships a non-conformant row to production. Values, though, are only
+    matched for the fields the snapshot pins (what the page actually states); a field
+    the truth agent could not ground is required to exist but not to hold a value.
     """
 
     adapter_cls = None
@@ -78,6 +83,7 @@ class ExtractionSnapshotTest:
 
     _SCALAR_FIELDS = ("title", "company_name", "employment_type")
     _LIST_FIELDS = ("locations", "categories")
+    _REQUIRED_FIELDS = _SCALAR_FIELDS + _LIST_FIELDS + ("description", "metadata")
 
     def _fixtures_dir(self) -> Path:
         return Path(inspect.getfile(type(self))).parent / "fixtures" / self.fixture_dir
@@ -91,6 +97,10 @@ class ExtractionSnapshotTest:
 
     def test_returns_a_dict(self):
         self.assertIsInstance(self.data, dict)
+
+    def test_returns_every_required_field(self):
+        missing = [f for f in self._REQUIRED_FIELDS if f not in self.data]
+        self.assertEqual(missing, [], f"dropped required Silver fields: {missing}")
 
     def test_scalar_fields_match(self):
         for field in self._SCALAR_FIELDS:
