@@ -16,6 +16,12 @@ inheriting `$base_class`, that parses the HTML shown below.
 - Never raise; return an empty list or empty dict when content is absent.
 - **Parse the HTML — do not hardcode the expected values.**
 $silver_schema
+## How your adapter is tested
+
+Your output is compared by **exact set** against a snapshot of this page: returning any
+extra item (e.g. a pagination link mixed into the job links) or missing one **fails**. Be
+precise about which elements you select.
+
 ## Base class to inherit from
 
 $base_code

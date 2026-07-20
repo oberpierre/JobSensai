@@ -43,17 +43,16 @@ _SILVER_SCHEMA = (
 _ROLE = {
     "discovery": {
         "base_class": "DiscoveryAdapter",
-        "test_base_class": "BaseDiscoveryAdapterTest",
         "requirements": (
-            "Implement get_job_links(html, url) -> list[str] and "
-            "get_next_page_links(html, url) -> list[str]; "
-            "both return absolute URLs only."
+            "Implement get_job_links(html, url) -> list[str] returning ONLY the URLs "
+            "of individual job-detail postings, and get_next_page_links(html, url) -> "
+            "list[str] returning ONLY pagination / next-page URLs. Both are absolute. "
+            "Never put a pagination link in the job links, nor a job link in it."
         ),
         "schema": "",
     },
     "extraction": {
         "base_class": "ExtractionAdapter",
-        "test_base_class": "BaseExtractionAdapterTest",
         "requirements": (
             "Implement extract(html, url) -> dict matching the Silver schema below."
         ),
