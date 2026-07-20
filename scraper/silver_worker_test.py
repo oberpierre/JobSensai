@@ -39,7 +39,11 @@ class TestSilverWorker(unittest.TestCase):
         mock_db.query.side_effect = mock_query_first
 
         mock_adapter = MagicMock()
-        mock_adapter.extract.return_value = {"title": "Engineer"}
+        mock_adapter.extract.return_value = {
+            "title": "Engineer",
+            "company_name": "Acme",
+            "description": "Build things",
+        }
         self.worker.registry.get_extraction_adapter = MagicMock(
             return_value=mock_adapter
         )
@@ -54,6 +58,30 @@ class TestSilverWorker(unittest.TestCase):
         # Verify save was called implicitly
         mock_db.add.assert_called()
         mock_db.commit.assert_called()
+
+    @patch("scraper.silver_worker.SessionLocal")
+    def test_process_message_missing_required_field_routes_to_learning(
+        self, mock_session_local
+    ):
+        """A missing NOT NULL field must not be written — it routes to re-learning."""
+        mock_db = MagicMock()
+        mock_session_local.return_value = mock_db
+        mock_db.query().filter().first.return_value = RawJobPosting(
+            url="https://google.com/job/1", html_content="<html></html>"
+        )
+
+        mock_adapter = MagicMock()
+        # No company_name / description → cannot satisfy the NOT NULL columns.
+        mock_adapter.extract.return_value = {"title": "Engineer"}
+        self.worker.registry.get_extraction_adapter = MagicMock(
+            return_value=mock_adapter
+        )
+        self.worker._handle_missing_or_failed_adapter = MagicMock()
+
+        self.worker.process_message(json.dumps({"url": "https://google.com/job/1"}))
+
+        self.worker._handle_missing_or_failed_adapter.assert_called_once()
+        mock_db.commit.assert_not_called()
 
     @patch("scraper.silver_worker.SessionLocal")
     def test_process_message_adapter_missing_calls_fallback(self, mock_session_local):

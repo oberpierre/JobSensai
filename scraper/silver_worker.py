@@ -130,6 +130,14 @@ class SilverWorker:
             logger.error(f"Error processing message: {e}", exc_info=True)
 
     def _save_job_posting(self, db: Session, url: str, data: dict):
+        # title, company_name and description back NOT NULL columns. A missing one is a
+        # broken extraction, so reject it here (it routes to re-learning) rather than
+        # write a placeholder the UI would surface as a real posting.
+        required = ("title", "company_name", "description")
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            raise ValueError(f"extraction missing required fields {missing} for {url}")
+
         try:
             # Update or create the JobPosting
             job_posting = db.query(JobPosting).filter(JobPosting.url == url).first()
@@ -138,12 +146,12 @@ class SilverWorker:
                 db.add(job_posting)
 
             # Map extracted data to model
-            job_posting.title = data.get("title", "Unknown Title")
-            job_posting.company_name = data.get("company_name", "Unknown Company")
+            job_posting.title = data["title"]
+            job_posting.company_name = data["company_name"]
             job_posting.employment_type = data.get("employment_type")
             job_posting.locations = data.get("locations", [])
             job_posting.categories = data.get("categories", [])
-            job_posting.description = data.get("description", "")
+            job_posting.description = data["description"]
             job_posting.metadata_ = data.get("metadata", {})
 
             db.commit()
