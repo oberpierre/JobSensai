@@ -87,6 +87,27 @@ class TestLLMWorker(unittest.TestCase):
             "newboard.com", "discovery"
         )
 
+    def test_process_task_extraction_routes_to_snapshot_flow(self):
+        self.mock_redis.set.return_value = True
+
+        # The extraction queue drives the same generate-then-test-once flow.
+        self.worker._learn_extraction = MagicMock()
+        self.worker._run_adapter_tests = MagicMock(return_value=True)
+        self.worker.complete_learning = MagicMock()
+
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        self.worker._learn_extraction.assert_called_once_with(
+            "newboard.com", "https://newboard.com/job/1", "<html/>"
+        )
+        self.worker._run_adapter_tests.assert_called_once()
+        self.worker.complete_learning.assert_called_once_with(
+            "newboard.com", "extraction"
+        )
+
     @patch("llm.worker.logger")
     def test_process_task_no_domain_or_url(self, mock_logger):
         """Task with neither domain nor url must log an error and not touch Redis."""
@@ -242,6 +263,10 @@ class TestLearnExtraction(unittest.TestCase):
                 "metadata": {},
             }
         )
+        # Wrapped in a fence to prove _strip_code_fences runs on the adapter source.
+        llm.generate_code.return_value = (
+            "```python\nclass AcmeComExtractionAdapter: pass\n```"
+        )
         with patch("redis.Redis", return_value=MagicMock()):
             worker = LLMWorker()
 
@@ -249,6 +274,7 @@ class TestLearnExtraction(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
         ):
+            (Path(tmp) / "base.py").write_text("class ExtractionAdapter: pass\n")
             names = worker._learn_extraction(
                 "acme.com",
                 "https://acme.com/job/1",
@@ -258,21 +284,22 @@ class TestLearnExtraction(unittest.TestCase):
             expected = json.loads((fixtures / "expected.json").read_text())
             detail_html = (fixtures / "detail.html").read_text()
             test_src = (Path(tmp) / f"{names.basename}_test.py").read_text()
-            adapter_written = (Path(tmp) / f"{names.basename}.py").exists()
+            adapter_src = (Path(tmp) / f"{names.basename}.py").read_text()
 
         self.assertEqual(names.basename, "acme_com_extraction_v1")
         self.assertEqual(expected["url"], "https://acme.com/job/1")
         self.assertEqual(expected["title"], "Staff Engineer")
         self.assertIn("ExtractionSnapshotTest", test_src)
         self.assertIn("AcmeComExtractionAdapter", test_src)
+        # The code fence was stripped from the written adapter source.
+        self.assertEqual(adapter_src.strip(), "class AcmeComExtractionAdapter: pass")
 
-        # The truth agent reads the cleaned detail page, and it is stored verbatim.
+        # Truth and code agents both read the cleaned detail page (never pruned).
         self.assertIn("Staff Engineer", detail_html)
         self.assertEqual(llm.generate_expected.call_args.args[0], "extraction")
         self.assertIn("Staff Engineer", llm.generate_expected.call_args.args[1])
-
-        # This slice snapshots only; the code agent that writes the adapter comes next.
-        self.assertFalse(adapter_written)
+        self.assertEqual(llm.generate_code.call_args.args[0], "extraction")
+        self.assertIn("Staff Engineer", llm.generate_code.call_args.args[1])
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ You are an expert Python web-scraping engineer. Implement the class `$adapter_cl
 $silver_schema
 ## How your adapter is tested
 
-Your output is compared by **exact set** against a snapshot of this page: returning any extra item (e.g. a pagination link mixed into the job links) or missing one **fails**. Be precise about which elements you select.
+$test_contract
 
 ## Base class to inherit from
 

@@ -41,6 +41,11 @@ _ROLE = {
             "Never put a pagination link in the job links, nor a job link in it."
         ),
         "schema": "",
+        "test_contract": (
+            "Your output is compared by **exact set** against a snapshot of this page: "
+            "returning any extra item (e.g. a pagination link among the job links) or "
+            "missing one **fails**. Be precise about which elements you select."
+        ),
     },
     "extraction": {
         "base_class": "ExtractionAdapter",
@@ -48,6 +53,14 @@ _ROLE = {
             "Implement extract(html, url) -> dict matching the Silver schema below."
         ),
         "schema": _SILVER_SCHEMA,
+        "test_contract": (
+            "Your output dict is compared field-by-field against a snapshot of this "
+            "page. It must contain title, company_name and description (these back "
+            "required columns); title and company_name are matched exactly and "
+            "description by containment; locations and categories are compared as "
+            "sets; employment_type and metadata are optional. Extract what the page "
+            "states — do not summarise or invent."
+        ),
     },
 }
 
@@ -108,6 +121,7 @@ def build_code_prompt(
         base_class=role["base_class"],
         role_requirements=role["requirements"],
         silver_schema=role["schema"],
+        test_contract=role["test_contract"],
         domains=list(domains),
         base_code=base_code,
         cleaned_html=cleaned_html[:_HTML_CHAR_BUDGET],

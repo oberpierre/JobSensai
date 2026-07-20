@@ -35,7 +35,21 @@ class TestPromptBuilders(unittest.TestCase):
         self.assertIn("acme.com", prompt)
         self.assertIn("DiscoveryAdapter", prompt)
         self.assertIn("MARKER_HTML", prompt)
+        self.assertIn("exact set", prompt)  # discovery test contract substituted
         self.assertNotIn("$cleaned_html", prompt)  # all placeholders substituted
+
+    def test_build_code_prompt_extraction_has_schema_and_contract(self):
+        prompt = build_code_prompt(
+            "extraction",
+            "<html>MARKER_HTML</html>",
+            "AcmeExtractionAdapter",
+            ["acme.com"],
+            "class BaseX: pass",
+        )
+        self.assertIn("ExtractionAdapter", prompt)
+        self.assertIn("Silver schema", prompt)
+        self.assertIn("company_name", prompt)
+        self.assertNotIn("$test_contract", prompt)  # extraction contract substituted
 
     @patch("llm.model.OllamaLLM")
     def test_generate_code_invokes_llm_once(self, mock_ollama):

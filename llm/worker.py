@@ -190,7 +190,7 @@ class LLMWorker:
         llm = LLMModel(base_url=self.llm_url)
 
         self._write_discovery_snapshot(names, cleaned, lean, url, llm)
-        self._write_discovery_adapter(names, lean, [domain], llm)
+        self._write_adapter(names, "discovery", lean, [domain], llm)
         logger.info("Generated discovery adapter and snapshot for %s", names.basename)
         return names
 
@@ -228,18 +228,20 @@ class LLMWorker:
         (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
 
     def _learn_extraction(self, domain: str, url: str, html: str) -> AdapterNames:
-        """Snapshot an extraction detail page, test-first.
+        """Generate an extraction adapter for a detail page, test-first.
 
         Unlike discovery, the page is cleaned but never pruned: extraction reads the
-        posting's content, so the truth agent needs the whole page rather than a
-        link-only skeleton.
+        posting's content, so both agents need the whole page rather than a link-only
+        skeleton. The truth agent snapshots the fields; the code agent then writes the
+        adapter from the same cleaned HTML — never from the snapshot.
         """
         names = _adapter_names(domain, "extraction")
         cleaned = clean_html(html)
         llm = LLMModel(base_url=self.llm_url)
 
         self._write_extraction_snapshot(names, cleaned, url, llm)
-        logger.info("Generated extraction snapshot for %s", names.basename)
+        self._write_adapter(names, "extraction", cleaned, [domain], llm)
+        logger.info("Generated extraction adapter and snapshot for %s", names.basename)
         return names
 
     def _write_extraction_snapshot(
@@ -268,14 +270,19 @@ class LLMWorker:
         )
         (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
 
-    def _write_discovery_adapter(
-        self, names: AdapterNames, lean: str, domains: list[str], llm: LLMModel
+    def _write_adapter(
+        self,
+        names: AdapterNames,
+        adapter_type: str,
+        html: str,
+        domains: list[str],
+        llm: LLMModel,
     ) -> None:
         """Code agent → the adapter that must satisfy the (withheld) snapshot."""
         base_code = (_ADAPTERS_DIR / "base.py").read_text()
         adapter_src = _strip_code_fences(
             llm.generate_code(
-                "discovery", lean, names.adapter_class, domains, base_code
+                adapter_type, html, names.adapter_class, domains, base_code
             )
         )
         (_ADAPTERS_DIR / f"{names.basename}.py").write_text(adapter_src)
@@ -347,18 +354,17 @@ class LLMWorker:
 
             if adapter_type == "discovery":
                 self._learn_discovery(domain, url, raw_html)
-                passed = self._run_adapter_tests()
-                logger.info(
-                    "Discovery adapter for %s: snapshot test %s",
-                    domain,
-                    "passed" if passed else "FAILED (left for review)",
-                )
-                self.complete_learning(domain, adapter_type)
-                return
+            else:
+                self._learn_extraction(domain, url, raw_html)
 
-            # Extraction is rebuilt on the snapshot flow in Vertical 2.
-            logger.warning("Extraction learning is not implemented yet (%s)", domain)
-            self.redis_client.delete(lock_key)
+            passed = self._run_adapter_tests()
+            logger.info(
+                "%s adapter for %s: snapshot test %s",
+                adapter_type,
+                domain,
+                "passed" if passed else "FAILED (left for review)",
+            )
+            self.complete_learning(domain, adapter_type)
 
         except json.JSONDecodeError as exc:
             logger.error("Failed to decode task message: %s", exc)
