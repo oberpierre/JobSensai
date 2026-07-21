@@ -130,6 +130,13 @@ class _DropsDescriptionExtraction(ExtractionAdapter):
         return {k: v for k, v in _SILVER.items() if k != "description"}
 
 
+class _WrongDescriptionExtraction(ExtractionAdapter):
+    domains = ["example.com"]
+
+    def extract(self, html: str, url: str) -> dict:
+        return {**_SILVER, "description": "Completely unrelated content about nothing."}
+
+
 class TestExtractionSnapshotTest(unittest.TestCase):
     def _snapshot_case(self, adapter_cls, fixtures: Path):
         fixtures.mkdir(parents=True)
@@ -186,6 +193,17 @@ class TestExtractionSnapshotTest(unittest.TestCase):
                 self._snapshot_case(_DropsMetadataExtraction, Path(tmp) / "s")
             )
         self.assertTrue(result.wasSuccessful(), result.failures)
+
+    def test_fails_when_description_differs(self):
+        """A description that isn't the pinned text fails the equality check."""
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._snapshot_case(_WrongDescriptionExtraction, Path(tmp) / "s")
+            result = _run(case)
+        self.assertFalse(result.wasSuccessful())
+        self.assertTrue(
+            any("description" in str(f[1]) for f in result.failures),
+            result.failures,
+        )
 
 
 if __name__ == "__main__":

@@ -70,7 +70,11 @@ class ExtractionSnapshotTest:
     ``fixture_dir``; fixtures live at ``<test dir>/fixtures/<fixture_dir>/`` as
     ``detail.html`` (cleaned page) and ``expected.json`` (the Silver dict). Fields are
     compared by type: scalars exactly, list fields as sets, and ``description`` by
-    containment (long text is too brittle).
+    equality (leading/trailing whitespace aside). The description is the adapter's
+    deterministic ``_markdown.html_to_markdown`` output, so pinning it exactly makes the
+    snapshot a precise regression guard — an adapter change or a markdownify upgrade
+    that reformats it fails loudly. Until a human certifies the snapshot to the
+    adapter's real output, first generation is expected to be red (draft PR), by design.
 
     The fields the Silver table stores non-nullably — title, company_name, description
     — must be present in the output or the test fails loudly: a dropped one would reach
@@ -116,8 +120,8 @@ class ExtractionSnapshotTest:
                     set(self.data.get(field) or []), set(self.snapshot[field]), field
                 )
 
-    def test_description_contains_snapshot(self):
-        expected = " ".join(self.snapshot.get("description", "").split())
+    def test_description_matches_snapshot(self):
+        expected = self.snapshot.get("description", "").strip()
         if expected:
-            actual = " ".join((self.data.get("description") or "").split())
-            self.assertIn(expected, actual, "description")
+            actual = (self.data.get("description") or "").strip()
+            self.assertEqual(actual, expected, "description")
