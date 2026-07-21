@@ -22,6 +22,7 @@ class TestPromptBuilders(unittest.TestCase):
         )
         self.assertIn("company_name", prompt)
         self.assertIn("locations", prompt)
+        self.assertIn("markdown", prompt)  # description is rendered as markdown
 
     def test_build_code_prompt_has_class_domains_and_html_but_not_answer(self):
         prompt = build_code_prompt(
@@ -49,6 +50,7 @@ class TestPromptBuilders(unittest.TestCase):
         self.assertIn("ExtractionAdapter", prompt)
         self.assertIn("Silver schema", prompt)
         self.assertIn("company_name", prompt)
+        self.assertIn("html_to_markdown", prompt)  # description uses the shared helper
         self.assertNotIn("$test_contract", prompt)  # extraction contract substituted
 
     @patch("llm.model.OllamaLLM")

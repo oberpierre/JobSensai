@@ -28,7 +28,7 @@ _SILVER_SCHEMA = (
     "\nThe extract() dict must match this Silver schema (all keys required):\n"
     "    title: str, company_name: str, employment_type: str | None,\n"
     "    locations: list[str], categories: list[str],\n"
-    "    description: str, metadata: dict\n"
+    "    description: str (as markdown), metadata: dict\n"
 )
 
 _ROLE = {
@@ -50,16 +50,22 @@ _ROLE = {
     "extraction": {
         "base_class": "ExtractionAdapter",
         "requirements": (
-            "Implement extract(html, url) -> dict matching the Silver schema below."
+            "Implement extract(html, url) -> dict matching the Silver schema below. "
+            "For description, find the single element holding the posting body, remove "
+            "any child nodes that are not part of it (apply widgets, share bars, "
+            "related-jobs), and convert it with the shared helper — never hand-roll "
+            "markdown: `from adapters.adapters._markdown import html_to_markdown`, "
+            "then `description = html_to_markdown(node)`."
         ),
         "schema": _SILVER_SCHEMA,
         "test_contract": (
             "Your output dict is compared field-by-field against a snapshot of this "
-            "page. It must contain title, company_name and description (these back "
-            "required columns); title and company_name are matched exactly and "
-            "description by containment; locations and categories are compared as "
-            "sets; employment_type and metadata are optional. Extract what the page "
-            "states — do not summarise or invent."
+            "page. title, company_name and description are required; title and "
+            "company_name must match exactly; description must equal the markdown that "
+            "html_to_markdown produces for the body you select, so use that helper and "
+            "pick the right node; locations and categories are compared as sets; "
+            "employment_type and metadata are optional. Extract what the page states — "
+            "do not summarise or invent."
         ),
     },
 }
@@ -79,7 +85,11 @@ _EXPECTED = {
         ),
     },
     "extraction": {
-        "instructions": "Extract the job posting's fields into the Silver schema.",
+        "instructions": (
+            "Extract the job posting's fields into the Silver schema. Render "
+            "description as markdown (headings with #, lists as - or 1., paragraphs "
+            "preserved), with the top heading starting at level 1 (#)."
+        ),
         "output_shape": (
             '{"title": "...", "company_name": "...", '
             '"employment_type": "... or null", "locations": ["..."], '
