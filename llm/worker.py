@@ -30,6 +30,13 @@ _WORKSPACE_ROOT = Path(
 )
 _ADAPTERS_DIR = _WORKSPACE_ROOT / "adapters" / "adapters"
 
+# Ollama sizes its KV cache from num_ctx, so the window is set per adapter type.
+# Discovery feeds a pruned link-only skeleton that stays small. Detail pages carry the
+# full posting body (a 1 MB page cleans to ~120k chars) and need a wider window, else
+# Ollama truncates the tail holding the content. Overridable per box for tuning.
+_DISCOVERY_NUM_CTX = int(os.getenv("DISCOVERY_NUM_CTX", "32768"))
+_EXTRACTION_NUM_CTX = int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
+
 
 def _domain_slug(domain: str) -> str:
     """Turn a domain into a valid Python module-name fragment.
@@ -187,7 +194,7 @@ class LLMWorker:
         names = _adapter_names(domain, "discovery")
         cleaned = clean_html(resolve_hrefs(html, url))
         lean = prune_to_links(cleaned)
-        llm = LLMModel(base_url=self.llm_url)
+        llm = LLMModel(base_url=self.llm_url, num_ctx=_DISCOVERY_NUM_CTX)
 
         self._write_discovery_snapshot(names, cleaned, lean, url, llm)
         self._write_adapter(names, "discovery", lean, [domain], llm)
@@ -237,7 +244,7 @@ class LLMWorker:
         """
         names = _adapter_names(domain, "extraction")
         cleaned = clean_html(html)
-        llm = LLMModel(base_url=self.llm_url)
+        llm = LLMModel(base_url=self.llm_url, num_ctx=_EXTRACTION_NUM_CTX)
 
         self._write_extraction_snapshot(names, cleaned, url, llm)
         self._write_adapter(names, "extraction", cleaned, [domain], llm)

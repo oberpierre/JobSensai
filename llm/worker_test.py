@@ -232,6 +232,8 @@ class TestLearnDiscovery(unittest.TestCase):
             test_src = (Path(tmp) / f"{names.basename}_test.py").read_text()
             adapter_src = (Path(tmp) / f"{names.basename}.py").read_text()
 
+        # Discovery runs on the pruned skeleton, so the smaller context window suffices.
+        self.assertEqual(mock_llm_cls.call_args.kwargs["num_ctx"], 32768)
         self.assertEqual(names.basename, "acme_com_discovery_v1")
         self.assertEqual(expected["job_links"], ["https://acme.com/jobs/1"])
         self.assertIn("DiscoverySnapshotTest", test_src)
@@ -286,6 +288,8 @@ class TestLearnExtraction(unittest.TestCase):
             test_src = (Path(tmp) / f"{names.basename}_test.py").read_text()
             adapter_src = (Path(tmp) / f"{names.basename}.py").read_text()
 
+        # Detail bodies are large, so extraction gets the wider context window.
+        self.assertEqual(mock_llm_cls.call_args.kwargs["num_ctx"], 65536)
         self.assertEqual(names.basename, "acme_com_extraction_v1")
         self.assertEqual(expected["url"], "https://acme.com/job/1")
         self.assertEqual(expected["title"], "Staff Engineer")
