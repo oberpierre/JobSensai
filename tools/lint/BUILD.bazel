@@ -25,6 +25,7 @@ ruff_test(
         "//adapters:adapters",
         "//adapters:adapter_test",
         "//adapters:snapshot_test",
+        "//adapters:markdown_test",
         "//adapters:registry_test",
     ],
 )

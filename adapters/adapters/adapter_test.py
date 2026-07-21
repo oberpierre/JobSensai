@@ -18,7 +18,7 @@ def load_tests(
     adapters_dir = Path(__file__).parent
     for test_file in sorted(adapters_dir.glob("*_test.py")):
         name = test_file.stem
-        if name in ("adapter_test", "base_test", "snapshot_test"):
+        if name in ("adapter_test", "base_test", "snapshot_test", "_markdown_test"):
             continue
         module_name = f"adapters.adapters.{name}"
         try:

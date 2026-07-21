@@ -10,6 +10,7 @@ py_library(
     ),
     deps = [
         "@pip//beautifulsoup4",
+        "@pip//markdownify",
         "@pip//parsel",
     ],
 )
@@ -34,7 +35,7 @@ py_test(
     name = "adapter_test",
     srcs = glob(
         ["adapters/*_test.py"],
-        exclude = ["adapters/snapshot_test.py"],
+        exclude = ["adapters/snapshot_test.py", "adapters/_markdown_test.py"],
     ),
     # Generated snapshot fixtures (index.html / expected.json) the tests read at runtime.
     data = glob(["adapters/fixtures/**"], allow_empty = True),
@@ -47,6 +48,16 @@ py_test(
 py_test(
     name = "snapshot_test",
     srcs = ["adapters/snapshot_test.py"],
+    deps = [
+        ":adapters",
+    ],
+)
+
+# The shared HTML->Markdown util is a description helper, not an adapter.
+py_test(
+    name = "markdown_test",
+    srcs = ["adapters/_markdown_test.py"],
+    main = "adapters/_markdown_test.py",
     deps = [
         ":adapters",
     ],
