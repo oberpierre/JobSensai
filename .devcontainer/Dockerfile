@@ -34,5 +34,15 @@ RUN curl -fSsL -o /usr/local/bin/aspect https://github.com/aspect-build/aspect-c
     && ([ "${ASPECT_CLI_DOWNLOAD_SHA}" = "dev-mode" ] || echo "${ASPECT_CLI_DOWNLOAD_SHA} */usr/local/bin/aspect" | sha256sum --check - ) \
     && chmod 0755 /usr/local/bin/aspect
 
+# Install gh CLI
+ARG GH_VERSION=2.96.0
+ARG GH_DOWNLOAD_SHA=dev-mode
+RUN curl -fSsL -o /tmp/gh.tar.gz https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_arm64.tar.gz \
+    && ([ "${GH_DOWNLOAD_SHA}" = "dev-mode" ] || echo "${GH_DOWNLOAD_SHA} */tmp/gh.tar.gz" | sha256sum --check - ) \
+    && tar -xzf /tmp/gh.tar.gz -C /tmp \
+    && mv /tmp/gh_${GH_VERSION}_linux_arm64/bin/gh /usr/local/bin/gh \
+    && chmod 0755 /usr/local/bin/gh \
+    && rm -rf /tmp/gh.tar.gz /tmp/gh_${GH_VERSION}_linux_arm64
+
 # Cleanup
 RUN apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/* /tmp/library-scripts
