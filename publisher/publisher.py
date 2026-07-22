@@ -43,7 +43,8 @@ class Publisher:
 
         The PR is a draft when *passed* is False. Only this adapter's three paths are
         staged, so one branch introduces exactly one adapter. Returns None if any
-        git/gh step fails (logged, never raised into the caller).
+        git/gh step fails (logged, never raised into the caller). The clone is left on
+        the base branch either way, so a failed publish cannot strand the runner.
         """
         branch = f"feature/adapter-{basename}"
         paths = [
@@ -63,6 +64,20 @@ class Publisher:
         except subprocess.CalledProcessError as exc:
             logger.error("Publish failed for %s: %s", basename, exc)
             return None
+        finally:
+            self._restore_base_branch()
+
+    def _restore_base_branch(self) -> None:
+        """Return the clone to the base branch after publishing.
+
+        The agent runner is long-lived and publishes one adapter per task; without this
+        the next task would branch off the previous adapter's branch and its PR would
+        carry both adapters.
+        """
+        try:
+            self._git("checkout", self.base_branch)
+        except subprocess.CalledProcessError as exc:
+            logger.error("Could not return the clone to %s: %s", self.base_branch, exc)
 
     def _open_pr(
         self,

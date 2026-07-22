@@ -42,6 +42,7 @@ py_binary(
         ":main",
         "//adapters:adapters",
         "//adapters:adapters_base",
+        "//publisher:publisher",
         "@pip//pytest",
     ],
     visibility = ["//visibility:public"],

@@ -77,6 +77,22 @@ class TestPublisher(unittest.TestCase):
         mock_run.side_effect = subprocess.CalledProcessError(1, ["git", "push"])
         self.assertIsNone(_publish(passed=True))
 
+    @patch("publisher.publisher.subprocess.run")
+    def test_clone_is_left_on_the_base_branch(self, mock_run):
+        """The runner is long-lived: the next adapter branches off main, not this."""
+        mock_run.return_value = _ok()
+        _publish(passed=True)
+
+        cmds = _commands(mock_run)
+        self.assertEqual(cmds[-1], ("git", "checkout", "main"))
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_base_branch_is_restored_even_when_publishing_fails(self, mock_run):
+        # Every git call raises; the restore must not turn that into an escaping error.
+        mock_run.side_effect = subprocess.CalledProcessError(1, ["git", "push"])
+        self.assertIsNone(_publish(passed=True))
+        self.assertEqual(_commands(mock_run)[-1], ("git", "checkout", "main"))
+
 
 if __name__ == "__main__":
     unittest.main()

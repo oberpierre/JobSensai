@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from llm.dom import prune_to_links, resolve_hrefs
 from llm.html_cleaner import clean_html
 from llm.model import LLMModel
+from publisher.publisher import Publisher
 
 load_dotenv()
 logging.basicConfig(
@@ -145,9 +146,11 @@ class LLMWorker:
         redis_host: str = "localhost",
         redis_port: int = 6379,
         queue_names: list[str] | None = None,
+        publisher: Publisher | None = None,
     ) -> None:
         self.llm_url = llm_url
         self.redis_client = redis.Redis(host=redis_host, port=redis_port)
+        self.publisher = publisher or Publisher(repo_root=_WORKSPACE_ROOT)
         self.queue_names = queue_names or [
             "discovery_learning_tasks",
             "extraction_learning_tasks",
@@ -294,8 +297,12 @@ class LLMWorker:
         )
         (_ADAPTERS_DIR / f"{names.basename}.py").write_text(adapter_src)
 
-    def _run_adapter_tests(self) -> bool:
-        """Run the adapter suite once; True if it passed."""
+    def _run_adapter_tests(self) -> tuple[bool, str]:
+        """Run the adapter suite once; return whether it passed and its output.
+
+        The output is carried back rather than only logged because it becomes the body
+        of the PR — a red run has to tell the reviewer what broke.
+        """
         result = subprocess.run(
             ["bazel", "test", "//adapters:adapter_test", "--test_output=errors"],
             cwd=str(_WORKSPACE_ROOT),
@@ -303,11 +310,10 @@ class LLMWorker:
             text=True,
             check=False,
         )
+        output = result.stdout + result.stderr
         if result.returncode != 0:
-            logger.error(
-                "Adapter tests failed:\n%s", (result.stdout + result.stderr)[-2000:]
-            )
-        return result.returncode == 0
+            logger.error("Adapter tests failed:\n%s", output[-2000:])
+        return result.returncode == 0, output
 
     def run(self) -> None:
         self.running = True
@@ -360,17 +366,38 @@ class LLMWorker:
             url = task.get("url") or f"https://{domain}"
 
             if adapter_type == "discovery":
-                self._learn_discovery(domain, url, raw_html)
+                names = self._learn_discovery(domain, url, raw_html)
             else:
-                self._learn_extraction(domain, url, raw_html)
+                names = self._learn_extraction(domain, url, raw_html)
 
-            passed = self._run_adapter_tests()
+            passed, test_output = self._run_adapter_tests()
             logger.info(
                 "%s adapter for %s: snapshot test %s",
                 adapter_type,
                 domain,
                 "passed" if passed else "FAILED (left for review)",
             )
+
+            # Red runs publish too — as a draft PR carrying the failure — because the
+            # human finishing the last 10% needs the generated adapter either way.
+            pr_url = self.publisher.publish(
+                basename=names.basename,
+                adapter_class=names.adapter_class,
+                domain=domain,
+                adapter_type=adapter_type,
+                passed=passed,
+                test_output=test_output,
+            )
+            if not pr_url:
+                # Nothing is awaiting review, so only release the lock: leaving the
+                # COMPLETE marker unset lets the next scrape re-enqueue and retry.
+                logger.error(
+                    "Publish failed for %s; releasing the lock", names.basename
+                )
+                self.redis_client.delete(lock_key)
+                return
+
+            logger.info("Opened PR for %s: %s", names.basename, pr_url)
             self.complete_learning(domain, adapter_type)
 
         except json.JSONDecodeError as exc:
