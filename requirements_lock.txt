@@ -415,10 +415,6 @@ incremental==24.7.2 \
     --hash=sha256:8cb2c3431530bec48ad70513931a760f446ad6c25e8333ca5d95e24b0ed7b8fe \
     --hash=sha256:fb4f1d47ee60efe87d4f6f0ebb5f70b9760db2b2574c59c8e8912be4ebd464c9
     # via twisted
-iniconfig==2.3.0 \
-    --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730 \
-    --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12
-    # via pytest
 itemadapter==0.12.2 \
     --hash=sha256:17ff8acb169fb11dbed8af83e805c19c3b890bde4653761b4d3c1544142e04b6 \
     --hash=sha256:8e05c07cea966a7a8c4f096150ee2c91d9b4104a76f9afd029b235e1b564a61f
@@ -790,7 +786,6 @@ packaging==25.0 \
     #   langchain-core
     #   langsmith
     #   parsel
-    #   pytest
     #   scrapy
 parsel==1.10.0 \
     --hash=sha256:14f17db9559f51b43357b9dfe43cec870a8efb5ea4857abb624ec6ff80d8a080 \
@@ -810,10 +805,6 @@ playwright==1.55.0 \
     # via
     #   -r requirements.in
     #   scrapy-playwright
-pluggy==1.6.0 \
-    --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
-    --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
-    # via pytest
 protego==0.5.0 \
     --hash=sha256:225dee0acfcc71de8c6f7cef9c618e5a9d3e7baa7ae1470b8d076a064033c463 \
     --hash=sha256:4237227840a67fdeec289a9b89652455b5657806388c17e1a556e160435f8fc5
@@ -1037,18 +1028,10 @@ pyee==13.0.0 \
     --hash=sha256:48195a3cddb3b1515ce0695ed76036b5ccc2ef3a9f963ff9f77aec0139845498 \
     --hash=sha256:b391e3c5a434d1f5118a25615001dbc8f669cf410ab67d04c4d4e07c55481c37
     # via playwright
-pygments==2.20.0 \
-    --hash=sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f \
-    --hash=sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176
-    # via pytest
 pyopenssl==25.3.0 \
     --hash=sha256:1fda6fc034d5e3d179d39e59c1895c9faeaf40a79de5fc4cbbfbe0d36f4a77b6 \
     --hash=sha256:c981cb0a3fd84e8602d7afc209522773b94c1c2446a3c710a75b06fe1beae329
     # via scrapy
-pytest==9.0.3 \
-    --hash=sha256:2c5efc453d45394fdd706ade797c0a81091eccd1d6e4bccfcd476e2b8e0ab5d9 \
-    --hash=sha256:b86ada508af81d19edeb213c681b1d48246c1a91d304c6c81a427674c17eb91c
-    # via -r requirements.in
 python-dotenv==1.2.1 \
     --hash=sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6 \
     --hash=sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61
