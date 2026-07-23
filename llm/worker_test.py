@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ from llm.worker import (
     _adapter_names,
     _domain_slug,
     _parse_json_object,
+    _worker_from_env,
 )
 
 
@@ -393,6 +395,30 @@ class TestLearnExtraction(unittest.TestCase):
         self.assertIn("Staff Engineer", llm.generate_expected.call_args.args[1])
         self.assertEqual(llm.generate_code.call_args.args[0], "extraction")
         self.assertIn("Staff Engineer", llm.generate_code.call_args.args[1])
+
+
+class TestWorkerFromEnv(unittest.TestCase):
+    @patch("llm.worker.redis.Redis")
+    def test_reads_ollama_and_redis_from_env(self, mock_redis):
+        env = {
+            "OLLAMA_HOST": "http://127.0.0.1",
+            "OLLAMA_PORT": "9999",
+            "REDIS_HOST": "cluster-redis",
+            "REDIS_PORT": "6380",
+        }
+        with patch.dict(os.environ, env):
+            worker = _worker_from_env()
+
+        self.assertEqual(worker.llm_url, "http://http://127.0.0.1:9999")
+        mock_redis.assert_called_once_with(host="cluster-redis", port=6380)
+
+    @patch("llm.worker.redis.Redis")
+    def test_falls_back_to_localhost_defaults(self, mock_redis):
+        with patch.dict(os.environ, {}, clear=True):
+            worker = _worker_from_env()
+
+        self.assertEqual(worker.llm_url, "http://localhost:11434")
+        mock_redis.assert_called_once_with(host="localhost", port=6379)
 
 
 if __name__ == "__main__":

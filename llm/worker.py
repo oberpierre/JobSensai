@@ -417,3 +417,27 @@ class LLMWorker:
             logger.error("Unexpected error processing task: %s", exc, exc_info=True)
             if lock_key:
                 self.redis_client.delete(lock_key)
+
+
+def _worker_from_env() -> LLMWorker:
+    """Build the runner from environment variables."""
+    ollama_host = os.getenv("OLLAMA_HOST", "localhost")
+    ollama_port = os.getenv("OLLAMA_PORT", "11434")
+    return LLMWorker(
+        llm_url=f"http://{ollama_host}:{ollama_port}",
+        redis_host=os.getenv("REDIS_HOST", "localhost"),
+        redis_port=int(os.getenv("REDIS_PORT", "6379")),
+    )
+
+
+def main() -> None:
+    worker = _worker_from_env()
+    try:
+        worker.run()
+    except KeyboardInterrupt:
+        worker.running = False
+        logger.info("Interrupted; shutting down")
+
+
+if __name__ == "__main__":
+    main()
