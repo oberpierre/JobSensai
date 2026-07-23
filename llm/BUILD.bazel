@@ -1,32 +1,47 @@
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
-py_binary(
-    name = "main",
-    srcs = glob(
-        ["**/*.py"],
-        exclude = [
-            "worker.py",
-            "**/*_test.py",
-        ],
-    ),
-    data = [
-        "//:env",
-        "//llm:prompts",
-    ],
-    deps = [
-        "@pip//beautifulsoup4",
-        "@pip//langchain",
-        "@pip//langchain_ollama",
-        "@pip//python_dotenv",
-        "@pip//redis",
-    ],
-    python_version = "PY3",
-    visibility = ["//visibility:public"],
-)
-
 filegroup(
     name = "prompts",
     srcs = glob(["prompts/**"]),
+    visibility = ["//visibility:public"],
+)
+
+# One library per module, each carrying only the deps it actually imports, so a
+# consumer does not transitively pull in unnecessary deps.
+py_library(
+    name = "dom",
+    srcs = ["dom.py"],
+    imports = [".."],
+    deps = ["@pip//beautifulsoup4"],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "html_cleaner",
+    srcs = ["html_cleaner.py"],
+    imports = [".."],
+    deps = ["@pip//beautifulsoup4"],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "model",
+    srcs = ["model.py"],
+    imports = [".."],
+    data = ["//llm:prompts"],
+    deps = ["@pip//langchain_ollama"],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "main",
+    srcs = ["main.py"],
+    imports = [".."],
+    data = ["//:env", "//llm:prompts"],
+    deps = [
+        ":model",
+        "@pip//python_dotenv",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -34,16 +49,16 @@ py_binary(
     name = "worker",
     srcs = ["worker.py"],
     imports = [".."],
-    data = [
-        "//:env",
-        "//llm:prompts",
-    ],
+    data = ["//:env", "//llm:prompts"],
     deps = [
-        ":main",
+        ":dom",
+        ":html_cleaner",
+        ":model",
         "//adapters:adapters",
         "//adapters:adapters_base",
         "//publisher:publisher",
-        "@pip//pytest",
+        "@pip//python_dotenv",
+        "@pip//redis",
     ],
     visibility = ["//visibility:public"],
 )
@@ -63,29 +78,20 @@ py_test(
 py_test(
     name = "model_test",
     srcs = ["model_test.py"],
-    data = ["//llm:prompts"],
-    deps = [
-        ":main",
-    ],
+    deps = [":model"],
     visibility = ["//visibility:public"],
 )
 
 py_test(
     name = "html_cleaner_test",
     srcs = ["html_cleaner_test.py"],
-    deps = [
-        ":main",
-    ],
+    deps = [":html_cleaner"],
     visibility = ["//visibility:public"],
 )
 
 py_test(
     name = "dom_test",
     srcs = ["dom_test.py"],
-    deps = [
-        ":main",
-    ],
+    deps = [":dom"],
     visibility = ["//visibility:public"],
 )
-
-

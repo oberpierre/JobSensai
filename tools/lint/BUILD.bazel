@@ -11,6 +11,9 @@ ruff_test(
     size = "small",
     srcs = [
         "//llm:main",
+        "//llm:dom",
+        "//llm:html_cleaner",
+        "//llm:model",
         "//llm:worker",
         "//llm:worker_test",
         "//llm:model_test",
