@@ -176,9 +176,9 @@ class LLMWorker:
             )
         )
 
-    def complete_learning(self, domain: str, adapter_type: str) -> None:
+    def release_learning(self, domain: str, adapter_type: str) -> None:
+        """Release the lease once the task is finished."""
         self.redis_client.delete(f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}")
-        self.redis_client.set(f"LEARNING_COMPLETE:{adapter_type}:{domain}", "1")
 
     def _write_fixture(self, basename: str, filename: str, content: str) -> Path:
         fixture_dir = _ADAPTERS_DIR / "fixtures" / basename
@@ -363,6 +363,21 @@ class LLMWorker:
                 logger.info("Learning already in progress for domain: %s", domain)
                 return
 
+            # The lease only dedups tasks racing in one scrape run. Across runs the
+            # board still has no adapter until its PR merges and the scraper redeploys,
+            # so every crawl re-enqueues; GitHub is what knows the work is already done.
+            names = _adapter_names(domain, adapter_type)
+            if self.publisher.has_existing_pr(names.basename) is not False:
+                # None means GitHub could not be reached. Treated as "already open"
+                # because the costs are asymmetric: a wrong skip loses one crawl cycle,
+                # a wrong re-learn burns a GPU run and orphans a branch.
+                logger.info(
+                    "Adapter %s already has a PR (or its state is unknown); skipping",
+                    names.basename,
+                )
+                self.release_learning(domain, adapter_type)
+                return
+
             url = task.get("url") or f"https://{domain}"
 
             if adapter_type == "discovery":
@@ -378,8 +393,7 @@ class LLMWorker:
                 "passed" if passed else "FAILED (left for review)",
             )
 
-            # Red runs publish too — as a draft PR carrying the failure — because the
-            # human finishing the last 10% needs the generated adapter either way.
+            # Red runs publish too as a draft PR carrying the failure for manual fixing.
             pr_url = self.publisher.publish(
                 basename=names.basename,
                 adapter_class=names.adapter_class,
@@ -388,17 +402,14 @@ class LLMWorker:
                 passed=passed,
                 test_output=test_output,
             )
-            if not pr_url:
-                # Nothing is awaiting review, so only release the lock: leaving the
-                # COMPLETE marker unset lets the next scrape re-enqueue and retry.
+            if pr_url:
+                logger.info("Opened PR for %s: %s", names.basename, pr_url)
+            else:
+                # No PR exists, so the next crawl's gh check finds nothing and retries.
                 logger.error(
-                    "Publish failed for %s; releasing the lock", names.basename
+                    "Publish failed for %s; it will be retried", names.basename
                 )
-                self.redis_client.delete(lock_key)
-                return
-
-            logger.info("Opened PR for %s: %s", names.basename, pr_url)
-            self.complete_learning(domain, adapter_type)
+            self.release_learning(domain, adapter_type)
 
         except json.JSONDecodeError as exc:
             logger.error("Failed to decode task message: %s", exc)

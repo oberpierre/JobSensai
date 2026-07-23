@@ -38,7 +38,7 @@ class TestPublisher(unittest.TestCase):
         cmds = _commands(mock_run)
         # Branch is taken off the base branch, one branch per adapter.
         self.assertIn(
-            ("git", "checkout", "-b", f"feature/adapter-{_BASENAME}", "main"), cmds
+            ("git", "checkout", "-B", f"feature/adapter-{_BASENAME}", "main"), cmds
         )
         # Only this adapter's three paths are staged — never BUILD or other adapters.
         add = next(c for c in cmds if c[:2] == ("git", "add"))
@@ -92,6 +92,42 @@ class TestPublisher(unittest.TestCase):
         mock_run.side_effect = subprocess.CalledProcessError(1, ["git", "push"])
         self.assertIsNone(_publish(passed=True))
         self.assertEqual(_commands(mock_run)[-1], ("git", "checkout", "main"))
+
+
+class TestHasExistingPr(unittest.TestCase):
+    def setUp(self):
+        self.pub = Publisher(repo_root=Path("/repo"))
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_true_when_gh_reports_a_pr(self, mock_run):
+        mock_run.return_value = _ok('[{"number":7}]\n')
+        self.assertIs(self.pub.has_existing_pr(_BASENAME), True)
+
+        cmd = _commands(mock_run)[0]
+        self.assertEqual(cmd[:2], ("gh", "pr"))
+        self.assertIn(f"feature/adapter-{_BASENAME}", cmd)
+        # Includes closed PRs count
+        self.assertIn("all", cmd)
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_false_on_an_empty_list(self, mock_run):
+        mock_run.return_value = _ok("[]\n")
+        self.assertIs(self.pub.has_existing_pr(_BASENAME), False)
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_none_when_gh_fails(self, mock_run):
+        """Undeterminable must be distinct from absent so the caller can fail closed."""
+        mock_run.side_effect = subprocess.CalledProcessError(1, ["gh"])
+        self.assertIsNone(self.pub.has_existing_pr(_BASENAME))
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_none_when_gh_is_not_installed(self, mock_run):
+        mock_run.side_effect = FileNotFoundError("gh")
+        self.assertIsNone(self.pub.has_existing_pr(_BASENAME))
+
+    def test_branch_name_is_derived_from_the_basename(self):
+        """The branch is the idempotency key, so it must match what publish() pushes."""
+        self.assertEqual(self.pub.branch_for(_BASENAME), f"feature/adapter-{_BASENAME}")
 
 
 if __name__ == "__main__":

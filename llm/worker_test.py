@@ -17,6 +17,7 @@ class TestLLMWorker(unittest.TestCase):
         self.mock_redis = MagicMock()
         self.mock_publisher = MagicMock()
         self.mock_publisher.publish.return_value = "https://github.com/acme/repo/pull/7"
+        self.mock_publisher.has_existing_pr.return_value = False
         with patch("redis.Redis", return_value=self.mock_redis):
             self.worker = LLMWorker(
                 redis_host="localhost",
@@ -59,14 +60,12 @@ class TestLLMWorker(unittest.TestCase):
             },
         )
 
-    def test_complete_learning(self):
-        self.worker.complete_learning("google.com", "extraction")
+    def test_release_learning_drops_the_lease_and_records_nothing(self):
+        self.worker.release_learning("google.com", "extraction")
         self.mock_redis.delete.assert_called_with(
             "LEARNING_IN_PROGRESS:extraction:google.com"
         )
-        self.mock_redis.set.assert_called_with(
-            "LEARNING_COMPLETE:extraction:google.com", "1"
-        )
+        self.assertEqual(self.mock_redis.set.call_count, 0)
 
     def test_process_task_discovery_routes_to_snapshot_flow(self):
         self.mock_redis.set.return_value = True
@@ -74,7 +73,7 @@ class TestLLMWorker(unittest.TestCase):
         # Orchestration only: the discovery flow generates then runs the suite once.
         self.worker._learn_discovery = MagicMock()
         self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
-        self.worker.complete_learning = MagicMock()
+        self.worker.release_learning = MagicMock()
 
         task_payload = json.dumps(
             {
@@ -89,7 +88,7 @@ class TestLLMWorker(unittest.TestCase):
             "newboard.com", "https://newboard.com/jobs", "<html/>"
         )
         self.worker._run_adapter_tests.assert_called_once()
-        self.worker.complete_learning.assert_called_once_with(
+        self.worker.release_learning.assert_called_once_with(
             "newboard.com", "discovery"
         )
 
@@ -99,7 +98,7 @@ class TestLLMWorker(unittest.TestCase):
         # The extraction queue drives the same generate-then-test-once flow.
         self.worker._learn_extraction = MagicMock()
         self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
-        self.worker.complete_learning = MagicMock()
+        self.worker.release_learning = MagicMock()
 
         task_payload = json.dumps(
             {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
@@ -110,7 +109,7 @@ class TestLLMWorker(unittest.TestCase):
             "newboard.com", "https://newboard.com/job/1", "<html/>"
         )
         self.worker._run_adapter_tests.assert_called_once()
-        self.worker.complete_learning.assert_called_once_with(
+        self.worker.release_learning.assert_called_once_with(
             "newboard.com", "extraction"
         )
 
@@ -127,7 +126,12 @@ class TestLLMWorker(unittest.TestCase):
         ).encode("utf-8")
         self.worker.process_task(task_payload, "extraction_learning_tasks")
 
-    def test_green_run_publishes_and_marks_learning_complete(self):
+    def _assert_lease_released(self):
+        self.mock_redis.delete.assert_called_with(
+            "LEARNING_IN_PROGRESS:extraction:newboard.com"
+        )
+
+    def test_green_run_publishes_and_releases_the_lease(self):
         self._run_extraction_task(passed=True)
 
         kwargs = self.mock_publisher.publish.call_args.kwargs
@@ -138,36 +142,60 @@ class TestLLMWorker(unittest.TestCase):
         self.assertTrue(kwargs["passed"])
         # The suite's output travels to the publisher so it can land in the PR body.
         self.assertEqual(kwargs["test_output"], "TEST LOG")
-        # PR is open, so the debounce marker stops the scraper re-enqueuing.
-        self.mock_redis.set.assert_any_call(
-            "LEARNING_COMPLETE:extraction:newboard.com", "1"
-        )
+        self._assert_lease_released()
 
     def test_red_run_still_publishes_for_review(self):
-        """A failing suite must reach the human as a draft PR, not be dropped."""
+        """A failing suite should be opened as a draft PR, not dropped."""
         self._run_extraction_task(passed=False, test_output="FAILED: 1 test")
 
         kwargs = self.mock_publisher.publish.call_args.kwargs
         self.assertFalse(kwargs["passed"])
         self.assertEqual(kwargs["test_output"], "FAILED: 1 test")
-        self.mock_redis.set.assert_any_call(
-            "LEARNING_COMPLETE:extraction:newboard.com", "1"
-        )
+        self._assert_lease_released()
 
-    def test_failed_publish_releases_the_lock_without_completing(self):
-        """Nothing is awaiting review, so the next scrape must be free to retry."""
+    def test_failed_publish_releases_the_lease_so_the_next_crawl_retries(self):
+        """No PR exists, so the gh check will not skip it next time."""
         self.mock_publisher.publish.return_value = None
         self._run_extraction_task(passed=True)
+        self._assert_lease_released()
 
-        self.mock_redis.delete.assert_called_with(
-            "LEARNING_IN_PROGRESS:extraction:newboard.com"
+    def test_only_lease_marker_is_written(self):
+        """Sets a lease to prevent concurrent adapter generations."""
+        self._run_extraction_task(passed=True)
+        set_keys = {call.args[0] for call in self.mock_redis.set.call_args_list}
+        self.assertEqual(set_keys, {"LEARNING_IN_PROGRESS:extraction:newboard.com"})
+
+    def test_existing_pr_skips_the_regeneration_run(self):
+        """A open PR will prevent adapter generation like the lease."""
+        self.mock_publisher.has_existing_pr.return_value = True
+        self._run_extraction_task(passed=True)
+
+        self.mock_publisher.has_existing_pr.assert_called_once_with(
+            "newboard_com_extraction_v1"
         )
-        completed = [
-            call
-            for call in self.mock_redis.set.call_args_list
-            if call.args[0].startswith("LEARNING_COMPLETE")
-        ]
-        self.assertEqual(completed, [])
+        self.worker._learn_extraction.assert_not_called()
+        self.mock_publisher.publish.assert_not_called()
+        # The lease is dropped, not held: it means "learning", not "recently checked".
+        self._assert_lease_released()
+
+    def test_unknown_pr_state_fails_closed(self):
+        """A wrong skip costs one crawl; a wrong re-learn costs a GPU run."""
+        self.mock_publisher.has_existing_pr.return_value = None
+        self._run_extraction_task(passed=True)
+
+        self.worker._learn_extraction.assert_not_called()
+        self.mock_publisher.publish.assert_not_called()
+        self._assert_lease_released()
+
+    def test_pr_check_happens_only_after_the_lease_is_won(self):
+        """Concurrent pages of one board are absorbed by the lease, not by gh calls."""
+        self.mock_redis.set.return_value = None  # lease already held
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        self.mock_publisher.has_existing_pr.assert_not_called()
 
     @patch("llm.worker.logger")
     def test_process_task_no_domain_or_url(self, mock_logger):

@@ -20,8 +20,7 @@ class DiscoverySnapshotTest:
     Links are compared as **exact** sets: the adapter must return neither fewer (a
     broken or too-narrow selector) nor more (over-selection — a selector matching
     elements the lean input pruned away but the full ``index.html`` still contains) than
-    the snapshot. When the truth agent under-enumerates, the human corrects
-    ``expected.json`` during review.
+    the snapshot.
     """
 
     adapter_cls = None
@@ -73,8 +72,7 @@ class ExtractionSnapshotTest:
     equality (leading/trailing whitespace aside). The description is the adapter's
     deterministic ``_markdown.html_to_markdown`` output, so pinning it exactly makes the
     snapshot a precise regression guard — an adapter change or a markdownify upgrade
-    that reformats it fails loudly. Until a human certifies the snapshot to the
-    adapter's real output, first generation is expected to be red (draft PR), by design.
+    that reformats it fails loudly.
 
     The fields the Silver table stores non-nullably — title, company_name, description
     — must be present in the output or the test fails loudly: a dropped one would reach

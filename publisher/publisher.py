@@ -29,6 +29,39 @@ class Publisher:
         self.remote = remote
         self.trailer = trailer
 
+    def branch_for(self, basename: str) -> str:
+        """The branch one adapter publishes on."""
+        return f"feature/adapter-{basename}"
+
+    def has_existing_pr(self, basename: str) -> bool | None:
+        """Whether a PR was ever opened for *basename*, None when undeterminable.
+
+        Closed PRs count. A human closing a generated adapter is a decision not to take
+        it, and since generation is deterministic enough to produce the same adapter
+        again, re-opening it would re-submit work that was already rejected.
+
+        None (GitHub unreachable, unauthenticated, rate-limited) is deliberately
+        distinct from False so the caller can fail closed.
+        """
+        branch = self.branch_for(basename)
+        try:
+            result = self._gh(
+                "pr",
+                "list",
+                "--head",
+                branch,
+                "--state",
+                "all",
+                "--json",
+                "number",
+                "--limit",
+                "1",
+            )
+        except (subprocess.CalledProcessError, OSError) as exc:
+            logger.error("Could not determine PR state for %s: %s", branch, exc)
+            return None
+        return result.stdout.strip() not in ("", "[]")
+
     def publish(
         self,
         *,
@@ -39,14 +72,14 @@ class Publisher:
         passed: bool,
         test_output: str,
     ) -> str | None:
-        """Branch, commit the adapter's files, push, and open a PR; return its URL.
+        """Branch, commit the adapter's files, push, and open a PR, returning its URL.
 
-        The PR is a draft when *passed* is False. Only this adapter's three paths are
-        staged, so one branch introduces exactly one adapter. Returns None if any
-        git/gh step fails (logged, never raised into the caller). The clone is left on
-        the base branch either way, so a failed publish cannot strand the runner.
+        The PR is opened as a draft when *passed* is False. One branch introduces
+        exactly one adapter. Returns None if any git/gh step fails (logged, not raised
+        to the caller). Restores to base branch in any case, so a failed publish cannot
+        strand the runner.
         """
-        branch = f"feature/adapter-{basename}"
+        branch = self.branch_for(basename)
         paths = [
             f"adapters/adapters/{basename}.py",
             f"adapters/adapters/{basename}_test.py",
@@ -56,7 +89,9 @@ class Publisher:
         risk = "^" if passed else "@"
         subject = f"{risk} F Add a generated {adapter_type} adapter for {domain}"
         try:
-            self._git("checkout", "-b", branch, self.base_branch)
+            # -B resets an existing local branch: a run that died between branching and
+            # pushing leaves one behind that no remote PR check can see.
+            self._git("checkout", "-B", branch, self.base_branch)
             self._git("add", "--", *paths)
             self._git("commit", "-m", subject, "-m", self.trailer)
             self._git("push", "-u", self.remote, branch)
