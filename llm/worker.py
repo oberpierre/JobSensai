@@ -423,8 +423,11 @@ def _worker_from_env() -> LLMWorker:
     """Build the runner from environment variables."""
     ollama_host = os.getenv("OLLAMA_HOST", "localhost")
     ollama_port = os.getenv("OLLAMA_PORT", "11434")
+    # OLLAMA_HOST is a host, but a scheme is an easy mistake to make (main.py's URL,
+    # the compose value); drop it rather than build http://http://...
+    host = ollama_host.split("://", 1)[-1]
     return LLMWorker(
-        llm_url=f"http://{ollama_host}:{ollama_port}",
+        llm_url=f"http://{host}:{ollama_port}",
         redis_host=os.getenv("REDIS_HOST", "localhost"),
         redis_port=int(os.getenv("REDIS_PORT", "6379")),
     )

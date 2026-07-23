@@ -401,7 +401,7 @@ class TestWorkerFromEnv(unittest.TestCase):
     @patch("llm.worker.redis.Redis")
     def test_reads_ollama_and_redis_from_env(self, mock_redis):
         env = {
-            "OLLAMA_HOST": "http://127.0.0.1",
+            "OLLAMA_HOST": "gpu-box",
             "OLLAMA_PORT": "9999",
             "REDIS_HOST": "cluster-redis",
             "REDIS_PORT": "6380",
@@ -409,8 +409,16 @@ class TestWorkerFromEnv(unittest.TestCase):
         with patch.dict(os.environ, env):
             worker = _worker_from_env()
 
-        self.assertEqual(worker.llm_url, "http://http://127.0.0.1:9999")
+        self.assertEqual(worker.llm_url, "http://gpu-box:9999")
         mock_redis.assert_called_once_with(host="cluster-redis", port=6380)
+
+    @patch("llm.worker.redis.Redis")
+    def test_tolerates_a_scheme_in_ollama_host(self, mock_redis):
+        # A scheme prefix must not produce http://http://...
+        with patch.dict(os.environ, {"OLLAMA_HOST": "http://127.0.0.1"}):
+            worker = _worker_from_env()
+
+        self.assertEqual(worker.llm_url, "http://127.0.0.1:11434")
 
     @patch("llm.worker.redis.Redis")
     def test_falls_back_to_localhost_defaults(self, mock_redis):
