@@ -34,12 +34,32 @@ class AdapterRegistry:
             logger.debug(
                 "Registering discovery adapter %s for %s", adapter_cls.__name__, domain
             )
+            self._warn_on_collision(self._discovery_registry, domain, adapter_cls)
             self._discovery_registry[domain] = adapter_cls
         if issubclass(adapter_cls, ExtractionAdapter):
             logger.debug(
                 "Registering extraction adapter %s for %s", adapter_cls.__name__, domain
             )
+            self._warn_on_collision(self._extraction_registry, domain, adapter_cls)
             self._extraction_registry[domain] = adapter_cls
+
+    @staticmethod
+    def _warn_on_collision(registry: dict, domain: str, adapter_cls: type) -> None:
+        """Surface a same-domain overwrite; _auto_discover order decides the winner.
+
+        Two adapters claiming one domain (a generated ``google_com_extraction_v1``
+        next to a hand-written ``google_extraction_v1``) otherwise resolve silently by
+        lexicographic filename order, masking one and re-triggering its learning.
+        """
+        existing = registry.get(domain)
+        if existing is not None and existing is not adapter_cls:
+            logger.warning(
+                "Domain %r already maps to %s; overriding with %s. Rename or remove "
+                "one — selection otherwise depends on module load order.",
+                domain,
+                existing.__name__,
+                adapter_cls.__name__,
+            )
 
     def get_discovery_adapter(self, url: str) -> Optional[DiscoveryAdapter]:
         """Return an instantiated discovery adapter for *url*, or None."""

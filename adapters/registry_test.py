@@ -65,6 +65,19 @@ class TestAdapterRegistry(unittest.TestCase):
         adapter = self.registry.get_discovery_adapter("https://custom.io/jobs")
         self.assertIsInstance(adapter, GoogleDiscoveryAdapter)
 
+    def test_colliding_domain_warns_and_last_wins(self):
+        self.registry.register("collide.io", GoogleDiscoveryAdapter)
+        with self.assertLogs("adapters.registry", level="WARNING") as logs:
+            self.registry.register("collide.io", GreenhouseIOAdapter)
+        self.assertIn("collide.io", "\n".join(logs.output))
+        adapter = self.registry.get_discovery_adapter("https://collide.io/jobs")
+        self.assertIsInstance(adapter, GreenhouseIOAdapter)
+
+    def test_re_registering_the_same_class_is_silent(self):
+        self.registry.register("quiet.io", GoogleDiscoveryAdapter)
+        with self.assertNoLogs("adapters.registry", level="WARNING"):
+            self.registry.register("quiet.io", GoogleDiscoveryAdapter)
+
 
 if __name__ == "__main__":
     unittest.main()
