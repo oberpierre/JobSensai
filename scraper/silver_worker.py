@@ -48,6 +48,8 @@ class SilverWorker:
 
     def setup(self):
         """Initialize connections."""
+        # basicConfig ran at import with a fixed level, so honour config.log_level here.
+        logging.getLogger().setLevel(self.config.log_level)
         logger.info(
             f"Connecting to Redis: {self.config.redis_host}:{self.config.redis_port}..."
         )

@@ -1,4 +1,5 @@
 import json
+import logging
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -114,6 +115,16 @@ class TestSilverWorker(unittest.TestCase):
 
         # Should catch JSONDecodeError internally
         self.worker.process_message(message)
+
+    @patch("scraper.silver_worker.redis.Redis")
+    def test_setup_applies_configured_log_level(self, _mock_redis):
+        root = logging.getLogger()
+        self.addCleanup(root.setLevel, root.level)
+        root.setLevel(logging.INFO)
+
+        SilverWorker(SilverWorkerConfig(log_level="ERROR")).setup()
+
+        self.assertEqual(root.level, logging.ERROR)
 
 
 if __name__ == "__main__":
