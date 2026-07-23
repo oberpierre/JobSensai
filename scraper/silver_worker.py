@@ -38,9 +38,13 @@ class SilverWorker:
         self.redis: Optional[redis.Redis] = None
         self.registry = AdapterRegistry()
 
-        # Setup signal handlers
-        signal.signal(signal.SIGINT, self._handle_signal)
-        signal.signal(signal.SIGTERM, self._handle_signal)
+        # signal.signal only works on the main thread; guard so construction off it
+        # (test runners, thread pools) does not raise ValueError.
+        try:
+            signal.signal(signal.SIGINT, self._handle_signal)
+            signal.signal(signal.SIGTERM, self._handle_signal)
+        except ValueError:
+            logger.warning("Off the main thread; signal handlers not installed")
 
     def _handle_signal(self, signum, frame):
         logger.info(f"Received signal {signum}. Shutting down safely...")

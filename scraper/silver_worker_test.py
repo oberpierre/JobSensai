@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -115,6 +116,22 @@ class TestSilverWorker(unittest.TestCase):
 
         # Should catch JSONDecodeError internally
         self.worker.process_message(message)
+
+    def test_construction_off_the_main_thread_does_not_raise(self):
+        """signal.signal raises off the main thread; construction must survive it."""
+        errors = []
+
+        def build():
+            try:
+                SilverWorker(SilverWorkerConfig())
+            except Exception as exc:  # noqa: BLE001 — the point is to catch any raise
+                errors.append(exc)
+
+        thread = threading.Thread(target=build)
+        thread.start()
+        thread.join()
+
+        self.assertEqual(errors, [])
 
     @patch("scraper.silver_worker.redis.Redis")
     def test_setup_applies_configured_log_level(self, _mock_redis):
