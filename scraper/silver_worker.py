@@ -10,7 +10,7 @@ import redis
 from sqlalchemy.orm import Session
 
 from adapters.registry import AdapterRegistry
-from scraper.database import SessionLocal
+from scraper.database import SessionLocal, init_db
 from scraper.models import JobPosting, RawJobPosting
 
 
@@ -51,9 +51,11 @@ class SilverWorker:
         self.should_exit = True
 
     def setup(self):
-        """Initialize connections."""
+        """Initialize the database and connections."""
         # basicConfig ran at import with a fixed level, so honour config.log_level here.
         logging.getLogger().setLevel(self.config.log_level)
+        logger.info("Initializing database...")
+        init_db()
         logger.info(
             f"Connecting to Redis: {self.config.redis_host}:{self.config.redis_port}..."
         )

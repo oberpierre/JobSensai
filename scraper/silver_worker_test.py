@@ -133,8 +133,9 @@ class TestSilverWorker(unittest.TestCase):
 
         self.assertEqual(errors, [])
 
+    @patch("scraper.silver_worker.init_db")
     @patch("scraper.silver_worker.redis.Redis")
-    def test_setup_applies_configured_log_level(self, _mock_redis):
+    def test_setup_applies_configured_log_level(self, _mock_redis, _mock_init_db):
         root = logging.getLogger()
         self.addCleanup(root.setLevel, root.level)
         root.setLevel(logging.INFO)
@@ -142,6 +143,12 @@ class TestSilverWorker(unittest.TestCase):
         SilverWorker(SilverWorkerConfig(log_level="ERROR")).setup()
 
         self.assertEqual(root.level, logging.ERROR)
+
+    @patch("scraper.silver_worker.init_db")
+    @patch("scraper.silver_worker.redis.Redis")
+    def test_setup_initialises_the_database(self, _mock_redis, mock_init_db):
+        SilverWorker(SilverWorkerConfig()).setup()
+        mock_init_db.assert_called_once()
 
 
 if __name__ == "__main__":
