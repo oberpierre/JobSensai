@@ -127,7 +127,7 @@ class AdapterRegistry:
     def _domain_from_url(url: str) -> Optional[str]:
         try:
             parsed = urlparse(url)
-            domain = parsed.netloc
+            domain = parsed.hostname
             if not domain and parsed.path:
                 domain = parsed.path.split("/")[0]
             return domain or None

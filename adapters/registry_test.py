@@ -36,6 +36,12 @@ class TestAdapterRegistry(unittest.TestCase):
         adapter = self.registry.get_discovery_adapter("www.google.com/search")
         self.assertIsInstance(adapter, GoogleDiscoveryAdapter)
 
+    def test_domain_lookup_ignores_port(self):
+        # A non-default port in netloc must not prevent the host from matching.
+        self.registry.register("ported.io", GoogleDiscoveryAdapter)
+        adapter = self.registry.get_discovery_adapter("https://ported.io:8443/jobs")
+        self.assertIsInstance(adapter, GoogleDiscoveryAdapter)
+
     def test_unregistered_domain_returns_none(self):
         self.assertIsNone(
             self.registry.get_discovery_adapter("https://www.example.com")
