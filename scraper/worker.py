@@ -172,6 +172,9 @@ class JobWorker:
 
     def _handle_end_run(self, session: Session, data: dict[str, Any]):
         client_run_id = data.get("run_id")
+        if not client_run_id:
+            logger.error("END_OF_RUN is missing run_id")
+            return
         logger.info(f"Run {client_run_id} finished. Initiating tombstoning.")
 
         db_run_id = self._get_or_create_run(

@@ -158,6 +158,13 @@ class TestJobWorker(unittest.TestCase):
         # Should handle exception internally and close session
         self.mock_session.close.assert_called()
 
+    def test_end_run_missing_run_id(self):
+        # A missing run_id must be rejected before uuid.UUID(None) raises TypeError.
+        self.worker._get_or_create_run = MagicMock()
+        self.worker.process_message(json.dumps({"type": "END_OF_RUN"}))
+        self.worker._get_or_create_run.assert_not_called()
+        self.mock_session.close.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main()
