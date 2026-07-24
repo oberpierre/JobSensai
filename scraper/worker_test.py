@@ -14,6 +14,7 @@ class TestJobWorker(unittest.TestCase):
             redis_host="localhost",
             redis_port=6379,
             queue_name="test_queue",
+            silver_queue_name="silver_generation_tasks",
             log_level="ERROR",
         )
         self.worker = JobWorker(self.config)
@@ -87,6 +88,11 @@ class TestJobWorker(unittest.TestCase):
         self.assertEqual(job_item.url, item_url)
         self.assertEqual(job_item.last_seen_run_id, uuid.UUID(run_id))
 
+        # Verify pushing to silver queue
+        self.worker.redis.lpush.assert_called_once_with(
+            "silver_generation_tasks", json.dumps({"url": item_url})
+        )
+
     def test_tombstoning_logic(self):
         # Current run
         current_run_id = uuid.uuid4()
@@ -150,6 +156,13 @@ class TestJobWorker(unittest.TestCase):
         )
         self.worker.process_message(message)
         # Should handle exception internally and close session
+        self.mock_session.close.assert_called()
+
+    def test_end_run_missing_run_id(self):
+        # A missing run_id must be rejected before uuid.UUID(None) raises TypeError.
+        self.worker._get_or_create_run = MagicMock()
+        self.worker.process_message(json.dumps({"type": "END_OF_RUN"}))
+        self.worker._get_or_create_run.assert_not_called()
         self.mock_session.close.assert_called()
 
 

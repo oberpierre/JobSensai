@@ -23,6 +23,7 @@ class WorkerConfig:
     redis_host: str = os.getenv("REDIS_HOST", "localhost")
     redis_port: int = int(os.getenv("REDIS_PORT", 6379))
     queue_name: str = "raw_job_items"
+    silver_queue_name: str = "silver_generation_tasks"
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
 
@@ -162,13 +163,23 @@ class JobWorker:
             session.add(new_posting)
 
         session.commit()
+
+        # Push to silver generation queue
+        if self.redis:
+            self.redis.lpush(self.config.silver_queue_name, json.dumps({"url": url}))
+            logger.debug(f"Pushed {url} to {self.config.silver_queue_name}")
         # logger.debug(f"Processed item: {url}")
 
     def _handle_end_run(self, session: Session, data: dict[str, Any]):
         client_run_id = data.get("run_id")
+        if not client_run_id:
+            logger.error("END_OF_RUN is missing run_id")
+            return
         logger.info(f"Run {client_run_id} finished. Initiating tombstoning.")
 
-        db_run_id = self._get_or_create_run(session, client_run_id, "unknown")
+        db_run_id = self._get_or_create_run(
+            session, client_run_id, data.get("spider_name", "unknown")
+        )
         self._perform_tombstoning(session, db_run_id)
 
     def _get_or_create_run(

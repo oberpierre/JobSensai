@@ -8,7 +8,8 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from model import LLMModel
+
+from llm.model import LLMModel
 
 load_dotenv()
 logging.basicConfig(

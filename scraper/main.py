@@ -18,8 +18,8 @@ load_dotenv()
 
 def main() -> None:
     """Run Scrapy crawler."""
-    import settings
-    from spiders.google_spider import GoogleSpider
+    import scraper.settings as settings
+    from scraper.spiders.google_spider import GoogleSpider
 
     # Filter settings to only include valid configuration (uppercase variables)
     # This avoids passing imported modules (like 'os') which cause pickling errors

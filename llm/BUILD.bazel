@@ -1,17 +1,97 @@
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+filegroup(
+    name = "prompts",
+    srcs = glob(["prompts/**"]),
+    visibility = ["//visibility:public"],
+)
+
+# One library per module, each carrying only the deps it actually imports, so a
+# consumer does not transitively pull in unnecessary deps.
+py_library(
+    name = "dom",
+    srcs = ["dom.py"],
+    imports = [".."],
+    deps = ["@pip//beautifulsoup4"],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "html_cleaner",
+    srcs = ["html_cleaner.py"],
+    imports = [".."],
+    deps = ["@pip//beautifulsoup4"],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "model",
+    srcs = ["model.py"],
+    imports = [".."],
+    data = ["//llm:prompts"],
+    deps = ["@pip//langchain_ollama"],
+    visibility = ["//visibility:public"],
+)
 
 py_binary(
     name = "main",
-    srcs = glob(["**/*.py"]),
-    imports = ["."],
-    data = [
-        "//:env",
-    ],
+    srcs = ["main.py"],
+    imports = [".."],
+    data = ["//:env", "//llm:prompts"],
     deps = [
-        "@pip//langchain",
-        "@pip//langchain_ollama",
+        ":model",
         "@pip//python_dotenv",
     ],
-    python_version = "PY3",
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "worker",
+    srcs = ["worker.py"],
+    imports = [".."],
+    data = ["//:env", "//llm:prompts"],
+    deps = [
+        ":dom",
+        ":html_cleaner",
+        ":model",
+        "//adapters:adapters",
+        "//adapters:adapters_base",
+        "//publisher:publisher",
+        "@pip//python_dotenv",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_test",
+    srcs = ["worker_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "model_test",
+    srcs = ["model_test.py"],
+    deps = [":model"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "html_cleaner_test",
+    srcs = ["html_cleaner_test.py"],
+    deps = [":html_cleaner"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "dom_test",
+    srcs = ["dom_test.py"],
+    deps = [":dom"],
     visibility = ["//visibility:public"],
 )

@@ -1,11 +1,64 @@
-load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 package(default_visibility = ["//visibility:public"])
 
 py_library(
     name = "adapters",
-    srcs = glob(["*.py"]),
+    srcs = glob(
+        ["*.py", "adapters/*.py"],
+        exclude = ["**/*_test.py"],
+    ),
     deps = [
+        "@pip//beautifulsoup4",
+        "@pip//markdownify",
         "@pip//parsel",
+    ],
+)
+
+py_library(
+    name = "adapters_base",
+    srcs = ["adapters/base.py", "adapters/base_test.py"],
+    deps = [
+        "@pip//beautifulsoup4",
+    ],
+)
+
+py_test(
+    name = "registry_test",
+    srcs = ["registry_test.py"],
+    deps = [
+        ":adapters",
+    ],
+)
+
+py_test(
+    name = "adapter_test",
+    srcs = glob(
+        ["adapters/*_test.py"],
+        exclude = ["adapters/snapshot_test.py", "adapters/_markdown_test.py"],
+    ),
+    # Generated snapshot fixtures (index.html / expected.json) the tests read at runtime.
+    data = glob(["adapters/fixtures/**"], allow_empty = True),
+    deps = [
+        ":adapters",
+    ],
+)
+
+# Snapshot test infrastructure is tested on its own, not as an adapter test.
+py_test(
+    name = "snapshot_test",
+    srcs = ["adapters/snapshot_test.py"],
+    deps = [
+        ":adapters",
+    ],
+)
+
+# The shared HTML->Markdown util is a description helper, not an adapter.
+py_test(
+    name = "markdown_test",
+    srcs = ["adapters/_markdown_test.py"],
+    main = "adapters/_markdown_test.py",
+    deps = [
+        ":adapters",
     ],
 )

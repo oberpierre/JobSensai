@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
 
 
-class BaseAdapter(ABC):
-    """Abstract base class for all job board adapters."""
+class DiscoveryAdapter(ABC):
+    """Abstract base class for job discovery (finding links)."""
+
+    # Declare the domains handled, e.g. ["example.com", "www.example.com"].
+    domains: list[str] = []
 
     @abstractmethod
     def get_job_links(self, html: str, url: str) -> list[str]:
@@ -30,6 +33,18 @@ class BaseAdapter(ABC):
         """
         pass
 
+    @property
+    def version(self) -> int:
+        """Returns the version of this adapter."""
+        return 1
+
+
+class ExtractionAdapter(ABC):
+    """Abstract base class for job data extraction."""
+
+    # declares the domains handled, e.g. ["example.com", "www.example.com"].
+    domains: list[str] = []
+
     @abstractmethod
     def extract(self, html: str, url: str) -> dict:
         """Extracts structured job data from a job detail page.
@@ -45,9 +60,5 @@ class BaseAdapter(ABC):
 
     @property
     def version(self) -> int:
-        """Returns the version of this adapter.
-
-        By default, it parses the version from the class name or module,
-        but explicit overrides are preferred.
-        """
+        """Returns the version of this adapter."""
         return 1
