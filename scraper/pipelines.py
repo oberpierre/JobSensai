@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 import uuid
 
@@ -28,7 +29,11 @@ class BronzeLayerPipeline:
         )
 
     def open_spider(self, spider):
-        self.redis_client = redis.Redis(host=self.redis_host, port=self.redis_port)
+        self.redis_client = redis.Redis(
+            host=self.redis_host,
+            port=self.redis_port,
+            password=os.getenv("REDIS_PASSWORD") or None,
+        )
 
         # Signal Start of Run
         event = {

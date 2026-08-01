@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -164,6 +165,21 @@ class TestJobWorker(unittest.TestCase):
         self.worker.process_message(json.dumps({"type": "END_OF_RUN"}))
         self.worker._get_or_create_run.assert_not_called()
         self.mock_session.close.assert_called()
+
+    @patch("scraper.worker.init_db")
+    @patch("scraper.worker.redis.Redis")
+    def test_setup_passes_password_from_env(self, mock_redis, _mock_init_db):
+        with patch.dict(os.environ, {"REDIS_PASSWORD": "password"}):
+            JobWorker(self.config).setup()
+        self.assertEqual(mock_redis.call_args.kwargs["password"], "password")
+
+    @patch("scraper.worker.init_db")
+    @patch("scraper.worker.redis.Redis")
+    def test_setup_passes_none_password_when_unset(self, mock_redis, _mock_init_db):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("REDIS_PASSWORD", None)
+            JobWorker(self.config).setup()
+        self.assertIsNone(mock_redis.call_args.kwargs["password"])
 
 
 if __name__ == "__main__":

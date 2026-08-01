@@ -58,6 +58,7 @@ class JobWorker:
         self.redis = redis.Redis(
             host=self.config.redis_host,
             port=self.config.redis_port,
+            password=os.getenv("REDIS_PASSWORD") or None,
             decode_responses=True,  # Decode bytes to strings automatically
         )
         logger.info("Worker setup complete.")

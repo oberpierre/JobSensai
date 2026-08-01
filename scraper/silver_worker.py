@@ -62,6 +62,7 @@ class SilverWorker:
         self.redis = redis.Redis(
             host=self.config.redis_host,
             port=self.config.redis_port,
+            password=os.getenv("REDIS_PASSWORD") or None,
             decode_responses=True,
         )
         logger.info("Silver Worker setup complete.")
