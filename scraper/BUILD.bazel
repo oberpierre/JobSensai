@@ -7,7 +7,7 @@ py_library(
     name = "scraper_lib",
     srcs = glob(
         ["**/*.py"],
-        exclude = ["*_test.py", "main.py"],
+        exclude = ["**/*_test.py", "main.py"],
     ),
     imports = ["."],
     deps = [
@@ -90,6 +90,36 @@ py_test(
 py_test(
     name = "models_test",
     srcs = ["models_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "pipelines_test",
+    srcs = ["pipelines_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "database_test",
+    srcs = ["database_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "google_spider_test",
+    srcs = ["spiders/google_spider_test.py"],
     imports = ["."],
     deps = [
         ":scraper_lib",

@@ -69,18 +69,23 @@ class TestLLMWorker(unittest.TestCase):
         )
         self.assertEqual(self.mock_redis.set.call_count, 0)
 
-    def test_redis_client_authenticates_with_password_from_env(self):
+    def test_redis_client_authenticates_with_credentials_from_env(self):
         with (
-            patch.dict(os.environ, {"REDIS_PASSWORD": "password"}),
+            patch.dict(
+                os.environ,
+                {"REDIS_USERNAME": "user-llm", "REDIS_PASSWORD": "password"},
+            ),
             patch("redis.Redis") as mock_redis_cls,
         ):
             LLMWorker(
                 redis_host="localhost", redis_port=6379, publisher=self.mock_publisher
             )
+        self.assertEqual(mock_redis_cls.call_args.kwargs["username"], "user-llm")
         self.assertEqual(mock_redis_cls.call_args.kwargs["password"], "password")
 
-    def test_redis_client_has_no_password_when_unset(self):
+    def test_redis_client_has_no_credentials_when_unset(self):
         with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("REDIS_USERNAME", None)
             os.environ.pop("REDIS_PASSWORD", None)
             with patch("redis.Redis") as mock_redis_cls:
                 LLMWorker(
@@ -88,6 +93,7 @@ class TestLLMWorker(unittest.TestCase):
                     redis_port=6379,
                     publisher=self.mock_publisher,
                 )
+        self.assertIsNone(mock_redis_cls.call_args.kwargs["username"])
         self.assertIsNone(mock_redis_cls.call_args.kwargs["password"])
 
     def test_process_task_discovery_routes_to_snapshot_flow(self):
@@ -426,6 +432,7 @@ class TestWorkerFromEnv(unittest.TestCase):
             "OLLAMA_PORT": "9999",
             "REDIS_HOST": "cluster-redis",
             "REDIS_PORT": "6380",
+            "REDIS_USERNAME": "user",
             "REDIS_PASSWORD": "password",
         }
         with patch.dict(os.environ, env):
@@ -433,7 +440,7 @@ class TestWorkerFromEnv(unittest.TestCase):
 
         self.assertEqual(worker.llm_url, "http://gpu-box:9999")
         mock_redis.assert_called_once_with(
-            host="cluster-redis", port=6380, password="password"
+            host="cluster-redis", port=6380, username="user", password="password"
         )
 
     @patch("llm.worker.redis.Redis")
@@ -450,7 +457,9 @@ class TestWorkerFromEnv(unittest.TestCase):
             worker = _worker_from_env()
 
         self.assertEqual(worker.llm_url, "http://localhost:11434")
-        mock_redis.assert_called_once_with(host="localhost", port=6379, password=None)
+        mock_redis.assert_called_once_with(
+            host="localhost", port=6379, username=None, password=None
+        )
 
 
 if __name__ == "__main__":

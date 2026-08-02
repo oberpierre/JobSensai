@@ -32,6 +32,7 @@ class BronzeLayerPipeline:
         self.redis_client = redis.Redis(
             host=self.redis_host,
             port=self.redis_port,
+            username=os.getenv("REDIS_USERNAME") or None,
             password=os.getenv("REDIS_PASSWORD") or None,
         )
 

@@ -168,17 +168,22 @@ class TestJobWorker(unittest.TestCase):
 
     @patch("scraper.worker.init_db")
     @patch("scraper.worker.redis.Redis")
-    def test_setup_passes_password_from_env(self, mock_redis, _mock_init_db):
-        with patch.dict(os.environ, {"REDIS_PASSWORD": "password"}):
+    def test_setup_passes_credentials_from_env(self, mock_redis, _mock_init_db):
+        with patch.dict(
+            os.environ, {"REDIS_USERNAME": "user", "REDIS_PASSWORD": "password"}
+        ):
             JobWorker(self.config).setup()
+        self.assertEqual(mock_redis.call_args.kwargs["username"], "user")
         self.assertEqual(mock_redis.call_args.kwargs["password"], "password")
 
     @patch("scraper.worker.init_db")
     @patch("scraper.worker.redis.Redis")
-    def test_setup_passes_none_password_when_unset(self, mock_redis, _mock_init_db):
+    def test_setup_passes_none_credentials_when_unset(self, mock_redis, _mock_init_db):
         with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("REDIS_USERNAME", None)
             os.environ.pop("REDIS_PASSWORD", None)
             JobWorker(self.config).setup()
+        self.assertIsNone(mock_redis.call_args.kwargs["username"])
         self.assertIsNone(mock_redis.call_args.kwargs["password"])
 
 
