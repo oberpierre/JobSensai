@@ -1,0 +1,137 @@
+load("@aspect_bazel_lib//lib:transitions.bzl", "platform_transition_filegroup")
+load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load", "oci_push")
+load("@rules_pkg//:pkg.bzl", "pkg_tar")
+
+package(default_visibility = ["//visibility:private"])
+
+# The cluster node this ships to is amd64, so every py_binary packaged below
+# is cross-compiled to this platform via platform_transition_filegroup,
+# regardless of the host running `bazel build`. The base images are
+# referenced through their platform-suffixed repo (e.g.
+# @playwright_python_linux_amd64) rather than the plain alias, since the
+# plain alias is a select() keyed on the *current* configuration's cpu and
+# would fail to resolve when this package is built from an arm64 host.
+platform(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+)
+
+# --- Crawler: //scraper:main, Scrapy + Playwright spider runner ---
+
+platform_transition_filegroup(
+    name = "crawler_binary",
+    srcs = ["//scraper:main"],
+    target_platform = ":linux_x86_64",
+)
+
+pkg_tar(
+    name = "crawler_tar",
+    srcs = [":crawler_binary"],
+    include_runfiles = True,
+    package_dir = "/app",
+)
+
+oci_image(
+    name = "crawler_image",
+    base = "@playwright_python_linux_amd64",
+    tars = [":crawler_tar"],
+    # The base has no /usr/bin/env, but is a full Ubuntu image with a shell,
+    # so the py_binary stub's own `#!/usr/bin/env python3` shebang resolves
+    # and the stub then re-execs into the hermetic 3.12 runfiles interpreter.
+    entrypoint = ["/app/main"],
+    user = "65532",
+    workdir = "/app",
+)
+
+oci_load(
+    name = "crawler_load",
+    image = ":crawler_image",
+    repo_tags = ["jobsensai-crawler:latest"],
+)
+
+oci_push(
+    name = "crawler_push",
+    image = ":crawler_image",
+    repository = "ghcr.io/oberpierre/jobsensai-crawler",
+)
+
+# --- Bronze worker: //scraper:worker, Redis to Postgres Bronze ingest ---
+
+platform_transition_filegroup(
+    name = "bronze_worker_binary",
+    srcs = ["//scraper:worker"],
+    target_platform = ":linux_x86_64",
+)
+
+pkg_tar(
+    name = "bronze_worker_tar",
+    srcs = [":bronze_worker_binary"],
+    include_runfiles = True,
+    package_dir = "/app",
+)
+
+oci_image(
+    name = "bronze_worker_image",
+    base = "@distroless_python3_linux_amd64",
+    tars = [":bronze_worker_tar"],
+    # distroless has neither a shell nor /usr/bin/env, so the shebang line
+    # in the py_binary stub is unreachable. Invoke the base's own python3
+    # directly on the stub instead: it reads as a plain script (the shebang
+    # is just a comment to the interpreter) and re-execs into the hermetic
+    # 3.12 interpreter bundled in the runfiles tree, which is what actually
+    # runs the worker. The base's 3.11 never executes application code.
+    entrypoint = ["/usr/bin/python3", "/app/worker"],
+    user = "65532",
+    workdir = "/app",
+)
+
+oci_load(
+    name = "bronze_worker_load",
+    image = ":bronze_worker_image",
+    repo_tags = ["jobsensai-bronze-worker:latest"],
+)
+
+oci_push(
+    name = "bronze_worker_push",
+    image = ":bronze_worker_image",
+    repository = "ghcr.io/oberpierre/jobsensai-bronze-worker",
+)
+
+# --- Silver worker: //scraper:silver_worker, Silver extraction ---
+
+platform_transition_filegroup(
+    name = "silver_worker_binary",
+    srcs = ["//scraper:silver_worker"],
+    target_platform = ":linux_x86_64",
+)
+
+pkg_tar(
+    name = "silver_worker_tar",
+    srcs = [":silver_worker_binary"],
+    include_runfiles = True,
+    package_dir = "/app",
+)
+
+oci_image(
+    name = "silver_worker_image",
+    base = "@distroless_python3_linux_amd64",
+    tars = [":silver_worker_tar"],
+    entrypoint = ["/usr/bin/python3", "/app/silver_worker"],
+    user = "65532",
+    workdir = "/app",
+)
+
+oci_load(
+    name = "silver_worker_load",
+    image = ":silver_worker_image",
+    repo_tags = ["jobsensai-silver-worker:latest"],
+)
+
+oci_push(
+    name = "silver_worker_push",
+    image = ":silver_worker_image",
+    repository = "ghcr.io/oberpierre/jobsensai-silver-worker",
+)
