@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import threading
 import unittest
 from unittest.mock import MagicMock, patch
@@ -149,6 +150,26 @@ class TestSilverWorker(unittest.TestCase):
     def test_setup_initialises_the_database(self, _mock_redis, mock_init_db):
         SilverWorker(SilverWorkerConfig()).setup()
         mock_init_db.assert_called_once()
+
+    @patch("scraper.silver_worker.init_db")
+    @patch("scraper.silver_worker.redis.Redis")
+    def test_setup_passes_credentials_from_env(self, mock_redis, _mock_init_db):
+        with patch.dict(
+            os.environ, {"REDIS_USERNAME": "user", "REDIS_PASSWORD": "password"}
+        ):
+            SilverWorker(SilverWorkerConfig()).setup()
+        self.assertEqual(mock_redis.call_args.kwargs["username"], "user")
+        self.assertEqual(mock_redis.call_args.kwargs["password"], "password")
+
+    @patch("scraper.silver_worker.init_db")
+    @patch("scraper.silver_worker.redis.Redis")
+    def test_setup_passes_none_credentials_when_unset(self, mock_redis, _mock_init_db):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("REDIS_USERNAME", None)
+            os.environ.pop("REDIS_PASSWORD", None)
+            SilverWorker(SilverWorkerConfig()).setup()
+        self.assertIsNone(mock_redis.call_args.kwargs["username"])
+        self.assertIsNone(mock_redis.call_args.kwargs["password"])
 
 
 if __name__ == "__main__":

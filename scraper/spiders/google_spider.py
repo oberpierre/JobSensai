@@ -10,6 +10,7 @@ Actual implementation will require:
 
 import json
 import logging
+import os
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -53,6 +54,8 @@ class GoogleSpider(BaseJobSpider):
         spider.redis_client = redis.Redis(
             host=redis_host,
             port=redis_port,
+            username=os.getenv("REDIS_USERNAME") or None,
+            password=os.getenv("REDIS_PASSWORD") or None,
             decode_responses=True,
         )
 

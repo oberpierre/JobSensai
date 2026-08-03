@@ -149,7 +149,12 @@ class LLMWorker:
         publisher: Publisher | None = None,
     ) -> None:
         self.llm_url = llm_url
-        self.redis_client = redis.Redis(host=redis_host, port=redis_port)
+        self.redis_client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            username=os.getenv("REDIS_USERNAME") or None,
+            password=os.getenv("REDIS_PASSWORD") or None,
+        )
         self.publisher = publisher or Publisher(repo_root=_WORKSPACE_ROOT)
         self.queue_names = queue_names or [
             "discovery_learning_tasks",
