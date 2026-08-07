@@ -5,12 +5,18 @@ load("@rules_pkg//:pkg.bzl", "pkg_tar")
 package(default_visibility = ["//visibility:private"])
 
 # The cluster node this ships to is amd64, so every py_binary packaged below
-# is cross-compiled to this platform via platform_transition_filegroup,
-# regardless of the host running `bazel build`. The base images are
-# referenced through their platform-suffixed repo (e.g.
-# @playwright_python_linux_amd64) rather than the plain alias, since the
-# plain alias is a select() keyed on the *current* configuration's cpu and
-# would fail to resolve when this package is built from an arm64 host.
+# is cross-compiled to this platform via platform_transition_filegroup, but
+# only the interpreter follows that transition. pip.parse() in MODULE.bazel
+# declares no platforms, so each wheel is resolved once against whatever
+# machine invokes `bazel build`, independent of this package's transition.
+# An image built on a non-linux/amd64 host therefore bundles a linux x86_64
+# interpreter next to host-native compiled wheels: it builds and loads
+# without complaint, then fails at the first compiled import. These images
+# are authoritative only when built on linux/amd64, which in practice means
+# CI. The base images are referenced through their platform-suffixed repo
+# (e.g. @playwright_python_linux_amd64) rather than the plain alias, since
+# the plain alias is a select() keyed on the *current* configuration's cpu
+# and would fail to resolve when this package is built from an arm64 host.
 platform(
     name = "linux_x86_64",
     constraint_values = [
@@ -38,9 +44,9 @@ oci_image(
     name = "crawler_image",
     base = "@playwright_python_linux_amd64",
     tars = [":crawler_tar"],
-    # The base has no /usr/bin/env, but is a full Ubuntu image with a shell,
-    # so the py_binary stub's own `#!/usr/bin/env python3` shebang resolves
-    # and the stub then re-execs into the hermetic 3.12 runfiles interpreter.
+    # The base has /usr/bin/env, being a full Ubuntu image with a shell, so
+    # the py_binary stub's own `#!/usr/bin/env python3` shebang resolves and
+    # the stub then re-execs into the hermetic 3.12 runfiles interpreter.
     entrypoint = ["/app/main"],
     user = "65532",
     workdir = "/app",
