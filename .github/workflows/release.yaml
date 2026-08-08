@@ -15,12 +15,12 @@ on:
     paths:
       - "scraper/**"
       - "adapters/**"
-      - "llm/**"
-      - "publisher/**"
       - "oci/**"
       - "MODULE.bazel"
       - "MODULE.bazel.lock"
       - "requirements_lock.txt"
+      - ".bazelversion"
+      - ".bazelrc"
       - ".github/workflows/release.yaml"
   push:
     branches:
@@ -28,13 +28,17 @@ on:
     paths:
       - "scraper/**"
       - "adapters/**"
-      - "llm/**"
-      - "publisher/**"
       - "oci/**"
       - "MODULE.bazel"
       - "MODULE.bazel.lock"
       - "requirements_lock.txt"
+      - ".bazelversion"
+      - ".bazelrc"
       - ".github/workflows/release.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -52,7 +56,12 @@ jobs:
         uses: actions/cache@v3
         with:
           path: "~/.cache/bazel"
-          key: bazel
+          key: release-bazel-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'requirements_lock.txt') }}
+          restore-keys: |
+            release-bazel-
+
+      - name: Bazel test
+        run: bazel test -- //...
 
       - name: Bazel build images
         run: bazel build -- //oci/...
@@ -102,11 +111,11 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      # Decision 0001: sha-<short> always, latest only on main. A pull request
-      # run therefore always publishes its immutable sha- tag and never moves
-      # latest. github.sha is the synthetic merge commit on a pull_request
-      # event, not a commit either side can point to, so the PR's own head
-      # commit is used when one exists.
+      # sha-<short> always, latest only on main. A pull request run therefore
+      # always publishes its immutable sha- tag and never moves latest.
+      # github.sha is the synthetic merge commit on a pull_request event, not
+      # a commit either side can point to, so the PR's own head commit is
+      # used when one exists.
       - name: Push images
         env:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
