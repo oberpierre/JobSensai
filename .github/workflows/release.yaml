@@ -38,7 +38,13 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # The push step runs three sequential, non-transactional `bazel run`
+  # invocations, one per image. GitHub Actions cancels by signalling the
+  # running process immediately, not at a step or job boundary, so a
+  # cancellation landing between two of those pushes would leave `latest`
+  # split across two commits with no failed job to show it. Queueing the
+  # next run behind this one instead keeps that from ever happening.
+  cancel-in-progress: false
 
 permissions:
   contents: read
