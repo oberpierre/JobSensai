@@ -1,0 +1,124 @@
+name: Build, smoke test & push images
+
+# Runs on ubuntu-latest, not the matrix build.yaml uses, because the images
+# built here embed third-party wheels resolved against whatever machine
+# invokes `bazel build`: only a linux/x86_64 build host produces linux/x86_64
+# wheels. Host and target architecture must agree here or the images are
+# wrong regardless of what the build reports.
+#
+# The pull_request trigger is temporary: it lets a human pull and run the
+# images from this branch before it merges. Remove it once that has happened.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "scraper/**"
+      - "adapters/**"
+      - "llm/**"
+      - "publisher/**"
+      - "oci/**"
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
+      - "requirements_lock.txt"
+      - ".github/workflows/release.yaml"
+  push:
+    branches:
+      - main
+    paths:
+      - "scraper/**"
+      - "adapters/**"
+      - "llm/**"
+      - "publisher/**"
+      - "oci/**"
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
+      - "requirements_lock.txt"
+      - ".github/workflows/release.yaml"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-smoke-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Cache bazel
+        uses: actions/cache@v3
+        with:
+          path: "~/.cache/bazel"
+          key: bazel
+
+      - name: Bazel build images
+        run: bazel build -- //oci/...
+
+      - name: Load images into the local daemon
+        run: |
+          bazel run //oci:crawler_load
+          bazel run //oci:bronze_worker_load
+          bazel run //oci:silver_worker_load
+
+      # scraper/main.py has no flag that stops short of an actual crawl, so this
+      # reaches for the same import chain a crawl needs instead: `import
+      # scrapy.crawler` alone pulls in lxml.html the way the real entrypoint
+      # does, which is exactly the import that fails when a wheel was resolved
+      # for the wrong platform. Invoking the bundled interpreter directly
+      # (rather than the /app/main stub) is what keeps this from starting Scrapy
+      # for real. --network none is belt and suspenders: this must never reach
+      # the network.
+      - name: Smoke test crawler image
+        run: |
+          docker run --rm --network none --entrypoint /bin/sh jobsensai-crawler:latest -c '
+            set -e
+            RF=/app/main.runfiles
+            PY=$(find "$RF" -maxdepth 3 -type f -name python3 | head -1)
+            PP=$(find "$RF" -maxdepth 1 -type d -name "rules_python++pip+*" | sed "s#\$#/site-packages#" | tr "\n" ":")
+            PYTHONPATH="$PP" "$PY" -c "import scrapy.crawler; print(\"crawler: interpreter and compiled dependencies resolve\")"
+          '
+
+      # worker.py and silver_worker.py both import scraper.database at module
+      # load, which resolves the psycopg2 driver before either ever touches
+      # Redis or Postgres. Reaching this log line is proof that import
+      # succeeded; the connection refusal that follows, since neither service
+      # exists here, is expected and not a smoke test failure.
+      - name: Smoke test bronze worker image
+        run: |
+          set +e
+          out=$(timeout 15 docker run --rm --network none jobsensai-bronze-worker:latest 2>&1)
+          set -e
+          echo "$out"
+          echo "$out" | grep -q "Initializing database" || { echo "bronze worker image did not reach application code"; exit 1; }
+
+      - name: Smoke test silver worker image
+        run: |
+          set +e
+          out=$(timeout 15 docker run --rm --network none jobsensai-silver-worker:latest 2>&1)
+          set -e
+          echo "$out"
+          echo "$out" | grep -q "Initializing database" || { echo "silver worker image did not reach application code"; exit 1; }
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # Decision 0001: sha-<short> always, latest only on main. A pull request
+      # run therefore always publishes its immutable sha- tag and never moves
+      # latest. github.sha is the synthetic merge commit on a pull_request
+      # event, not a commit either side can point to, so the PR's own head
+      # commit is used when one exists.
+      - name: Push images
+        env:
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          SHA_TAG="sha-${COMMIT_SHA:0:7}"
+          TAGS=(--tag "$SHA_TAG")
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAGS+=(--tag latest)
+          fi
+          bazel run //oci:crawler_push -- "${TAGS[@]}"
+          bazel run //oci:bronze_worker_push -- "${TAGS[@]}"
+          bazel run //oci:silver_worker_push -- "${TAGS[@]}"

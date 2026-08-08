@@ -62,6 +62,14 @@ oci_push(
     name = "crawler_push",
     image = ":crawler_image",
     repository = "ghcr.io/oberpierre/jobsensai-crawler",
+    # This target is deliberately not the one wrapped by platform_transition_filegroup
+    # above: it inherits whatever platform `bazel run` is invoked under, which is the
+    # host's by default. Restricting it to linux/x86_64 makes a push from any other
+    # host refuse instead of publishing an image whose wheels are that host's.
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
 )
 
 # --- Bronze worker: //scraper:worker, Redis to Postgres Bronze ingest ---
@@ -104,6 +112,10 @@ oci_push(
     name = "bronze_worker_push",
     image = ":bronze_worker_image",
     repository = "ghcr.io/oberpierre/jobsensai-bronze-worker",
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
 )
 
 # --- Silver worker: //scraper:silver_worker, Silver extraction ---
@@ -140,4 +152,8 @@ oci_push(
     name = "silver_worker_push",
     image = ":silver_worker_image",
     repository = "ghcr.io/oberpierre/jobsensai-silver-worker",
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
 )
