@@ -63,23 +63,20 @@ jobs:
           bazel run //oci:bronze_worker_load
           bazel run //oci:silver_worker_load
 
-      # scraper/main.py has no flag that stops short of an actual crawl, so this
-      # reaches for the same import chain a crawl needs instead: `import
-      # scrapy.crawler` alone pulls in lxml.html the way the real entrypoint
-      # does, which is exactly the import that fails when a wheel was resolved
-      # for the wrong platform. Invoking the bundled interpreter directly
-      # (rather than the /app/main stub) is what keeps this from starting Scrapy
-      # for real. --network none is belt and suspenders: this must never reach
-      # the network.
+      # No entrypoint override: this is the one image whose entrypoint mechanism
+      # is worth exercising, since /app/main depends on the base having
+      # /usr/bin/env so the py_binary stub's shebang resolves and re-execs into
+      # the hermetic interpreter (see the comment on crawler_image). Scrapy logs
+      # its own startup banner before the spider opens, and the pipeline needs
+      # Redis at spider-open time, so with none reachable here the process
+      # exits on its own without ever requesting a page.
       - name: Smoke test crawler image
         run: |
-          docker run --rm --network none --entrypoint /bin/sh jobsensai-crawler:latest -c '
-            set -e
-            RF=/app/main.runfiles
-            PY=$(find "$RF" -maxdepth 3 -type f -name python3 | head -1)
-            PP=$(find "$RF" -maxdepth 1 -type d -name "rules_python++pip+*" | sed "s#\$#/site-packages#" | tr "\n" ":")
-            PYTHONPATH="$PP" "$PY" -c "import scrapy.crawler; print(\"crawler: interpreter and compiled dependencies resolve\")"
-          '
+          set +e
+          out=$(timeout 15 docker run --rm --network none jobsensai-crawler:latest 2>&1)
+          set -e
+          echo "$out"
+          echo "$out" | grep -q "started (bot:" || { echo "crawler image did not reach application code"; exit 1; }
 
       # worker.py and silver_worker.py both import scraper.database at module
       # load, which resolves the psycopg2 driver before either ever touches
