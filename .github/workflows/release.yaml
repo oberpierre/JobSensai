@@ -115,22 +115,19 @@ jobs:
           echo "$out" | grep -q "Initializing database" || { echo "silver worker image did not reach application code"; exit 1; }
 
       - name: Log in to GHCR
+        if: github.event_name == 'push'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      # sha-<short> always, latest only on main. A pull request run therefore
-      # always publishes its immutable sha- tag and never moves latest.
-      # github.sha is the synthetic merge commit on a pull_request event, not
-      # a commit either side can point to, so the PR's own head commit is
-      # used when one exists.
+      # This step only runs on a push to main, so github.sha is always the
+      # commit being released rather than a synthetic merge commit, and
+      # every run of this step tags both sha-<short> and latest.
       - name: Push images
+        if: github.event_name == 'push'
         env:
-          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           SHA_TAG="sha-${COMMIT_SHA:0:7}"
-          TAGS=(--tag "$SHA_TAG")
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAGS+=(--tag latest)
-          fi
+          TAGS=(--tag "$SHA_TAG" --tag latest)
           bazel run //oci:crawler_push -- "${TAGS[@]}"
           bazel run //oci:bronze_worker_push -- "${TAGS[@]}"
           bazel run //oci:silver_worker_push -- "${TAGS[@]}"
