@@ -22,7 +22,9 @@ py_library(
     ],
 )
 
-# Main scraper binary
+# Main scraper binary. No data edge on //:env: this binary is packaged into
+# an image, and configuration there arrives as env vars from the deploy's
+# Secrets, never from a bundled file.
 py_binary(
     name = "main",
     srcs = ["main.py"],
@@ -31,20 +33,14 @@ py_binary(
         ":scraper_lib",
         "@pip//python_dotenv",
     ],
-    data = [
-        "//:env",
-    ],
     python_version = "PY3",
 )
 
-# Worker binary
+# Worker binary. Same reasoning as :main.
 py_binary(
     name = "worker",
     srcs = ["worker.py"],
     imports = ["."],
-    data = [
-        "//:env",
-    ],
     deps = [
         ":scraper_lib",
         "@pip//python_dotenv",
@@ -52,14 +48,11 @@ py_binary(
     python_version = "PY3",
 )
 
-# Silver Worker binary
+# Silver Worker binary. Same reasoning as :main.
 py_binary(
     name = "silver_worker",
     srcs = ["silver_worker.py"],
     imports = ["."],
-    data = [
-        "//:env",
-    ],
     deps = [
         ":scraper_lib",
         "@pip//python_dotenv",

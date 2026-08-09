@@ -23,3 +23,37 @@ use_repo(pip, "pip")
 # Aspect rules for linting and formatting integration with Bazel
 # Provides: format targets, lint_test macro, and lint aspects
 bazel_dep(name = "aspect_rules_lint", version = "2.0.0")
+
+# OCI image building: daemonless, so CI needs no Docker socket, and it keeps
+# the image graph in Bazel where the binaries already are.
+bazel_dep(name = "rules_oci", version = "2.3.0")
+
+# pkg_tar packages py_binary runfiles into image layers
+bazel_dep(name = "rules_pkg", version = "1.2.0")
+
+# Direct dep so oci/BUILD.bazel can reference @platforms and the
+# platform_transition_filegroup macro; both already ride in via rules_oci
+# transitively, but bzlmod only resolves @-names for a module's own bazel_deps.
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "aspect_bazel_lib", version = "2.22.5")
+
+# The cluster node these images run on is amd64; the dev machine's own
+# architecture is irrelevant to what gets built here.
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "playwright_python",
+    image = "mcr.microsoft.com/playwright/python",
+    # v1.55.0-noble multi-arch index, matching the playwright==1.55.0 pin in
+    # requirements_lock.txt. Confirmed to exist 2026-08-03.
+    digest = "sha256:640d578aae63cfb632461d1b0aecb01414e4e020864ac3dd45a868dc0eff3078",
+    platforms = ["linux/amd64"],
+)
+use_repo(oci, "playwright_python", "playwright_python_linux_amd64")
+
+oci.pull(
+    name = "distroless_python3",
+    image = "gcr.io/distroless/python3-debian12",
+    digest = "sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
+    platforms = ["linux/amd64"],
+)
+use_repo(oci, "distroless_python3", "distroless_python3_linux_amd64")

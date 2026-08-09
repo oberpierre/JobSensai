@@ -1,0 +1,133 @@
+name: Build, smoke test & push images
+
+# Runs on ubuntu-latest, not the matrix build.yaml uses, because the images
+# built here embed third-party wheels resolved against whatever machine
+# invokes `bazel build`: only a linux/x86_64 build host produces linux/x86_64
+# wheels. Host and target architecture must agree here or the images are
+# wrong regardless of what the build reports.
+#
+# The pull_request trigger is temporary: it lets a human pull and run the
+# images from this branch before it merges. Remove it once that has happened.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "scraper/**"
+      - "adapters/**"
+      - "oci/**"
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
+      - "requirements_lock.txt"
+      - ".bazelversion"
+      - ".bazelrc"
+      - ".github/workflows/release.yaml"
+  push:
+    branches:
+      - main
+    paths:
+      - "scraper/**"
+      - "adapters/**"
+      - "oci/**"
+      - "MODULE.bazel"
+      - "MODULE.bazel.lock"
+      - "requirements_lock.txt"
+      - ".bazelversion"
+      - ".bazelrc"
+      - ".github/workflows/release.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # The push step runs three sequential, non-transactional `bazel run`
+  # invocations, one per image. GitHub Actions cancels by signalling the
+  # running process immediately, not at a step or job boundary, so a
+  # cancellation landing between two of those pushes would leave `latest`
+  # split across two commits with no failed job to show it. Queueing the
+  # next run behind this one instead keeps that from ever happening.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-smoke-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Cache bazel
+        uses: actions/cache@v6
+        with:
+          path: "~/.cache/bazel"
+          key: release-bazel-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'requirements_lock.txt') }}
+          restore-keys: |
+            release-bazel-
+
+      - name: Bazel test
+        run: bazel test -- //...
+
+      - name: Bazel build images
+        run: bazel build -- //oci/...
+
+      - name: Load images into the local daemon
+        run: |
+          bazel run //oci:crawler_load
+          bazel run //oci:bronze_worker_load
+          bazel run //oci:silver_worker_load
+
+      # No entrypoint override: this is the one image whose entrypoint mechanism
+      # is worth exercising, since /app/main depends on the base having
+      # /usr/bin/env so the py_binary stub's shebang resolves and re-execs into
+      # the hermetic interpreter (see the comment on crawler_image). Scrapy logs
+      # its own startup banner before the spider opens, and the pipeline needs
+      # Redis at spider-open time, so with none reachable here the process
+      # exits on its own without ever requesting a page.
+      - name: Smoke test crawler image
+        run: |
+          set +e
+          out=$(timeout 15 docker run --rm --network none jobsensai-crawler:latest 2>&1)
+          set -e
+          echo "$out"
+          echo "$out" | grep -q "started (bot:" || { echo "crawler image did not reach application code"; exit 1; }
+
+      # worker.py and silver_worker.py both import scraper.database at module
+      # load, which resolves the psycopg2 driver before either ever touches
+      # Redis or Postgres. Reaching this log line is proof that import
+      # succeeded; the connection refusal that follows, since neither service
+      # exists here, is expected and not a smoke test failure.
+      - name: Smoke test bronze worker image
+        run: |
+          set +e
+          out=$(timeout 15 docker run --rm --network none jobsensai-bronze-worker:latest 2>&1)
+          set -e
+          echo "$out"
+          echo "$out" | grep -q "Initializing database" || { echo "bronze worker image did not reach application code"; exit 1; }
+
+      - name: Smoke test silver worker image
+        run: |
+          set +e
+          out=$(timeout 15 docker run --rm --network none jobsensai-silver-worker:latest 2>&1)
+          set -e
+          echo "$out"
+          echo "$out" | grep -q "Initializing database" || { echo "silver worker image did not reach application code"; exit 1; }
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # This step only runs on a push to main, so github.sha is always the
+      # commit being released rather than a synthetic merge commit, and
+      # every run of this step tags both sha-<short> and latest.
+      - name: Push images
+        if: github.event_name == 'push'
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          SHA_TAG="sha-${COMMIT_SHA:0:7}"
+          TAGS=(--tag "$SHA_TAG" --tag latest)
+          bazel run //oci:crawler_push -- "${TAGS[@]}"
+          bazel run //oci:bronze_worker_push -- "${TAGS[@]}"
+          bazel run //oci:silver_worker_push -- "${TAGS[@]}"
