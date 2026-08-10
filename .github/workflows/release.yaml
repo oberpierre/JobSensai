@@ -17,6 +17,7 @@ on:
       - "scraper/**"
       - "adapters/**"
       - "oci/**"
+      - "deploy/**"
       - "MODULE.bazel"
       - "MODULE.bazel.lock"
       - "requirements_lock.txt"
@@ -30,6 +31,7 @@ on:
       - "scraper/**"
       - "adapters/**"
       - "oci/**"
+      - "deploy/**"
       - "MODULE.bazel"
       - "MODULE.bazel.lock"
       - "requirements_lock.txt"
@@ -157,12 +159,15 @@ jobs:
       # Built here rather than passed with secrets: inherit, which would also
       # forward a same-named registry_password from this workflow's own
       # (unused, single-app) secret surface instead of the application's PAT.
+      # Each password is wrapped in toJSON rather than interpolated between quotes:
+      # a value containing a quote, a backslash or a newline would otherwise break
+      # the object below into invalid JSON. toJSON supplies its own quoting.
       ansible_extra_vars: |
         {
-          "registry_password": "${{ secrets.JOBSENSAI_REGISTRY_PAT }}",
-          "app_db_password": "${{ secrets.JOBSENSAI_DB_PASSWORD }}",
-          "app_redis_password": "${{ secrets.JOBSENSAI_REDIS_PASSWORD }}",
-          "app_llm_redis_password": "${{ secrets.JOBSENSAI_LLM_REDIS_PASSWORD }}",
+          "registry_password": ${{ toJSON(secrets.JOBSENSAI_REGISTRY_PAT) }},
+          "app_db_password": ${{ toJSON(secrets.JOBSENSAI_DB_PASSWORD) }},
+          "app_redis_password": ${{ toJSON(secrets.JOBSENSAI_REDIS_PASSWORD) }},
+          "app_llm_redis_password": ${{ toJSON(secrets.JOBSENSAI_LLM_REDIS_PASSWORD) }},
           "bronze_worker_image": "ghcr.io/oberpierre/jobsensai-bronze-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
           "silver_worker_image": "ghcr.io/oberpierre/jobsensai-silver-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
           "crawler_image": "ghcr.io/oberpierre/jobsensai-crawler:sha-${{ needs.build-smoke-push.outputs.short_sha }}"

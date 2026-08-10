@@ -48,13 +48,22 @@ workloads:
     replicas: 1
     env_from: [jobsensai-postgres, jobsensai-redis]
     # service: and ingress: are omitted -> no Service, no Ingress
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
   - name: silver-worker
     kind: Deployment
     image: "{{ silver_worker_image }}"
     replicas: 1
     env_from: [jobsensai-postgres, jobsensai-redis]
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
   - name: crawler
     kind: CronJob
     schedule: "0 3 * * *"
     image: "{{ crawler_image }}"
     env_from: [jobsensai-postgres, jobsensai-redis]
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { cpu: 2000m, memory: 2Gi }
