@@ -6,8 +6,9 @@ name: Build, smoke test & push images
 # wheels. Host and target architecture must agree here or the images are
 # wrong regardless of what the build reports.
 #
-# The pull_request trigger is temporary: it lets a human pull and run the
-# images from this branch before it merges. Remove it once that has happened.
+# The pull_request trigger is permanent, not a stepping stone to the push
+# trigger: it builds and smoke-tests every image and publishes none of them,
+# so a broken image fails the pull request rather than a push to main.
 on:
   pull_request:
     branches:
@@ -53,6 +54,8 @@ permissions:
 jobs:
   build-smoke-push:
     runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{ steps.push.outputs.short_sha }}
 
     steps:
       - name: Checkout code
@@ -122,12 +125,45 @@ jobs:
       # commit being released rather than a synthetic merge commit, and
       # every run of this step tags both sha-<short> and latest.
       - name: Push images
+        id: push
         if: github.event_name == 'push'
         env:
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          SHA_TAG="sha-${COMMIT_SHA:0:7}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          SHA_TAG="sha-$SHORT_SHA"
           TAGS=(--tag "$SHA_TAG" --tag latest)
           bazel run //oci:crawler_push -- "${TAGS[@]}"
           bazel run //oci:bronze_worker_push -- "${TAGS[@]}"
           bazel run //oci:silver_worker_push -- "${TAGS[@]}"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+  # needs: alone is not a push-only gate: on a pull_request the push step above
+  # is skipped but the job it lives in still succeeds, so a dependent job with
+  # no condition of its own would run anyway, with short_sha empty because the
+  # step that sets it never ran. This job's own if: is what keeps a pull
+  # request from ever reaching the deploy secrets.
+  deploy:
+    needs: build-smoke-push
+    if: github.event_name == 'push'
+    uses: oberpierre/tools/.github/workflows/deploy-to-k8s.yml@v1
+    with:
+      playbook: k8s_deploy_workloads.yml
+      ansible_var_file: deploy/jobsensai.yml
+    secrets:
+      ansible_inventory_content: ${{ secrets.ANSIBLE_INVENTORY }}
+      ssh_known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+      # Built here rather than passed with secrets: inherit, which would also
+      # forward a same-named registry_password from this workflow's own
+      # (unused, single-app) secret surface instead of the application's PAT.
+      ansible_extra_vars: |
+        {
+          "registry_password": "${{ secrets.JOBSENSAI_REGISTRY_PAT }}",
+          "app_db_password": "${{ secrets.JOBSENSAI_DB_PASSWORD }}",
+          "app_redis_password": "${{ secrets.JOBSENSAI_REDIS_PASSWORD }}",
+          "app_llm_redis_password": "${{ secrets.JOBSENSAI_LLM_REDIS_PASSWORD }}",
+          "bronze_worker_image": "ghcr.io/oberpierre/jobsensai-bronze-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
+          "silver_worker_image": "ghcr.io/oberpierre/jobsensai-silver-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
+          "crawler_image": "ghcr.io/oberpierre/jobsensai-crawler:sha-${{ needs.build-smoke-push.outputs.short_sha }}"
+        }
