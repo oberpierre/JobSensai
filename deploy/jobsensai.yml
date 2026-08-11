@@ -61,9 +61,14 @@ workloads:
       limits: { cpu: 1000m, memory: 1Gi }
   - name: crawler
     kind: CronJob
-    schedule: "0 3 * * *"
+    schedule: "0 6 * * *"
     image: "{{ crawler_image }}"
     env_from: [jobsensai-postgres, jobsensai-redis]
+    # Sized for an HTTP crawler: no DOWNLOAD_HANDLERS is set and no request goes
+    # through scrapy-playwright, so no Chromium page ever launches. Wiring
+    # scrapy-playwright must raise this limit or cap concurrency explicitly in the
+    # same change, since each concurrent request then becomes a browser page costing
+    # roughly 150-300Mi resident. The node has 12Gi total.
     resources:
       requests: { cpu: 200m, memory: 512Mi }
       limits: { cpu: 2000m, memory: 2Gi }
