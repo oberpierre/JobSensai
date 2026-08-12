@@ -30,10 +30,6 @@ on:
   push:
     branches:
       - main
-      # Temporary, for the first deploy against the live cluster. A push here is a
-      # real push event, so images build with a real sha and the deploy job's own
-      # condition is satisfied without weakening it. Revert once a run has succeeded.
-      - feature/release-pipeline
     paths: *release_paths
 
 concurrency:
