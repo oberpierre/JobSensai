@@ -164,7 +164,7 @@ jobs:
       # otherwise break the object below into invalid JSON.
       ansible_extra_vars: |
         {
-          "registry_password": ${{ toJSON(secrets.JOBSENSAI_REGISTRY_PAT) }},
+          "registry_password": ${{ toJSON(secrets.JOBSENSAI_GHCR_PAT) }},
           "app_db_password": ${{ toJSON(secrets.JOBSENSAI_DB_PASSWORD) }},
           "app_redis_password": ${{ toJSON(secrets.JOBSENSAI_REDIS_PASSWORD) }},
           "app_llm_redis_password": ${{ toJSON(secrets.JOBSENSAI_LLM_REDIS_PASSWORD) }},
