@@ -141,10 +141,9 @@ jobs:
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
   # needs: alone is not a push-only gate: on a pull_request the push step above
-  # is skipped but the job it lives in still succeeds, so a dependent job with
-  # no condition of its own would run anyway, with short_sha empty because the
-  # step that sets it never ran. This job's own if: is what keeps a pull
-  # request from ever reaching the deploy secrets.
+  # is skipped but the job it lives in still succeeds, so short_sha would be
+  # empty. This job's own if: is what keeps a pull request from ever
+  # reaching the deploy secrets.
   deploy:
     needs: build-smoke-push
     if: github.event_name == 'push'
@@ -153,15 +152,16 @@ jobs:
       playbook: k8s_deploy_workloads.yml
       ansible_var_file: deploy/jobsensai.yml
     secrets:
+      # Passed explicitly, not via secrets: inherit, so each secret's mapping
+      # is visible at the call site rather than depending on this
+      # repository's secret names matching the reusable workflow's input
+      # names.
       ansible_inventory_content: ${{ secrets.ANSIBLE_INVENTORY }}
       ssh_known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
-      # Built here rather than passed with secrets: inherit, which would also
-      # forward a same-named registry_password from this workflow's own
-      # (unused, single-app) secret surface instead of the application's PAT.
-      # Each password is wrapped in toJSON rather than interpolated between quotes:
-      # a value containing a quote, a backslash or a newline would otherwise break
-      # the object below into invalid JSON. toJSON supplies its own quoting.
+      # Each password is wrapped in toJSON rather than interpolated between
+      # quotes: a value containing a quote, backslash or newline would
+      # otherwise break the object below into invalid JSON.
       ansible_extra_vars: |
         {
           "registry_password": ${{ toJSON(secrets.JOBSENSAI_REGISTRY_PAT) }},

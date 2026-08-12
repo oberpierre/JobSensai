@@ -14,10 +14,9 @@ postgres_databases:
     password: "{{ app_db_password }}"
 
 redis_users:
-  # The off-cluster learning worker's user is registered here too, even though it
-  # never reads a Secret in this namespace: registration happens once, in this
-  # deploy, and its credential is handed to the operator separately. Identifiers
-  # are used as SQL and ACL identifiers unquoted, so they must stay plain.
+  # The off-cluster learning worker's user is registered here too, even though
+  # it never reads a Secret in this namespace: registration happens once, in
+  # this deploy, and its credential is handed to the operator separately.
   - name: jobsensai
     password: "{{ app_redis_password }}"
     # +@connection is required or PING is denied, which breaks client health checks.
@@ -66,12 +65,11 @@ workloads:
     # clear of the 02:00-05:00 UTC backup/verify window.
     schedule: "0 */6 * * *"
     image: "{{ crawler_image }}"
-    env_from: [jobsensai-postgres, jobsensai-redis]
-    # Sized for an HTTP crawler: no DOWNLOAD_HANDLERS is set and no request goes
-    # through scrapy-playwright, so no Chromium page ever launches. Wiring
-    # scrapy-playwright must raise this limit or cap concurrency explicitly in the
-    # same change, since each concurrent request then becomes a browser page costing
-    # roughly 150-300Mi resident. The node has 12Gi total.
+    env_from: [jobsensai-redis]
+    # Sized for an HTTP crawler: no request goes through scrapy-playwright, so
+    # no Chromium page ever launches. Wiring scrapy-playwright must raise this
+    # limit or cap concurrency in the same change, since each concurrent
+    # request would then become a browser page.
     resources:
       requests: { cpu: 200m, memory: 512Mi }
       limits: { cpu: 2000m, memory: 2Gi }
