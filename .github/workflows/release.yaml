@@ -13,7 +13,10 @@ on:
   pull_request:
     branches:
       - main
-    paths:
+    # Anchored so the push trigger below reuses this exact list. The two must stay
+    # identical: one filter deciding whether a pull request builds and a different
+    # one deciding whether main deploys would let a path reach the cluster untested.
+    paths: &release_paths
       - "scraper/**"
       - "adapters/**"
       - "oci/**"
@@ -27,17 +30,7 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "scraper/**"
-      - "adapters/**"
-      - "oci/**"
-      - "deploy/**"
-      - "MODULE.bazel"
-      - "MODULE.bazel.lock"
-      - "requirements_lock.txt"
-      - ".bazelversion"
-      - ".bazelrc"
-      - ".github/workflows/release.yaml"
+    paths: *release_paths
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
