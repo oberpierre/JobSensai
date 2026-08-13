@@ -208,7 +208,7 @@ class TestLLMWorker(unittest.TestCase):
         self._assert_lease_released()
 
     def test_unknown_pr_state_fails_closed(self):
-        """A wrong skip costs one crawl; a wrong re-learn costs a GPU run."""
+        """A wrong skip costs one crawl, whereas a wrong re-learn costs a GPU run."""
         self.mock_publisher.has_existing_pr.return_value = None
         self._run_extraction_task(passed=True)
 
@@ -359,7 +359,8 @@ class TestLearnDiscovery(unittest.TestCase):
         # The code fence was stripped from the written adapter source.
         self.assertEqual(adapter_src.strip(), "class AcmeComDiscoveryAdapter: pass")
 
-        # index.html keeps the full page; both agents saw only the pruned skeleton.
+        # index.html keeps the full page, whereas both agents saw only the
+        # pruned skeleton.
         self.assertIn("prose, no links", index_html)
         lean_truth = llm.generate_expected.call_args.args[1]
         lean_code = llm.generate_code.call_args.args[1]

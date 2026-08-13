@@ -41,8 +41,9 @@ def prune_to_links(html: str) -> str:
         keep.update(id(d) for d in anchor.descendants if isinstance(d, Tag))
         keep.update(id(p) for p in anchor.parents if isinstance(p, Tag))
 
-    # Remove each non-kept node sitting directly under a kept one; that takes its whole
-    # (also-unwanted) subtree with it, so deeper nodes need no separate handling.
+    # Remove each non-kept node sitting directly under a kept one, because that
+    # takes its whole (also-unwanted) subtree with it, so deeper nodes need no
+    # separate handling.
     to_remove = [
         tag
         for tag in soup.find_all(True)

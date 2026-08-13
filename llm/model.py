@@ -8,7 +8,7 @@ from langchain_ollama import OllamaLLM
 logger = logging.getLogger(__name__)
 
 # How much cleaned HTML to put in a prompt. The old 8k cap dropped everything on real
-# pages — a listing's job links can start ~70k chars in — so the model saw only the
+# pages: a listing's job links can start ~70k chars in — so the model saw only the
 # header/nav. Keep within the model's context window (see OLLAMA_NUM_CTX).
 _HTML_CHAR_BUDGET = int(os.getenv("LLM_HTML_CHARS", "120000"))
 

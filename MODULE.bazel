@@ -32,12 +32,12 @@ bazel_dep(name = "rules_oci", version = "2.3.0")
 bazel_dep(name = "rules_pkg", version = "1.2.0")
 
 # Direct dep so oci/BUILD.bazel can reference @platforms and the
-# platform_transition_filegroup macro; both already ride in via rules_oci
+# platform_transition_filegroup macro because both already ride in via rules_oci
 # transitively, but bzlmod only resolves @-names for a module's own bazel_deps.
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "aspect_bazel_lib", version = "2.22.5")
 
-# The cluster node these images run on is amd64; the dev machine's own
+# The cluster node these images run on is amd64, so the dev machine's own
 # architecture is irrelevant to what gets built here.
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(

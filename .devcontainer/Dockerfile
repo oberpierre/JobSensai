@@ -22,7 +22,7 @@ RUN apt-get install -y software-properties-common \
 
 # The tool downloads select their artifact by the build host's architecture so the
 # devcontainer builds on both amd64 and arm64. Each tool has a per-arch checksum
-# (dev-mode skips verification for a bare `docker build`; compose passes the real ones).
+# (dev-mode skips verification for a bare `docker build`, whereas compose passes the real ones).
 
 # Install Bazel
 ARG BAZEL_VERSION=8.4.2

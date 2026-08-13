@@ -45,7 +45,8 @@ class AdapterRegistry:
 
     @staticmethod
     def _warn_on_collision(registry: dict, domain: str, adapter_cls: type) -> None:
-        """Surface a same-domain overwrite; _auto_discover order decides the winner.
+        """Surface a same-domain overwrite, though _auto_discover order decides the
+        winner.
 
         Two adapters claiming one domain (a generated ``google_com_extraction_v1``
         next to a hand-written ``google_extraction_v1``) otherwise resolve silently by

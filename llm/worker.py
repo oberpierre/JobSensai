@@ -114,7 +114,7 @@ class {test_class}(DiscoverySnapshotTest, unittest.TestCase):
     fixture_dir = "{basename}"
 """
 
-# Same deterministic boilerplate for extraction; ExtractionSnapshotTest holds the
+# Same deterministic boilerplate for extraction because ExtractionSnapshotTest holds the
 # grounded per-field comparison against the snapshot.
 _EXTRACTION_TEST_TEMPLATE = """import unittest
 
@@ -219,9 +219,9 @@ class LLMWorker:
     ) -> None:
         """Truth agent → full-page fixture, grounded ``expected.json``, and the test.
 
-        The truth agent sees only the lean skeleton; the stored ``index.html`` is the
-        full cleaned page, so an adapter's selectors are later tested against everything
-        a real page holds (catching over-selection).
+        The truth agent sees only the lean skeleton, whereas the stored ``index.html``
+        is the full cleaned page, so an adapter's selectors are later tested against
+        everything a real page holds (catching over-selection).
         """
         truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
@@ -247,7 +247,7 @@ class LLMWorker:
 
         Unlike discovery, the page is cleaned but never pruned: extraction reads the
         posting's content, so both agents need the whole page rather than a link-only
-        skeleton. The truth agent snapshots the fields; the code agent then writes the
+        skeleton. The truth agent snapshots the fields. The code agent then writes the
         adapter from the same cleaned HTML — never from the snapshot.
         """
         names = _adapter_names(domain, "extraction")
@@ -303,10 +303,10 @@ class LLMWorker:
         (_ADAPTERS_DIR / f"{names.basename}.py").write_text(adapter_src)
 
     def _run_adapter_tests(self) -> tuple[bool, str]:
-        """Run the adapter suite once; return whether it passed and its output.
+        """Run the adapter suite once. Return whether it passed and its output.
 
         The output is carried back rather than only logged because it becomes the body
-        of the PR — a red run has to tell the reviewer what broke.
+        of the PR: a red run has to tell the reviewer what broke.
         """
         result = subprocess.run(
             ["bazel", "test", "//adapters:adapter_test", "--test_output=errors"],
@@ -370,7 +370,8 @@ class LLMWorker:
 
             # The lease only dedups tasks racing in one scrape run. Across runs the
             # board still has no adapter until its PR merges and the scraper redeploys,
-            # so every crawl re-enqueues; GitHub is what knows the work is already done.
+            # so every crawl re-enqueues, because GitHub is what knows the work
+            # is already done.
             names = _adapter_names(domain, adapter_type)
             if self.publisher.has_existing_pr(names.basename) is not False:
                 # None means GitHub could not be reached. Treated as "already open"
@@ -429,7 +430,7 @@ def _worker_from_env() -> LLMWorker:
     ollama_host = os.getenv("OLLAMA_HOST", "localhost")
     ollama_port = os.getenv("OLLAMA_PORT", "11434")
     # OLLAMA_HOST is a host, but a scheme is an easy mistake to make (main.py's URL,
-    # the compose value); drop it rather than build http://http://...
+    # the compose value), so drop it rather than build http://http://...
     host = ollama_host.split("://", 1)[-1]
     return LLMWorker(
         llm_url=f"http://{host}:{ollama_port}",

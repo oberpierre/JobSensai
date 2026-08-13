@@ -34,7 +34,7 @@ def crawl_outcome(stats: Mapping[str, object]) -> tuple[int, str]:
 
 
 def main() -> None:
-    """Run Scrapy crawler; exit non-zero if it scraped nothing or logged an error."""
+    """Run Scrapy crawler. Exits non-zero if it scraped nothing or logged an error."""
     import scraper.settings as settings
     from scraper.spiders.google_spider import GoogleSpider
 

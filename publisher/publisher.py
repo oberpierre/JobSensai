@@ -12,7 +12,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Marks machine-generated commits; reserved for the agent runner.
+# Marks machine-generated commits. Reserved for the agent runner.
 AGENT_TRAILER = "Co-Authored-By: JobSensai Agent <agent@jobsensai.dev>"
 
 
@@ -105,9 +105,9 @@ class Publisher:
     def _restore_base_branch(self) -> None:
         """Return the clone to the base branch after publishing.
 
-        The agent runner is long-lived and publishes one adapter per task; without this
-        the next task would branch off the previous adapter's branch and its PR would
-        carry both adapters.
+        The agent runner is long-lived and publishes one adapter per task, so without
+        this the next task would branch off the previous adapter's branch and its PR
+        would carry both adapters.
         """
         try:
             self._git("checkout", self.base_branch)
