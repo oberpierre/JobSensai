@@ -30,6 +30,10 @@ on:
   push:
     branches:
       - main
+      # Temporary, to validate the crawler fix and the bumped tools workflow in one
+      # real deploy. A push here is a genuine push event, so the deploy job's own
+      # condition is satisfied without weakening it. Revert once a run has passed.
+      - bugfix/crawler-cache-and-failure-reporting
     paths: *release_paths
 
 concurrency:
@@ -140,7 +144,7 @@ jobs:
   deploy:
     needs: build-smoke-push
     if: github.event_name == 'push'
-    uses: oberpierre/tools/.github/workflows/deploy-to-k8s.yml@v1
+    uses: oberpierre/tools/.github/workflows/deploy-to-k8s.yml@improvement/action-versions
     with:
       playbook: k8s_deploy_workloads.yml
       ansible_var_file: deploy/jobsensai.yml
