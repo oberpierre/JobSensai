@@ -3,6 +3,14 @@ import os
 
 LOG_LEVEL = "INFO"
 
+BOT_NAME = "jobsensai"
+USER_AGENT = "JobSensaiBot/1.0 (+https://github.com/oberpierre/JobSensai)"
+ROBOTSTXT_OBEY = True
+AUTOTHROTTLE_ENABLED = True
+AUTOTHROTTLE_START_DELAY = 1.0
+AUTOTHROTTLE_MAX_DELAY = 10.0
+AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
+
 HTTPCACHE_ENABLED = True
 HTTPCACHE_EXPIRATION_SECS = 86400  # 1 day
 # Absolute so Scrapy's data_path() skips joining under .scrapy: the image's
