@@ -6,16 +6,21 @@ name: Build, smoke test & push images
 # wheels. Host and target architecture must agree here or the images are
 # wrong regardless of what the build reports.
 #
-# The pull_request trigger is temporary: it lets a human pull and run the
-# images from this branch before it merges. Remove it once that has happened.
+# The pull_request trigger is permanent, not a stepping stone to the push
+# trigger: it builds and smoke-tests every image and publishes none of them,
+# so a broken image fails the pull request rather than a push to main.
 on:
   pull_request:
     branches:
       - main
-    paths:
+    # Anchored so the push trigger below reuses this exact list. The two must stay
+    # identical: one filter deciding whether a pull request builds and a different
+    # one deciding whether main deploys would let a path reach the cluster untested.
+    paths: &release_paths
       - "scraper/**"
       - "adapters/**"
       - "oci/**"
+      - "deploy/**"
       - "MODULE.bazel"
       - "MODULE.bazel.lock"
       - "requirements_lock.txt"
@@ -25,16 +30,7 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "scraper/**"
-      - "adapters/**"
-      - "oci/**"
-      - "MODULE.bazel"
-      - "MODULE.bazel.lock"
-      - "requirements_lock.txt"
-      - ".bazelversion"
-      - ".bazelrc"
-      - ".github/workflows/release.yaml"
+    paths: *release_paths
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -53,6 +49,8 @@ permissions:
 jobs:
   build-smoke-push:
     runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{ steps.push.outputs.short_sha }}
 
     steps:
       - name: Checkout code
@@ -122,12 +120,48 @@ jobs:
       # commit being released rather than a synthetic merge commit, and
       # every run of this step tags both sha-<short> and latest.
       - name: Push images
+        id: push
         if: github.event_name == 'push'
         env:
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          SHA_TAG="sha-${COMMIT_SHA:0:7}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          SHA_TAG="sha-$SHORT_SHA"
           TAGS=(--tag "$SHA_TAG" --tag latest)
           bazel run //oci:crawler_push -- "${TAGS[@]}"
           bazel run //oci:bronze_worker_push -- "${TAGS[@]}"
           bazel run //oci:silver_worker_push -- "${TAGS[@]}"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+  # needs: alone is not a push-only gate: on a pull_request the push step above
+  # is skipped but the job it lives in still succeeds, so short_sha would be
+  # empty. This job's own if: is what keeps a pull request from ever
+  # reaching the deploy secrets.
+  deploy:
+    needs: build-smoke-push
+    if: github.event_name == 'push'
+    uses: oberpierre/tools/.github/workflows/deploy-to-k8s.yml@v1
+    with:
+      playbook: k8s_deploy_workloads.yml
+      ansible_var_file: deploy/jobsensai.yml
+    secrets:
+      # Passed explicitly, not via secrets: inherit, so each secret's mapping
+      # is visible at the call site rather than depending on this
+      # repository's secret names matching the reusable workflow's input
+      # names.
+      ansible_inventory_content: ${{ secrets.ANSIBLE_INVENTORY }}
+      ssh_known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+      # Each password is wrapped in toJSON rather than interpolated between
+      # quotes: a value containing a quote, backslash or newline would
+      # otherwise break the object below into invalid JSON.
+      ansible_extra_vars: |
+        {
+          "registry_password": ${{ toJSON(secrets.JOBSENSAI_GHCR_PAT) }},
+          "app_db_password": ${{ toJSON(secrets.JOBSENSAI_DB_PASSWORD) }},
+          "app_redis_password": ${{ toJSON(secrets.JOBSENSAI_REDIS_PASSWORD) }},
+          "app_llm_redis_password": ${{ toJSON(secrets.JOBSENSAI_LLM_REDIS_PASSWORD) }},
+          "bronze_worker_image": "ghcr.io/oberpierre/jobsensai-bronze-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
+          "silver_worker_image": "ghcr.io/oberpierre/jobsensai-silver-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
+          "crawler_image": "ghcr.io/oberpierre/jobsensai-crawler:sha-${{ needs.build-smoke-push.outputs.short_sha }}"
+        }

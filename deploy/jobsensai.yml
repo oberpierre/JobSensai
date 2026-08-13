@@ -1,0 +1,75 @@
+app_name: jobsensai
+app_namespace: jobsensai
+
+# Credential for pulling the three private images. All three keys are required
+# together, or the deploy rejects the file before anything is applied.
+registry:
+  host: ghcr.io
+  username: oberpierre
+  password: "{{ registry_password }}"
+
+postgres_databases:
+  - name: jobsensai
+    user: jobsensai
+    password: "{{ app_db_password }}"
+
+redis_users:
+  # The off-cluster learning worker's user is registered here too, even though
+  # it never reads a Secret in this namespace: registration happens once, in
+  # this deploy, and its credential is handed to the operator separately.
+  - name: jobsensai
+    password: "{{ app_redis_password }}"
+    # +@connection is required or PING is denied, which breaks client health checks.
+    acl: "~raw_job_items ~silver_generation_tasks ~*_learning_tasks ~LEARNING_IN_PROGRESS:* +@read +@write +@list +@connection"
+  - name: jobsensai-llm
+    password: "{{ app_llm_redis_password }}"
+    acl: "~*_learning_tasks ~LEARNING_IN_PROGRESS:* +@read +@write +@list +@connection"
+
+# Only the in-cluster user's credential is written here; in-cluster workloads read
+# it via envFrom, the off-cluster worker does not run under this namespace at all.
+app_secrets:
+  jobsensai-postgres:
+    POSTGRES_HOST: postgresql.data-services.svc.cluster.local
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: jobsensai
+    POSTGRES_USER: jobsensai
+    POSTGRES_PASSWORD: "{{ app_db_password }}"
+  jobsensai-redis:
+    REDIS_HOST: redis-master.data-services.svc.cluster.local
+    REDIS_PORT: "6379"
+    REDIS_USERNAME: jobsensai # must match a redis_users name above
+    REDIS_PASSWORD: "{{ app_redis_password }}"
+
+workloads:
+  - name: bronze-worker
+    kind: Deployment
+    image: "{{ bronze_worker_image }}"
+    replicas: 1
+    env_from: [jobsensai-postgres, jobsensai-redis]
+    # service: and ingress: are omitted -> no Service, no Ingress
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+  - name: silver-worker
+    kind: Deployment
+    image: "{{ silver_worker_image }}"
+    replicas: 1
+    env_from: [jobsensai-postgres, jobsensai-redis]
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+  - name: crawler
+    kind: CronJob
+    # UTC: no CronJob template sets spec.timeZone, so this is
+    # kube-controller-manager's zone. Fires 00:00, 06:00, 12:00, 18:00 UTC,
+    # clear of the 02:00-05:00 UTC backup/verify window.
+    schedule: "0 */6 * * *"
+    image: "{{ crawler_image }}"
+    env_from: [jobsensai-redis]
+    # Sized for an HTTP crawler: no request goes through scrapy-playwright, so
+    # no Chromium page ever launches. Wiring scrapy-playwright must raise this
+    # limit or cap concurrency in the same change, since each concurrent
+    # request would then become a browser page.
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { cpu: 2000m, memory: 2Gi }
