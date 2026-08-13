@@ -51,9 +51,9 @@ class TestCrawlOutcome(unittest.TestCase):
 
 class TestHttpcacheDir(unittest.TestCase):
     def test_httpcache_dir_is_absolute(self):
-        # data_path() joins a relative value under .scrapy, which the
-        # crawler's non-root user can't create; regressing to a relative
-        # path silently drops every cached response again.
+        # data_path() joins a relative value under .scrapy, which the crawler's
+        # non-root user can't create, so regressing to a relative path silently
+        # drops every cached response again.
         self.assertTrue(os.path.isabs(settings.HTTPCACHE_DIR))
 
 
