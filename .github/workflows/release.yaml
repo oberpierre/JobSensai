@@ -94,7 +94,7 @@ jobs:
       # worker.py and silver_worker.py both import scraper.database at module
       # load, which resolves the psycopg2 driver before either ever touches
       # Redis or Postgres. Reaching this log line is proof that import
-      # succeeded; the connection refusal that follows, since neither service
+      # succeeded, so the connection refusal that follows, since neither service
       # exists here, is expected and not a smoke test failure.
       - name: Smoke test bronze worker image
         run: |

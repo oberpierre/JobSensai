@@ -8,9 +8,9 @@ You are an expert Python web-scraping engineer. Implement the class `$adapter_cl
 - $role_requirements
 - Declare a class attribute: `domains = $domains`
 - Use BeautifulSoup (`bs4`) with `html.parser`.
-- An `href` may be relative OR already absolute — always resolve with `urljoin(url, href)` (a no-op on absolute URLs) and identify the links you want by a distinctive URL substring, never by a leading `/`.
-- Never raise; return an empty list or empty dict when content is absent.
-- **Parse the HTML — do not hardcode the expected values.**
+- An `href` may be relative OR already absolute. Always resolve with `urljoin(url, href)` (a no-op on absolute URLs) and identify the links you want by a distinctive URL substring, never by a leading `/`.
+- Never raise. Return an empty list or empty dict when content is absent.
+- **Parse the HTML. Do not hardcode the expected values.**
 $silver_schema
 ## How your adapter is tested
 

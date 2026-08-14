@@ -66,7 +66,7 @@ class TestSilverWorker(unittest.TestCase):
     def test_process_message_missing_required_field_routes_to_learning(
         self, mock_session_local
     ):
-        """A missing NOT NULL field must not be written — it routes to re-learning."""
+        """A missing NOT NULL field must not be written, so it routes to re-learning."""
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
         mock_db.query().filter().first.return_value = RawJobPosting(
@@ -119,7 +119,7 @@ class TestSilverWorker(unittest.TestCase):
         self.worker.process_message(message)
 
     def test_construction_off_the_main_thread_does_not_raise(self):
-        """signal.signal raises off the main thread; construction must survive it."""
+        """signal.signal raises off the main thread, so construction must survive it."""
         errors = []
 
         def build():

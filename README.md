@@ -158,7 +158,7 @@ When you create new targets, add them to the corresponding linting suite:
     )
    ```
 
-> **Important:** Lint tests use Bazel aspects and require explicit target references—they do **not** support glob patterns like `//...`. Always update `srcs` when adding new code to ensure comprehensive linting or use `aspect lint` instead.
+> **Important:** Lint tests use Bazel aspects and require explicit target references, which means they do **not** support glob patterns like `//...`. Always update `srcs` when adding new code to ensure comprehensive linting or use `aspect lint` instead.
 
 ## License
 

@@ -38,7 +38,7 @@ class SilverWorker:
         self.redis: Optional[redis.Redis] = None
         self.registry = AdapterRegistry()
 
-        # signal.signal only works on the main thread; guard so construction off it
+        # signal.signal only works on the main thread, so guard so construction off it
         # (test runners, thread pools) does not raise ValueError.
         try:
             signal.signal(signal.SIGINT, self._handle_signal)

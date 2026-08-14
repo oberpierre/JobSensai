@@ -14,8 +14,8 @@ $output_shape
 
 Rules:
 
-- URLs must be **absolute**; resolve relative links against the page URL: `$url`.
-- Report only what is actually on the page — do not invent or guess values.
+- URLs must be **absolute**. Resolve relative links against the page URL: `$url`.
+- Report only what is actually on the page. Do not invent or guess values.
 - Use an empty list when a field has no values.
 
 ## Cleaned page HTML

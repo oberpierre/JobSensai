@@ -25,8 +25,8 @@ redis_users:
     password: "{{ app_llm_redis_password }}"
     acl: "~*_learning_tasks ~LEARNING_IN_PROGRESS:* +@read +@write +@list +@connection"
 
-# Only the in-cluster user's credential is written here; in-cluster workloads read
-# it via envFrom, the off-cluster worker does not run under this namespace at all.
+# Only the in-cluster user's credential is written here because in-cluster workloads read
+# it via envFrom, whereas the off-cluster worker does not run under this namespace at all.
 app_secrets:
   jobsensai-postgres:
     POSTGRES_HOST: postgresql.data-services.svc.cluster.local

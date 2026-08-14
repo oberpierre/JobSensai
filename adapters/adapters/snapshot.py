@@ -13,7 +13,7 @@ class DiscoverySnapshotTest:
     """Assert a DiscoveryAdapter reproduces a captured listing snapshot.
 
     Combine with ``unittest.TestCase``. Subclasses set ``adapter_cls`` and
-    ``fixture_dir``; fixtures live at ``<test dir>/fixtures/<fixture_dir>/`` as
+    ``fixture_dir``. Fixtures live at ``<test dir>/fixtures/<fixture_dir>/`` as
     ``index.html`` (cleaned page) and ``expected.json``
     (``{"url", "job_links", "next_page_links"}``).
 
@@ -66,12 +66,12 @@ class ExtractionSnapshotTest:
     """Assert an ExtractionAdapter reproduces a captured detail-page snapshot.
 
     Combine with ``unittest.TestCase``. Subclasses set ``adapter_cls`` and
-    ``fixture_dir``; fixtures live at ``<test dir>/fixtures/<fixture_dir>/`` as
+    ``fixture_dir``. Fixtures live at ``<test dir>/fixtures/<fixture_dir>/`` as
     ``detail.html`` (cleaned page) and ``expected.json`` (the Silver dict). Fields are
     compared by type: scalars exactly, list fields as sets, and ``description`` by
     equality (leading/trailing whitespace aside). The description is the adapter's
     deterministic ``_markdown.html_to_markdown`` output, so pinning it exactly makes the
-    snapshot a precise regression guard — an adapter change or a markdownify upgrade
+    snapshot a precise regression guard: an adapter change or a markdownify upgrade
     that reformats it fails loudly.
 
     The fields the Silver table stores non-nullably — title, company_name, description
@@ -79,7 +79,7 @@ class ExtractionSnapshotTest:
     ingest as a null and either be masked or rejected row-by-row in production. The
     remaining fields are nullable or DB-defaulted, so an adapter may omit them. Values,
     regardless, are only matched for the fields the snapshot pins (what the page
-    actually states); a field the truth agent could not ground is not asserted.
+    actually states). A field the truth agent could not ground is not asserted.
     """
 
     adapter_cls = None
