@@ -13,7 +13,10 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # Marks machine-generated commits. Reserved for the agent runner.
-AGENT_TRAILER = "Co-Authored-By: JobSensai Agent <agent@jobsensai.dev>"
+# GitHub attributes a co-author by matching this address, so the domain has to be one
+# we hold: anyone who can register it can verify the address and claim every one of
+# these commits, retroactively.
+AGENT_TRAILER = "Co-Authored-By: JobSensai Agent <agent@jobsensai.oberpierre.com>"
 
 
 class Publisher:
