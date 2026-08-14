@@ -35,7 +35,10 @@ class GoogleSpider(BaseJobSpider):
     start_urls = [
         "https://www.google.com/about/careers/applications/jobs/results/?location=Switzerland&location=Singapore&sort_by=date",
         # https://www.google.com/about/careers/applications/jobs/results/120830781164528326-program-manager-talent-outreach-talent-engagement?location=Switzerland&location=Singapore&sort_by=date
-        "https://job-boards.greenhouse.io/anthropic?error=true&departments%5B%5D=4002061008&departments%5B%5D=4010154008&departments%5B%5D=4050633008&departments%5B%5D=4019632008",
+        # Greenhouse is read through its JSON board API instead, so crawling this HTML
+        # path would teach an extraction adapter for a format being dropped, and would
+        # tombstone every posting it ingested once the URL goes again.
+        # "https://job-boards.greenhouse.io/anthropic?error=true&departments%5B%5D=4002061008&departments%5B%5D=4010154008&departments%5B%5D=4050633008&departments%5B%5D=4019632008",
     ]
 
     def __init__(self, *args, **kwargs):

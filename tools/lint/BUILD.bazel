@@ -20,6 +20,7 @@ ruff_test(
         "//llm:html_cleaner_test",
         "//llm:dom_test",
         "//scraper:main",
+        "//scraper:main_test",
         "//scraper:scraper_lib",
         "//scraper:worker",
         "//scraper:worker_test",

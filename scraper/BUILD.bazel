@@ -61,6 +61,17 @@ py_binary(
 )
 
 py_test(
+    name = "main_test",
+    srcs = ["main_test.py"],
+    imports = ["."],
+    deps = [
+        ":main",
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
     name = "worker_test",
     srcs = ["worker_test.py"],
     imports = ["."],
