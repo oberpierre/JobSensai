@@ -60,6 +60,19 @@ py_binary(
     python_version = "PY3",
 )
 
+# Operator-run backfill: re-queues Bronze rows missing a Silver row once their
+# adapter exists. Not wired into the deploy workflow; see module docstring.
+py_binary(
+    name = "backfill_silver",
+    srcs = ["backfill_silver.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+        "@pip//python_dotenv",
+    ],
+    python_version = "PY3",
+)
+
 py_test(
     name = "main_test",
     srcs = ["main_test.py"],
@@ -84,6 +97,16 @@ py_test(
 py_test(
     name = "silver_worker_test",
     srcs = ["silver_worker_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "backfill_silver_test",
+    srcs = ["backfill_silver_test.py"],
     imports = ["."],
     deps = [
         ":scraper_lib",
