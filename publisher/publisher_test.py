@@ -56,7 +56,9 @@ class TestPublisher(unittest.TestCase):
         # Green commit carries a validated (^) risk and the agent trailer.
         commit = next(c for c in cmds if c[:2] == ("git", "commit"))
         self.assertTrue(any(part.startswith("^ F") for part in commit), commit)
-        self.assertIn("Co-Authored-By: JobSensai Agent <agent@jobsensai.dev>", commit)
+        self.assertIn(
+            "Co-Authored-By: JobSensai Agent <agent@jobsensai.oberpierre.com>", commit
+        )
         # A ready PR: gh pr create WITHOUT --draft.
         gh = next(c for c in cmds if c[0] == "gh")
         self.assertNotIn("--draft", gh)
