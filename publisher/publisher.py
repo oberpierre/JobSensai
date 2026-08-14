@@ -65,6 +65,14 @@ class Publisher:
             return None
         return result.stdout.strip() not in ("", "[]")
 
+    def can_publish(self) -> bool:
+        """Whether gh is authenticated well enough to open a PR."""
+        try:
+            self._gh("auth", "status")
+        except (subprocess.CalledProcessError, OSError):
+            return False
+        return True
+
     def publish(
         self,
         *,

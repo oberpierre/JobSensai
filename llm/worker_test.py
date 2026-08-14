@@ -11,6 +11,7 @@ from llm.worker import (
     _domain_slug,
     _parse_json_object,
     _worker_from_env,
+    main,
 )
 
 
@@ -153,7 +154,7 @@ class TestLLMWorker(unittest.TestCase):
         task_payload = json.dumps(
             {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
         ).encode("utf-8")
-        self.worker.process_task(task_payload, "extraction_learning_tasks")
+        return self.worker.process_task(task_payload, "extraction_learning_tasks")
 
     def _assert_lease_released(self):
         self.mock_redis.delete.assert_called_with(
@@ -207,11 +208,34 @@ class TestLLMWorker(unittest.TestCase):
         # The lease is dropped, not held: it means "learning", not "recently checked".
         self._assert_lease_released()
 
-    def test_unknown_pr_state_fails_closed(self):
-        """A wrong skip costs one crawl, whereas a wrong re-learn costs a GPU run."""
+    def test_unknown_pr_state_requeues_the_task(self):
+        """A skip would lose the task entirely, whereas a requeue only delays it."""
         self.mock_publisher.has_existing_pr.return_value = None
-        self._run_extraction_task(passed=True)
+        self.mock_redis.set.return_value = True
+        self.worker._learn_extraction = MagicMock(
+            return_value=_adapter_names("newboard.com", "extraction")
+        )
+        self.worker._run_adapter_tests = MagicMock(return_value=(True, "TEST LOG"))
 
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        result = self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        self.mock_redis.lpush.assert_called_once_with(
+            "extraction_learning_tasks", task_payload
+        )
+        self.assertIs(result, True)
+        self.worker._learn_extraction.assert_not_called()
+        self.mock_publisher.publish.assert_not_called()
+
+    def test_known_pr_state_does_not_requeue(self):
+        """A PR that already exists is work already done, so the task is dropped."""
+        self.mock_publisher.has_existing_pr.return_value = True
+        result = self._run_extraction_task(passed=True)
+
+        self.mock_redis.lpush.assert_not_called()
+        self.assertIs(result, False)
         self.worker._learn_extraction.assert_not_called()
         self.mock_publisher.publish.assert_not_called()
         self._assert_lease_released()
@@ -262,6 +286,24 @@ class TestLLMWorker(unittest.TestCase):
             "Learning already in progress for domain: %s", "newboard.com"
         )
         self.mock_redis.set.assert_called_once()
+
+
+class TestRunRefusesWithoutPublishAccess(unittest.TestCase):
+    def setUp(self):
+        self.mock_redis = MagicMock()
+        self.mock_publisher = MagicMock()
+        with patch("redis.Redis", return_value=self.mock_redis):
+            self.worker = LLMWorker(
+                redis_host="localhost",
+                redis_port=6379,
+                publisher=self.mock_publisher,
+            )
+
+    def test_run_returns_without_polling_when_publish_is_unavailable(self):
+        self.mock_publisher.can_publish.return_value = False
+        self.worker.run()
+        self.mock_redis.brpop.assert_not_called()
+        self.assertFalse(self.worker.running)
 
 
 class TestDomainSlug(unittest.TestCase):
@@ -461,6 +503,18 @@ class TestWorkerFromEnv(unittest.TestCase):
         mock_redis.assert_called_once_with(
             host="localhost", port=6379, username=None, password=None
         )
+
+
+class TestMain(unittest.TestCase):
+    @patch("llm.worker._worker_from_env")
+    def test_exits_non_zero_when_the_worker_never_starts(self, mock_worker_from_env):
+        worker = MagicMock()
+        worker.running = False
+        mock_worker_from_env.return_value = worker
+
+        with self.assertRaises(SystemExit) as ctx:
+            main()
+        self.assertNotEqual(ctx.exception.code, 0)
 
 
 if __name__ == "__main__":
