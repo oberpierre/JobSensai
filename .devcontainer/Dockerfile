@@ -11,7 +11,7 @@ ARG USER_GID=$USER_UID
 COPY library-scripts/*.sh /tmp/library-scripts/
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && /bin/bash /tmp/library-scripts/common-debian.sh "${INSTALL_ZSH}" "${USERNAME}" "${USER_UID}" "${USER_GID}" "${UPGRADE_PACKAGES}" "true" "true" \
-    && apt-get install -y apt-transport-https curl gnupg
+    && apt-get install -y apt-transport-https curl gnupg redis-tools
 
 # Installing python 3.12 and pip
 RUN apt-get install -y software-properties-common \
