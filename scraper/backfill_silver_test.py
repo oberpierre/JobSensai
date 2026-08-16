@@ -1,4 +1,6 @@
+import io
 import unittest
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -7,12 +9,18 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
-from scraper.backfill_silver import BackfillCounts, find_candidate_urls, run_backfill
+from scraper.backfill_silver import (
+    BackfillCounts,
+    find_candidate_urls,
+    main,
+    run_backfill,
+)
 from scraper.models import Base, JobPosting, RawJobPosting
 
 
 # sqlite has no JSONB/UUID types, and Base.metadata.create_all() would fail
-# against it otherwise; only the query's row selection is under test here.
+# against it otherwise. Rendering them as TEXT is safe because only row
+# selection is under test here, not the columns' real types.
 @compiles(JSONB, "sqlite")
 @compiles(UUID, "sqlite")
 def _render_as_text_on_sqlite(element, compiler, **kw):
@@ -26,8 +34,8 @@ class TestCandidateQuery(unittest.TestCase):
         self.session = sessionmaker(bind=engine)()
 
     def test_matches_only_the_row_with_no_silver_counterpart_and_not_deleted(self):
-        # Swapping the query's AND for an or_(...) would still pass a substring
-        # check on the rendered SQL, so this proves selection against real rows.
+        # Proves the AND, not merely that both filter fragments render
+        # somewhere in the SQL.
         self.session.add_all(
             [
                 RawJobPosting(
@@ -59,6 +67,8 @@ class TestCandidateQuery(unittest.TestCase):
 
 
 class TestFindCandidateUrls(unittest.TestCase):
+    # _candidate_query is split out so this test can substitute a fake query
+    # and check the URL-extraction step on its own.
     @patch("scraper.backfill_silver._candidate_query")
     def test_returns_the_url_of_each_matched_row(self, mock_candidate_query):
         mock_candidate_query.return_value.all.return_value = [
@@ -113,6 +123,36 @@ class TestRunBackfill(unittest.TestCase):
         self.assertEqual(
             counts, BackfillCounts(matched=1, skipped_no_adapter=0, enqueued=1)
         )
+
+
+class TestMainOutputFormat(unittest.TestCase):
+    def _run_main(self, argv: list[str]) -> str:
+        with (
+            patch("scraper.backfill_silver.SessionLocal", return_value=MagicMock()),
+            patch("scraper.backfill_silver._build_redis"),
+            patch("scraper.backfill_silver.AdapterRegistry"),
+            patch(
+                "scraper.backfill_silver.run_backfill",
+                return_value=BackfillCounts(
+                    matched=1, skipped_no_adapter=0, enqueued=1
+                ),
+            ),
+            patch("sys.argv", ["backfill_silver", *argv]),
+        ):
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                main()
+        return buf.getvalue()
+
+    def test_dry_run_output_carries_the_prefix_and_field_name(self):
+        output = self._run_main(["--dry-run"])
+        self.assertIn("[dry-run] ", output)
+        self.assertIn("would_enqueue", output)
+
+    def test_live_run_output_carries_neither(self):
+        output = self._run_main([])
+        self.assertNotIn("[dry-run] ", output)
+        self.assertNotIn("would_enqueue", output)
 
 
 if __name__ == "__main__":

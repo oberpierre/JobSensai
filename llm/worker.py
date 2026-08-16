@@ -334,9 +334,9 @@ class LLMWorker:
         self.running = True
         logger.info("Starting LLM Worker, listening on %s", self.queue_names)
         while self.running:
-            if self.process_next_task():
+            if self.process_next_task() and self.running:
                 time.sleep(_REQUEUE_BACKOFF_SECONDS)
-        return True
+        return self.running
 
     def process_next_task(self) -> bool:
         result = self.redis_client.brpop(self.queue_names, timeout=1)

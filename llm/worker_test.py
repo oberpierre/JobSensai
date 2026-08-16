@@ -323,6 +323,30 @@ class TestRunRefusesWithoutPublishAccess(unittest.TestCase):
         self.assertFalse(result)
 
 
+class TestRunStopsMidRunWhenPublishDies(unittest.TestCase):
+    def test_run_returns_false_when_publish_dies_mid_run(self):
+        mock_redis = MagicMock()
+        mock_publisher = MagicMock()
+        # First call gates the startup loop, second is the mid-run recheck.
+        mock_publisher.can_publish.side_effect = [True, False]
+        mock_publisher.has_existing_pr.return_value = None
+        mock_redis.set.return_value = True
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        mock_redis.brpop.return_value = (b"extraction_learning_tasks", task_payload)
+        with patch("redis.Redis", return_value=mock_redis):
+            worker = LLMWorker(
+                redis_host="localhost",
+                redis_port=6379,
+                publisher=mock_publisher,
+            )
+
+        result = worker.run()
+
+        self.assertIs(result, False)
+
+
 class TestDomainSlug(unittest.TestCase):
     def test_simple_domain(self):
         self.assertEqual(_domain_slug("www.google.com"), "www_google_com")

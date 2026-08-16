@@ -36,11 +36,9 @@ class BackfillCounts:
 def _candidate_query(db: Session) -> Query:
     """Bronze rows with no Silver row yet, excluding tombstoned ones.
 
-    Neither worker persists a failed Silver attempt, so a missing join is the
-    only signal available and a sufficient one: it means never attempted or
-    previously failed, and both are backfill candidates. Split out from
-    find_candidate_urls so a test can substitute a fake query and check the
-    URL-extraction step on its own.
+    Neither worker persists a failed Silver attempt, so a missing join is
+    the only signal available: it means never attempted or previously
+    failed, and both are backfill candidates.
     """
     return (
         db.query(RawJobPosting.url)
