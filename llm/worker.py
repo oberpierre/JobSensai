@@ -324,15 +324,19 @@ class LLMWorker:
             logger.error("Adapter tests failed:\n%s", output[-2000:])
         return result.returncode == 0, output
 
-    def run(self) -> None:
+    def run(self) -> bool:
+        """Consume tasks until stopped. Returns whether the loop ever started,
+        so main() can tell a startup refusal from a normal shutdown.
+        """
         if not self.publisher.can_publish():
             logger.error("Cannot publish: run `gh auth login` and restart")
-            return
+            return False
         self.running = True
         logger.info("Starting LLM Worker, listening on %s", self.queue_names)
         while self.running:
             if self.process_next_task():
                 time.sleep(_REQUEUE_BACKOFF_SECONDS)
+        return True
 
     def process_next_task(self) -> bool:
         result = self.redis_client.brpop(self.queue_names, timeout=1)
@@ -342,7 +346,7 @@ class LLMWorker:
         queue_name = queue.decode("utf-8") if isinstance(queue, bytes) else queue
         return self.process_task(message, queue_name)
 
-    def process_task(self, message: bytes, queue_name: str = "") -> bool:
+    def process_task(self, message: bytes, queue_name: str) -> bool:
         """Route a learning task to the generation flow for its adapter type.
 
         Returns True when the task was pushed back onto its queue rather than acted
@@ -394,6 +398,11 @@ class LLMWorker:
                     names.basename,
                     queue_name,
                 )
+                if not self.publisher.can_publish():
+                    # A credential revoked mid-run would otherwise requeue every
+                    # later task forever with no further check.
+                    logger.error("Cannot publish: run `gh auth login` and restart")
+                    self.running = False
                 self.redis_client.lpush(queue_name, message)
                 self.release_learning(domain, adapter_type)
                 return True
@@ -463,10 +472,7 @@ def _worker_from_env() -> LLMWorker:
 def main() -> None:
     worker = _worker_from_env()
     try:
-        worker.run()
-        # run() only returns on its own, rather than via KeyboardInterrupt below,
-        # when it refused to start because it could not publish.
-        if not worker.running:
+        if not worker.run():
             raise SystemExit(1)
     except KeyboardInterrupt:
         worker.running = False

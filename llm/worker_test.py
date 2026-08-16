@@ -229,6 +229,23 @@ class TestLLMWorker(unittest.TestCase):
         self.worker._learn_extraction.assert_not_called()
         self.mock_publisher.publish.assert_not_called()
 
+    def test_unknown_pr_state_stops_the_worker_when_publish_becomes_unavailable(self):
+        """A credential that dies mid-run must not requeue forever unchecked."""
+        self.mock_publisher.has_existing_pr.return_value = None
+        self.mock_publisher.can_publish.return_value = False
+        self.mock_redis.set.return_value = True
+
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        result = self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        self.mock_redis.lpush.assert_called_once_with(
+            "extraction_learning_tasks", task_payload
+        )
+        self.assertIs(result, True)
+        self.assertFalse(self.worker.running)
+
     def test_known_pr_state_does_not_requeue(self):
         """A PR that already exists is work already done, so the task is dropped."""
         self.mock_publisher.has_existing_pr.return_value = True
@@ -254,7 +271,7 @@ class TestLLMWorker(unittest.TestCase):
     def test_process_task_no_domain_or_url(self, mock_logger):
         """Task with neither domain nor url must log an error and not touch Redis."""
         task_payload = json.dumps({}).encode("utf-8")
-        self.worker.process_task(task_payload)
+        self.worker.process_task(task_payload, "extraction_learning_tasks")
 
         self.assertTrue(mock_logger.error.called)
         self.assertEqual(self.mock_redis.set.call_count, 0)
@@ -266,9 +283,8 @@ class TestLLMWorker(unittest.TestCase):
         task_payload = json.dumps(
             {"url": "http://newboard.com/job/1", "html": "<html/>"}
         ).encode("utf-8")
-        self.worker.process_task(task_payload)
+        self.worker.process_task(task_payload, "extraction_learning_tasks")
 
-        # No queue name → defaults to the extraction learning loop.
         self.mock_redis.set.assert_called_once_with(
             "LEARNING_IN_PROGRESS:extraction:newboard.com", "1", nx=True, ex=1800
         )
@@ -280,7 +296,7 @@ class TestLLMWorker(unittest.TestCase):
         task_payload = json.dumps(
             {"domain": "newboard.com", "url": "http://newboard.com/job/1"}
         ).encode("utf-8")
-        self.worker.process_task(task_payload)
+        self.worker.process_task(task_payload, "extraction_learning_tasks")
 
         mock_logger.info.assert_called_with(
             "Learning already in progress for domain: %s", "newboard.com"
@@ -301,9 +317,10 @@ class TestRunRefusesWithoutPublishAccess(unittest.TestCase):
 
     def test_run_returns_without_polling_when_publish_is_unavailable(self):
         self.mock_publisher.can_publish.return_value = False
-        self.worker.run()
+        result = self.worker.run()
         self.mock_redis.brpop.assert_not_called()
         self.assertFalse(self.worker.running)
+        self.assertFalse(result)
 
 
 class TestDomainSlug(unittest.TestCase):
@@ -509,7 +526,7 @@ class TestMain(unittest.TestCase):
     @patch("llm.worker._worker_from_env")
     def test_exits_non_zero_when_the_worker_never_starts(self, mock_worker_from_env):
         worker = MagicMock()
-        worker.running = False
+        worker.run.return_value = False
         mock_worker_from_env.return_value = worker
 
         with self.assertRaises(SystemExit) as ctx:

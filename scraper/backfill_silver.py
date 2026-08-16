@@ -39,8 +39,8 @@ def _candidate_query(db: Session) -> Query:
     Neither worker persists a failed Silver attempt, so a missing join is the
     only signal available and a sufficient one: it means never attempted or
     previously failed, and both are backfill candidates. Split out from
-    find_candidate_urls so a test can inspect the built query without a live
-    database to execute .all() against.
+    find_candidate_urls so a test can substitute a fake query and check the
+    URL-extraction step on its own.
     """
     return (
         db.query(RawJobPosting.url)
@@ -67,7 +67,7 @@ def run_backfill(
     counts = BackfillCounts()
     for url in find_candidate_urls(db):
         counts.matched += 1
-        if registry.get_extraction_adapter(url) is None:
+        if not registry.has_extraction_adapter(url):
             counts.skipped_no_adapter += 1
             continue
         counts.enqueued += 1
@@ -105,10 +105,17 @@ def main() -> None:
     finally:
         db.close()
 
-    print(
-        f"matched={counts.matched} skipped_no_adapter={counts.skipped_no_adapter} "
-        f"enqueued={counts.enqueued}"
-    )
+    if args.dry_run:
+        print(
+            f"[dry-run] matched={counts.matched} "
+            f"skipped_no_adapter={counts.skipped_no_adapter} "
+            f"would_enqueue={counts.enqueued}"
+        )
+    else:
+        print(
+            f"matched={counts.matched} skipped_no_adapter={counts.skipped_no_adapter} "
+            f"enqueued={counts.enqueued}"
+        )
 
 
 if __name__ == "__main__":

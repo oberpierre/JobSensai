@@ -1,40 +1,60 @@
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
-from scraper.backfill_silver import (
-    BackfillCounts,
-    _candidate_query,
-    find_candidate_urls,
-    run_backfill,
-)
+from scraper.backfill_silver import BackfillCounts, find_candidate_urls, run_backfill
+from scraper.models import Base, JobPosting, RawJobPosting
+
+
+# sqlite has no JSONB/UUID types, and Base.metadata.create_all() would fail
+# against it otherwise; only the query's row selection is under test here.
+@compiles(JSONB, "sqlite")
+@compiles(UUID, "sqlite")
+def _render_as_text_on_sqlite(element, compiler, **kw):
+    return "TEXT"
 
 
 class TestCandidateQuery(unittest.TestCase):
-    """Checks the compiled SQL directly: JSONB columns elsewhere in the schema
-    make sqlite unable to create these tables, so .all() cannot run here, but
-    the query still compiles to inspectable text against an unbound session.
-    """
-
     def setUp(self):
         engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
         self.session = sessionmaker(bind=engine)()
 
-    def test_excludes_rows_with_an_existing_silver_row(self):
-        sql = str(_candidate_query(self.session))
-        self.assertIn("job_postings.id IS NULL", sql)
+    def test_matches_only_the_row_with_no_silver_counterpart_and_not_deleted(self):
+        # Swapping the query's AND for an or_(...) would still pass a substring
+        # check on the rendered SQL, so this proves selection against real rows.
+        self.session.add_all(
+            [
+                RawJobPosting(
+                    url="https://example.com/candidate", html_content="<html/>"
+                ),
+                RawJobPosting(
+                    url="https://example.com/matched", html_content="<html/>"
+                ),
+                RawJobPosting(
+                    url="https://example.com/deleted",
+                    html_content="<html/>",
+                    deleted_at=datetime.now(timezone.utc),
+                ),
+            ]
+        )
+        self.session.add(
+            JobPosting(
+                url="https://example.com/matched",
+                title="Staff Engineer",
+                company_name="Acme",
+                description="We build things.",
+            )
+        )
+        self.session.commit()
 
-    def test_excludes_soft_deleted_bronze_rows(self):
-        sql = str(_candidate_query(self.session))
-        self.assertIn("raw_job_postings.deleted_at IS NULL", sql)
-
-    def test_left_outer_joins_on_url(self):
-        sql = str(_candidate_query(self.session))
-        self.assertIn(
-            "LEFT OUTER JOIN job_postings ON raw_job_postings.url = job_postings.url",
-            sql,
+        self.assertEqual(
+            find_candidate_urls(self.session), ["https://example.com/candidate"]
         )
 
 
@@ -59,7 +79,7 @@ class TestRunBackfill(unittest.TestCase):
     @patch("scraper.backfill_silver.find_candidate_urls")
     def test_enqueues_a_matched_row_with_an_adapter(self, mock_find):
         mock_find.return_value = ["https://example.com/1"]
-        self.registry.get_extraction_adapter.return_value = MagicMock()
+        self.registry.has_extraction_adapter.return_value = True
 
         counts = run_backfill(MagicMock(), self.redis, self.registry)
 
@@ -73,7 +93,7 @@ class TestRunBackfill(unittest.TestCase):
     @patch("scraper.backfill_silver.find_candidate_urls")
     def test_skips_a_row_whose_domain_has_no_adapter(self, mock_find):
         mock_find.return_value = ["https://unknown.com/1"]
-        self.registry.get_extraction_adapter.return_value = None
+        self.registry.has_extraction_adapter.return_value = False
 
         counts = run_backfill(MagicMock(), self.redis, self.registry)
 
@@ -85,7 +105,7 @@ class TestRunBackfill(unittest.TestCase):
     @patch("scraper.backfill_silver.find_candidate_urls")
     def test_dry_run_reports_the_count_without_enqueuing(self, mock_find):
         mock_find.return_value = ["https://example.com/1"]
-        self.registry.get_extraction_adapter.return_value = MagicMock()
+        self.registry.has_extraction_adapter.return_value = True
 
         counts = run_backfill(MagicMock(), self.redis, self.registry, dry_run=True)
 
