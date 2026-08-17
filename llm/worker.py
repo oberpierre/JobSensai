@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urlsplit
@@ -37,6 +38,9 @@ _ADAPTERS_DIR = _WORKSPACE_ROOT / "adapters" / "adapters"
 # Ollama truncates the tail holding the content. Overridable per box for tuning.
 _DISCOVERY_NUM_CTX = int(os.getenv("DISCOVERY_NUM_CTX", "32768"))
 _EXTRACTION_NUM_CTX = int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
+
+# A requeue with nothing else in the queue would otherwise spin on the same task.
+_REQUEUE_BACKOFF_SECONDS = int(os.getenv("REQUEUE_BACKOFF_SECONDS", "30"))
 
 
 def _domain_slug(domain: str) -> str:
@@ -161,6 +165,9 @@ class LLMWorker:
             "extraction_learning_tasks",
         ]
         self.running = False
+        # Separate from self.running so run()'s return value keeps reporting "could not
+        # publish" even once self.running gains other, unrelated reasons to go False.
+        self._publish_unavailable = False
 
     def is_learning_in_progress(self, domain: str, adapter_type: str) -> bool:
         return (
@@ -320,22 +327,37 @@ class LLMWorker:
             logger.error("Adapter tests failed:\n%s", output[-2000:])
         return result.returncode == 0, output
 
-    def run(self) -> None:
+    def run(self) -> bool:
+        """Consume tasks until stopped.
+
+        Returns whether the worker could publish for its entire run. main() exits
+        non-zero exactly when this is False.
+        """
+        if not self.publisher.can_publish():
+            logger.error("Cannot publish: run `gh auth login` and restart")
+            self._publish_unavailable = True
+            return not self._publish_unavailable
         self.running = True
         logger.info("Starting LLM Worker, listening on %s", self.queue_names)
         while self.running:
-            self.process_next_task()
+            if self.process_next_task() and self.running:
+                time.sleep(_REQUEUE_BACKOFF_SECONDS)
+        return not self._publish_unavailable
 
-    def process_next_task(self) -> None:
+    def process_next_task(self) -> bool:
         result = self.redis_client.brpop(self.queue_names, timeout=1)
         if not result:
-            return
+            return False
         queue, message = result
         queue_name = queue.decode("utf-8") if isinstance(queue, bytes) else queue
-        self.process_task(message, queue_name)
+        return self.process_task(message, queue_name)
 
-    def process_task(self, message: bytes, queue_name: str = "") -> None:
-        """Route a learning task to the generation flow for its adapter type."""
+    def process_task(self, message: bytes, queue_name: str) -> bool:
+        """Route a learning task to the generation flow for its adapter type.
+
+        Returns True when the task was pushed back onto its queue rather than acted
+        on, so the caller can back off instead of hammering the queue.
+        """
         # Resolve the adapter type up-front so the learning lock is namespaced by it
         # and stays reachable for cleanup in the except blocks below.
         adapter_type = "discovery" if "discovery" in queue_name else "extraction"
@@ -351,7 +373,7 @@ class LLMWorker:
                 domain = urlsplit(url).netloc or None
             if not domain:
                 logger.error("Task has no resolvable domain: %s", task)
-                return
+                return False
 
             lock_key = f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}"
 
@@ -366,23 +388,37 @@ class LLMWorker:
 
             if not self.start_learning(domain, adapter_type):
                 logger.info("Learning already in progress for domain: %s", domain)
-                return
+                return False
 
             # The lease only dedups tasks racing in one scrape run. Across runs the
             # board still has no adapter until its PR merges and the scraper redeploys,
             # so every crawl re-enqueues, because GitHub is what knows the work
             # is already done.
             names = _adapter_names(domain, adapter_type)
-            if self.publisher.has_existing_pr(names.basename) is not False:
-                # None means GitHub could not be reached. Treated as "already open"
-                # because the costs are asymmetric: a wrong skip loses one crawl cycle,
-                # a wrong re-learn burns a GPU run and orphans a branch.
-                logger.info(
-                    "Adapter %s already has a PR (or its state is unknown); skipping",
+            pr_state = self.publisher.has_existing_pr(names.basename)
+            if pr_state is None:
+                # Undeterminable is not "already published": the task would be lost
+                # for good, so it goes back on the queue instead of being dropped.
+                logger.error(
+                    "Could not determine PR state for %s, returning task to %s",
                     names.basename,
+                    queue_name,
                 )
+                if not self.publisher.can_publish():
+                    # A credential revoked mid-run would otherwise requeue every
+                    # later task forever with no further check.
+                    logger.error("Cannot publish: run `gh auth login` and restart")
+                    self.running = False
+                    self._publish_unavailable = True
+                # Release before requeueing: lpush-then-release reopens the window a
+                # second consumer could pop the message through before the lease clears.
                 self.release_learning(domain, adapter_type)
-                return
+                self.redis_client.lpush(queue_name, message)
+                return True
+            if pr_state is True:
+                logger.info("Adapter %s already has a PR, skipping", names.basename)
+                self.release_learning(domain, adapter_type)
+                return False
 
             url = task.get("url") or f"https://{domain}"
 
@@ -413,16 +449,19 @@ class LLMWorker:
             else:
                 # No PR exists, so the next crawl's gh check finds nothing and retries.
                 logger.error(
-                    "Publish failed for %s; it will be retried", names.basename
+                    "Publish failed for %s. Retrying with next crawl.", names.basename
                 )
             self.release_learning(domain, adapter_type)
+            return False
 
         except json.JSONDecodeError as exc:
             logger.error("Failed to decode task message: %s", exc)
+            return False
         except Exception as exc:
             logger.error("Unexpected error processing task: %s", exc, exc_info=True)
             if lock_key:
                 self.redis_client.delete(lock_key)
+            return False
 
 
 def _worker_from_env() -> LLMWorker:
@@ -442,10 +481,11 @@ def _worker_from_env() -> LLMWorker:
 def main() -> None:
     worker = _worker_from_env()
     try:
-        worker.run()
+        if not worker.run():
+            raise SystemExit(1)
     except KeyboardInterrupt:
         worker.running = False
-        logger.info("Interrupted; shutting down")
+        logger.info("Interrupted, shutting down")
 
 
 if __name__ == "__main__":

@@ -44,7 +44,8 @@ class Publisher:
         again, re-opening it would re-submit work that was already rejected.
 
         None (GitHub unreachable, unauthenticated, rate-limited) is deliberately
-        distinct from False so the caller can fail closed.
+        distinct from False: unknown fails open, so the caller requeues the task
+        rather than dropping it.
         """
         branch = self.branch_for(basename)
         try:
@@ -64,6 +65,14 @@ class Publisher:
             logger.error("Could not determine PR state for %s: %s", branch, exc)
             return None
         return result.stdout.strip() not in ("", "[]")
+
+    def can_publish(self) -> bool:
+        """Whether gh is authenticated well enough to open a PR."""
+        try:
+            self._gh("auth", "status")
+        except (subprocess.CalledProcessError, OSError):
+            return False
+        return True
 
     def publish(
         self,

@@ -133,5 +133,24 @@ class TestHasExistingPr(unittest.TestCase):
         self.assertEqual(self.pub.branch_for(_BASENAME), f"feature/adapter-{_BASENAME}")
 
 
+class TestCanPublish(unittest.TestCase):
+    def setUp(self):
+        self.pub = Publisher(repo_root=Path("/repo"))
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_true_when_gh_auth_status_succeeds(self, mock_run):
+        mock_run.return_value = _ok("")
+        self.assertIs(self.pub.can_publish(), True)
+        cmd = _commands(mock_run)[0]
+        self.assertEqual(cmd, ("gh", "auth", "status"))
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_false_when_gh_auth_status_fails(self, mock_run):
+        mock_run.side_effect = subprocess.CalledProcessError(
+            4, ["gh", "auth", "status"]
+        )
+        self.assertIs(self.pub.can_publish(), False)
+
+
 if __name__ == "__main__":
     unittest.main()
