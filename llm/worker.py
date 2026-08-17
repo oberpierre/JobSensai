@@ -165,6 +165,9 @@ class LLMWorker:
             "extraction_learning_tasks",
         ]
         self.running = False
+        # Separate from self.running so run()'s return value keeps reporting "could not
+        # publish" even once self.running gains other, unrelated reasons to go False.
+        self._publish_unavailable = False
 
     def is_learning_in_progress(self, domain: str, adapter_type: str) -> bool:
         return (
@@ -325,18 +328,21 @@ class LLMWorker:
         return result.returncode == 0, output
 
     def run(self) -> bool:
-        """Consume tasks until stopped. Returns whether the loop ever started,
-        so main() can tell a startup refusal from a normal shutdown.
+        """Consume tasks until stopped.
+
+        Returns whether the worker could publish for its entire run. main() exits
+        non-zero exactly when this is False.
         """
         if not self.publisher.can_publish():
             logger.error("Cannot publish: run `gh auth login` and restart")
-            return False
+            self._publish_unavailable = True
+            return not self._publish_unavailable
         self.running = True
         logger.info("Starting LLM Worker, listening on %s", self.queue_names)
         while self.running:
             if self.process_next_task() and self.running:
                 time.sleep(_REQUEUE_BACKOFF_SECONDS)
-        return self.running
+        return not self._publish_unavailable
 
     def process_next_task(self) -> bool:
         result = self.redis_client.brpop(self.queue_names, timeout=1)
@@ -394,7 +400,7 @@ class LLMWorker:
                 # Undeterminable is not "already published": the task would be lost
                 # for good, so it goes back on the queue instead of being dropped.
                 logger.error(
-                    "Could not determine PR state for %s; returning task to %s",
+                    "Could not determine PR state for %s, returning task to %s",
                     names.basename,
                     queue_name,
                 )
@@ -403,11 +409,14 @@ class LLMWorker:
                     # later task forever with no further check.
                     logger.error("Cannot publish: run `gh auth login` and restart")
                     self.running = False
-                self.redis_client.lpush(queue_name, message)
+                    self._publish_unavailable = True
+                # Release before requeueing: lpush-then-release reopens the window a
+                # second consumer could pop the message through before the lease clears.
                 self.release_learning(domain, adapter_type)
+                self.redis_client.lpush(queue_name, message)
                 return True
             if pr_state is True:
-                logger.info("Adapter %s already has a PR; skipping", names.basename)
+                logger.info("Adapter %s already has a PR, skipping", names.basename)
                 self.release_learning(domain, adapter_type)
                 return False
 
@@ -440,7 +449,7 @@ class LLMWorker:
             else:
                 # No PR exists, so the next crawl's gh check finds nothing and retries.
                 logger.error(
-                    "Publish failed for %s; it will be retried", names.basename
+                    "Publish failed for %s. Retrying with next crawl.", names.basename
                 )
             self.release_learning(domain, adapter_type)
             return False
@@ -476,7 +485,7 @@ def main() -> None:
             raise SystemExit(1)
     except KeyboardInterrupt:
         worker.running = False
-        logger.info("Interrupted; shutting down")
+        logger.info("Interrupted, shutting down")
 
 
 if __name__ == "__main__":

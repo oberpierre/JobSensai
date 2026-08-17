@@ -44,7 +44,8 @@ class Publisher:
         again, re-opening it would re-submit work that was already rejected.
 
         None (GitHub unreachable, unauthenticated, rate-limited) is deliberately
-        distinct from False so the caller can fail closed.
+        distinct from False: unknown fails open, so the caller requeues the task
+        rather than dropping it.
         """
         branch = self.branch_for(basename)
         try:
