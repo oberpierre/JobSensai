@@ -94,6 +94,65 @@ class TestJobWorker(unittest.TestCase):
             "silver_generation_tasks", json.dumps({"url": item_url})
         )
 
+    def test_process_message_item_insert_persists_start_url_id(self):
+        run_id = str(uuid.uuid4())
+        start_url_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        message = json.dumps(
+            {
+                "type": "ITEM",
+                "run_id": run_id,
+                "item": {
+                    "url": item_url,
+                    "html_content": "<html></html>",
+                    "metadata": {"spider": "test_spider"},
+                    "start_url_id": str(start_url_id),
+                },
+            }
+        )
+
+        mock_run = ScraperRun(id=uuid.UUID(run_id), spider_name="test_spider")
+        self.mock_session.get.return_value = mock_run
+        self.mock_session.execute.return_value.scalar_one_or_none.return_value = None
+
+        self.worker.process_message(message)
+
+        added_items = [args[0] for args, _ in self.mock_session.add.call_args_list]
+        job_item = next((i for i in added_items if isinstance(i, RawJobPosting)), None)
+        self.assertIsNotNone(job_item)
+        self.assertEqual(job_item.start_url_id, start_url_id)
+
+    def test_process_message_item_update_persists_start_url_id(self):
+        run_id = str(uuid.uuid4())
+        start_url_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        message = json.dumps(
+            {
+                "type": "ITEM",
+                "run_id": run_id,
+                "item": {
+                    "url": item_url,
+                    "html_content": "<html></html>",
+                    "metadata": {"spider": "test_spider"},
+                    "start_url_id": str(start_url_id),
+                },
+            }
+        )
+
+        mock_run = ScraperRun(id=uuid.UUID(run_id), spider_name="test_spider")
+        self.mock_session.get.return_value = mock_run
+
+        existing_posting = RawJobPosting(
+            url=item_url, html_content="<html>old</html>", start_url_id=None
+        )
+        self.mock_session.execute.return_value.scalar_one_or_none.return_value = (
+            existing_posting
+        )
+
+        self.worker.process_message(message)
+
+        self.assertEqual(existing_posting.start_url_id, start_url_id)
+
     def test_tombstoning_logic(self):
         # Current run
         current_run_id = uuid.uuid4()

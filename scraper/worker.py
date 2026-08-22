@@ -140,6 +140,8 @@ class JobWorker:
             logger.warning("Item missing URL, skipping.")
             return
 
+        start_url_id = self._parse_start_url_id(item.get("start_url_id"))
+
         existing = session.execute(
             select(RawJobPosting).where(RawJobPosting.url == url)
         ).scalar_one_or_none()
@@ -150,6 +152,9 @@ class JobWorker:
             existing.html_content = item.get("html_content")
             # Merge or overwrite metadata? Overwriting for now as it's "raw" state
             existing.metadata_ = item.get("metadata") or {}
+            # A re-crawl re-attributes the row; otherwise a posting that
+            # predates start_url_id would keep it NULL forever.
+            existing.start_url_id = start_url_id
             if existing.deleted_at:
                 logger.info(f"Reviving item: {url}")
                 existing.deleted_at = None
@@ -159,6 +164,7 @@ class JobWorker:
                 html_content=item.get("html_content"),
                 metadata_=item.get("metadata") or {},
                 last_seen_run_id=db_run_id,
+                start_url_id=start_url_id,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )
@@ -171,6 +177,17 @@ class JobWorker:
             self.redis.lpush(self.config.silver_queue_name, json.dumps({"url": url}))
             logger.debug(f"Pushed {url} to {self.config.silver_queue_name}")
         # logger.debug(f"Processed item: {url}")
+
+    @staticmethod
+    def _parse_start_url_id(raw_start_url_id: Any) -> Optional[uuid.UUID]:
+        """The item carries start_url_id as a string; the column needs a UUID."""
+        if not raw_start_url_id:
+            return None
+        try:
+            return uuid.UUID(raw_start_url_id)
+        except ValueError:
+            logger.warning(f"Invalid start_url_id on item: {raw_start_url_id!r}")
+            return None
 
     def _handle_end_run(self, session: Session, data: dict[str, Any]):
         client_run_id = data.get("run_id")
