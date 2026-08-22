@@ -5,8 +5,22 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from scraper.models import RawJobPosting, ScraperRun
+from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import sessionmaker
+
+from scraper.models import Base, RawJobPosting, ScraperRun
 from scraper.worker import JobWorker, WorkerConfig
+
+
+# sqlite has no JSONB/UUID types, and Base.metadata.create_all() would fail
+# against it otherwise. Rendering them as TEXT is safe here because the
+# mapping under test is our own column assignment, not either type's DDL.
+@compiles(JSONB, "sqlite")
+@compiles(UUID, "sqlite")
+def _render_as_text_on_sqlite(element, compiler, **kw):
+    return "TEXT"
 
 
 class TestJobWorker(unittest.TestCase):
@@ -343,6 +357,52 @@ class TestJobWorker(unittest.TestCase):
             JobWorker(self.config).setup()
         self.assertIsNone(mock_redis.call_args.kwargs["username"])
         self.assertIsNone(mock_redis.call_args.kwargs["password"])
+
+
+class TestHandleItemPersistsThroughARealEngine(unittest.TestCase):
+    """A mocked session covers our branching logic but not the column
+    mapping itself, so this runs _handle_item against a real SQLite engine.
+    """
+
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.session_factory = sessionmaker(bind=engine)
+        self.worker = JobWorker(WorkerConfig())
+        self.worker.redis = MagicMock()
+
+    def test_start_url_id_is_persisted_and_readable_back_by_query(self):
+        run_id = uuid.uuid4()
+        start_url_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        data = {
+            "run_id": str(run_id),
+            "item": {
+                "url": item_url,
+                "html_content": "<html></html>",
+                "metadata": {"spider": "test_spider"},
+                "start_url_id": str(start_url_id),
+            },
+        }
+
+        write_session = self.session_factory()
+        try:
+            self.worker._handle_item(write_session, data)
+        finally:
+            write_session.close()
+
+        # A fresh session forces a real SELECT instead of returning the
+        # object already held in the write session's identity map.
+        read_session = self.session_factory()
+        try:
+            persisted = (
+                read_session.query(RawJobPosting)
+                .filter(RawJobPosting.url == item_url)
+                .one()
+            )
+            self.assertEqual(persisted.start_url_id, start_url_id)
+        finally:
+            read_session.close()
 
 
 if __name__ == "__main__":
