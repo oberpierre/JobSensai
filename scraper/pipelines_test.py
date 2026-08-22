@@ -55,9 +55,9 @@ class TestProcessItemCarriesStartUrlId(unittest.TestCase):
 
         self.pipeline.process_item(item, self.spider)
 
-        pushed_item = json.loads(
-            self.pipeline.redis_client.lpush.call_args.args[1]
-        )["item"]
+        pushed_item = json.loads(self.pipeline.redis_client.lpush.call_args.args[1])[
+            "item"
+        ]
         posting = RawJobPosting(
             url=pushed_item["url"],
             html_content=pushed_item["html_content"],
