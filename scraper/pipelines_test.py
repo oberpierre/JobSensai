@@ -43,8 +43,8 @@ class TestProcessItemCarriesStartUrlId(unittest.TestCase):
         self.spider.name = "test_spider"
 
     def test_raw_job_posting_built_from_the_pushed_item_carries_start_url_id(self):
-        # process_item only forwards the item to Redis; the round trip through
-        # a RawJobPosting proves the field survives that JSON hop intact.
+        # process_item only forwards the item to Redis, so the round trip
+        # through a RawJobPosting proves the field survives that JSON hop intact.
         self.pipeline.redis_client = MagicMock()
         start_url_id = uuid.uuid4()
         item = RawJobItem()

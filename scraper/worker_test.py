@@ -191,7 +191,7 @@ class TestJobWorker(unittest.TestCase):
 
     def test_process_message_item_omitting_start_url_id_leaves_it_unchanged(self):
         # A rolling deploy drains items enqueued by a crawler that predates
-        # this field; absence must not blank out an existing attribution.
+        # this field, so absence must not blank out an existing attribution.
         run_id = str(uuid.uuid4())
         previously_attributed = uuid.uuid4()
         item_url = "http://example.com/job/1"
