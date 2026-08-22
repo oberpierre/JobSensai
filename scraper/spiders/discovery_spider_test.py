@@ -72,7 +72,10 @@ class TestLoadStartUrls(unittest.TestCase):
         )
 
     def test_falls_back_to_class_literal_when_table_empty(self):
-        pairs = _FixtureSpider.load_start_urls(self.session)
+        with self.assertLogs(
+            "scraper.spiders.discovery_spider", level="WARNING"
+        ) as logs:
+            pairs = _FixtureSpider.load_start_urls(self.session)
 
         self.assertEqual(
             pairs,
@@ -81,6 +84,7 @@ class TestLoadStartUrls(unittest.TestCase):
                 (None, "https://example.com/literal-b"),
             ],
         )
+        self.assertTrue(any("falling back" in message for message in logs.output))
 
     def test_does_not_fall_back_when_table_holds_only_json_api_rows(self):
         self.session.add(

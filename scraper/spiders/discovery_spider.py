@@ -84,6 +84,11 @@ class DiscoverySpider(BaseJobSpider):
         """
         total_count = session.query(StartUrl).count()
         if total_count == 0:
+            logger.warning(
+                "start_urls table is empty: falling back to %d built-in URL(s),"
+                " so this crawl is not driven by the table.",
+                len(cls.fallback_start_urls),
+            )
             return [(None, url) for url in cls.fallback_start_urls]
         rows = (
             session.query(StartUrl)
