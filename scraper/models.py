@@ -7,6 +7,27 @@ from sqlalchemy.sql import func
 
 Base = declarative_base()
 
+START_URL_TYPE_HTML_CRAWL = "html_crawl"
+START_URL_TYPE_JSON_API = "json_api"
+
+
+class StartUrl(Base):
+    """A crawl entry point an operator manages through the admin screen."""
+
+    __tablename__ = "start_urls"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(Text, unique=True, nullable=False)
+    url = Column(Text, unique=True, nullable=False, index=True)
+    type = Column(Text, nullable=False, default=START_URL_TYPE_HTML_CRAWL)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    def __repr__(self):
+        return f"<StartUrl(id={self.id}, name='{self.name}', url='{self.url}')>"
+
 
 class ScraperRun(Base):
     """
@@ -46,6 +67,9 @@ class RawJobPosting(Base):
     # Tracking for Tombstoning
     last_seen_run_id = Column(
         UUID(as_uuid=True), ForeignKey("scraper_runs.id"), nullable=True, index=True
+    )
+    start_url_id = Column(
+        UUID(as_uuid=True), ForeignKey("start_urls.id"), nullable=True, index=True
     )
 
     created_at = Column(DateTime, default=func.now(), nullable=False)

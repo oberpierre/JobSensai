@@ -2,12 +2,25 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 package(default_visibility = ["//visibility:public"])
 
+# Models and the DB session/engine, split out so the API package can depend
+# on the schema without dragging Scrapy and Playwright into its image.
+py_library(
+    name = "models_lib",
+    srcs = ["models.py", "database.py"],
+    imports = ["."],
+    deps = [
+        "@pip//sqlalchemy",
+        "@pip//psycopg2_binary",
+        "@pip//python_dotenv",
+    ],
+)
+
 # Scraper library containing core logic
 py_library(
     name = "scraper_lib",
     srcs = glob(
         ["**/*.py"],
-        exclude = ["**/*_test.py", "main.py"],
+        exclude = ["**/*_test.py", "main.py", "models.py", "database.py"],
     ),
     imports = ["."],
     deps = [
@@ -19,6 +32,7 @@ py_library(
         "@pip//redis",
         "@pip//python_dotenv",
         "//adapters:adapters",
+        ":models_lib",
     ],
 )
 
@@ -147,6 +161,16 @@ py_test(
 py_test(
     name = "discovery_spider_test",
     srcs = ["spiders/discovery_spider_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "base_spider_test",
+    srcs = ["spiders/base_spider_test.py"],
     imports = ["."],
     deps = [
         ":scraper_lib",

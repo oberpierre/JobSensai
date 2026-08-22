@@ -1,7 +1,11 @@
+import json
 import os
 import unittest
+import uuid
 from unittest.mock import MagicMock, patch
 
+from scraper.items import RawJobItem
+from scraper.models import RawJobPosting
 from scraper.pipelines import BronzeLayerPipeline
 
 
@@ -30,6 +34,36 @@ class TestBronzeLayerPipeline(unittest.TestCase):
 
         self.assertIsNone(mock_redis_cls.call_args.kwargs["username"])
         self.assertIsNone(mock_redis_cls.call_args.kwargs["password"])
+
+
+class TestProcessItemCarriesStartUrlId(unittest.TestCase):
+    def setUp(self):
+        self.pipeline = BronzeLayerPipeline(redis_host="localhost", redis_port=6379)
+        self.spider = MagicMock()
+        self.spider.name = "test_spider"
+
+    def test_raw_job_posting_built_from_the_pushed_item_carries_start_url_id(self):
+        # process_item only forwards the item to Redis; the round trip through
+        # a RawJobPosting proves the field survives that JSON hop intact.
+        self.pipeline.redis_client = MagicMock()
+        start_url_id = uuid.uuid4()
+        item = RawJobItem()
+        item["url"] = "https://example.com/job/1"
+        item["html_content"] = "<html/>"
+        item["start_url_id"] = str(start_url_id)
+        item["metadata"] = {"spider_name": "test_spider"}
+
+        self.pipeline.process_item(item, self.spider)
+
+        pushed_item = json.loads(
+            self.pipeline.redis_client.lpush.call_args.args[1]
+        )["item"]
+        posting = RawJobPosting(
+            url=pushed_item["url"],
+            html_content=pushed_item["html_content"],
+            start_url_id=pushed_item["start_url_id"],
+        )
+        self.assertEqual(str(posting.start_url_id), str(start_url_id))
 
 
 if __name__ == "__main__":

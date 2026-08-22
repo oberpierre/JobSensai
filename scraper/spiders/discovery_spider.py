@@ -11,6 +11,7 @@ Actual implementation will require:
 import json
 import logging
 import os
+import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -20,6 +21,7 @@ import scrapy
 from scrapy.crawler import Crawler
 
 from adapters.registry import AdapterRegistry
+from scraper.database import SessionLocal
 from scraper.items import RawJobItem
 from scraper.spiders.base_spider import BaseJobSpider
 
@@ -71,10 +73,24 @@ class DiscoverySpider(BaseJobSpider):
 
         return spider
 
+    def start_requests(self) -> Iterator[scrapy.Request]:
+        """Yield one request per configured start URL, tagged with its row id."""
+        session = SessionLocal()
+        try:
+            pairs = self.load_start_urls(session)
+        finally:
+            session.close()
+
+        for start_url_id, url in pairs:
+            yield scrapy.Request(
+                url, callback=self.parse, meta={"start_url_id": start_url_id}
+            )
+
     def parse(self, response: scrapy.http.Response) -> Iterator[scrapy.Request]:
         """Extract job links from search results page."""
         logger.info(f"Parsing search page: {response.url}")
 
+        start_url_id: uuid.UUID | None = response.meta.get("start_url_id")
         adapter = self.registry.get_discovery_adapter(response.url)
 
         # If no adapter, log fallback and STOP spidering for this domain/url path
@@ -90,13 +106,19 @@ class DiscoverySpider(BaseJobSpider):
             # 1. Job Links
             job_links = adapter.get_job_links(response.text, response.url)
             for link in job_links:
-                yield response.follow(link, callback=self.parse_job)
+                yield response.follow(
+                    link,
+                    callback=self.parse_job,
+                    meta={"start_url_id": start_url_id},
+                )
 
             # 2. Next Page
             next_links = adapter.get_next_page_links(response.text, response.url)
             if next_links:  # might be None or []
                 for link in next_links:
-                    yield response.follow(link, callback=self.parse)
+                    yield response.follow(
+                        link, callback=self.parse, meta={"start_url_id": start_url_id}
+                    )
         except Exception as e:
             logger.error(f"Adapter logic failed on index page {response.url}: {e}")
             self._trigger_discovery_learning(response)
@@ -146,6 +168,7 @@ class DiscoverySpider(BaseJobSpider):
         item = self.create_item(
             url=response.url,
             html=html_content,
+            start_url_id=response.meta.get("start_url_id"),
             # title=title,  # Additional metadata
         )
 

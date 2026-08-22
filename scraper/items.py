@@ -13,6 +13,9 @@ class RawJobItem(Item):
     url = Field()  # Unique identifier
     html_content = Field()
 
+    # Which start_urls row the request that discovered this page came from
+    start_url_id = Field()
+
     # Metadata stored as dict (will be JSONB in DB)
     metadata = Field()  # {job_board, scraper_version, page_title, etc}
 
