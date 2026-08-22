@@ -1,13 +1,28 @@
 import unittest
 import uuid
 
+from sqlalchemy import create_engine, event
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import sessionmaker
+
 from scraper.models import (
     START_URL_TYPE_HTML_CRAWL,
     START_URL_TYPE_JSON_API,
+    Base,
     JobPosting,
     RawJobPosting,
     StartUrl,
 )
+
+
+# sqlite has no JSONB/UUID types, and Base.metadata.create_all() would fail
+# against it otherwise. Rendering them as TEXT is safe because only the
+# ON DELETE SET NULL constraint is under test below, not the columns' real types.
+@compiles(JSONB, "sqlite")
+@compiles(UUID, "sqlite")
+def _render_as_text_on_sqlite(element, compiler, **kw):
+    return "TEXT"
 
 
 class TestModels(unittest.TestCase):
@@ -53,6 +68,45 @@ class TestModels(unittest.TestCase):
         self.assertEqual(job_posting.employment_type, "Full time")
         self.assertEqual(job_posting.locations, ["Remote", "Seattle, WA"])
         self.assertEqual(job_posting.categories, ["Engineering"])
+
+
+class TestStartUrlDeletion(unittest.TestCase):
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+
+        # sqlite only enforces foreign keys when told to per-connection; without
+        # this the constraint below would pass for the wrong reason.
+        @event.listens_for(engine, "connect")
+        def _enable_foreign_keys(dbapi_connection, connection_record):
+            dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
+        Base.metadata.create_all(engine)
+        self.session = sessionmaker(bind=engine)()
+
+    def test_deleting_a_start_url_nulls_out_referencing_postings_instead_of_raising(
+        self,
+    ):
+        start_url = StartUrl(
+            name="Google Careers",
+            url="https://www.google.com/about/careers/",
+            type=START_URL_TYPE_HTML_CRAWL,
+        )
+        self.session.add(start_url)
+        self.session.commit()
+
+        posting = RawJobPosting(
+            url="https://example.com/job/1",
+            html_content="<html/>",
+            start_url_id=start_url.id,
+        )
+        self.session.add(posting)
+        self.session.commit()
+
+        self.session.delete(start_url)
+        self.session.commit()
+
+        self.session.refresh(posting)
+        self.assertIsNone(posting.start_url_id)
 
 
 if __name__ == "__main__":

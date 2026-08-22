@@ -69,7 +69,10 @@ class RawJobPosting(Base):
         UUID(as_uuid=True), ForeignKey("scraper_runs.id"), nullable=True, index=True
     )
     start_url_id = Column(
-        UUID(as_uuid=True), ForeignKey("start_urls.id"), nullable=True, index=True
+        UUID(as_uuid=True),
+        ForeignKey("start_urls.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     created_at = Column(DateTime, default=func.now(), nullable=False)

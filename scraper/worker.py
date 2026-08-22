@@ -140,7 +140,8 @@ class JobWorker:
             logger.warning("Item missing URL, skipping.")
             return
 
-        start_url_id = self._parse_start_url_id(item.get("start_url_id"))
+        raw_start_url_id = item.get("start_url_id")
+        start_url_id = self._parse_start_url_id(raw_start_url_id)
 
         existing = session.execute(
             select(RawJobPosting).where(RawJobPosting.url == url)
@@ -152,9 +153,11 @@ class JobWorker:
             existing.html_content = item.get("html_content")
             # Merge or overwrite metadata? Overwriting for now as it's "raw" state
             existing.metadata_ = item.get("metadata") or {}
-            # A re-crawl re-attributes the row; otherwise a posting that
-            # predates start_url_id would keep it NULL forever.
-            existing.start_url_id = start_url_id
+            # A re-crawl re-attributes the row, but an item silent on
+            # attribution (e.g. one enqueued by a pre-rollout crawler) must
+            # not blank out what a previous run already recorded.
+            if raw_start_url_id:
+                existing.start_url_id = start_url_id
             if existing.deleted_at:
                 logger.info(f"Reviving item: {url}")
                 existing.deleted_at = None
