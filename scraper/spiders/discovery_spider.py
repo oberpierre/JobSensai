@@ -81,7 +81,8 @@ class DiscoverySpider(BaseJobSpider):
         Reads `html_crawl` rows ordered by name. When the table holds none, falls back
         to the class's own `start_urls` literal, each paired with a None id.
         """
-        if session.query(StartUrl).count() == 0:
+        total_count = session.query(StartUrl).count()
+        if total_count == 0:
             return [(None, url) for url in cls.start_urls]
         rows = (
             session.query(StartUrl)
@@ -89,6 +90,13 @@ class DiscoverySpider(BaseJobSpider):
             .order_by(StartUrl.name)
             .all()
         )
+        if not rows:
+            logger.warning(
+                "%d configured start_urls row(s) skipped: none is of type %r,"
+                " so this crawl has nothing to do.",
+                total_count,
+                START_URL_TYPE_HTML_CRAWL,
+            )
         return [(row.id, row.url) for row in rows]
 
     def start_requests(self) -> Iterator[scrapy.Request]:

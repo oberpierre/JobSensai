@@ -89,9 +89,28 @@ class TestLoadStartUrls(unittest.TestCase):
         )
         self.session.commit()
 
-        pairs = _FixtureSpider.load_start_urls(self.session)
+        with self.assertLogs(
+            "scraper.spiders.discovery_spider", level="WARNING"
+        ) as logs:
+            pairs = _FixtureSpider.load_start_urls(self.session)
 
         self.assertEqual(pairs, [])
+        self.assertTrue(any("skipped" in message for message in logs.output))
+
+    def test_does_not_warn_when_html_crawl_rows_are_returned(self):
+        self.session.add(
+            StartUrl(
+                name="alpha",
+                url="https://alpha.example.com",
+                type=START_URL_TYPE_HTML_CRAWL,
+            )
+        )
+        self.session.commit()
+
+        with self.assertNoLogs("scraper.spiders.discovery_spider", level="WARNING"):
+            pairs = _FixtureSpider.load_start_urls(self.session)
+
+        self.assertEqual(len(pairs), 1)
 
 
 class TestDiscoverySpiderFromCrawler(unittest.TestCase):
