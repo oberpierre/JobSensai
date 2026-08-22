@@ -23,6 +23,7 @@ from scrapy.crawler import Crawler
 from adapters.registry import AdapterRegistry
 from scraper.database import SessionLocal
 from scraper.items import RawJobItem
+from scraper.models import START_URL_TYPE_HTML_CRAWL, StartUrl
 from scraper.spiders.base_spider import BaseJobSpider
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,23 @@ class DiscoverySpider(BaseJobSpider):
         )
 
         return spider
+
+    @classmethod
+    def load_start_urls(cls, session) -> list[tuple[uuid.UUID | None, str]]:
+        """Return (start_url_id, url) pairs to crawl, newest configuration first.
+
+        Reads `html_crawl` rows ordered by name. When the table holds none, falls back
+        to the class's own `start_urls` literal, each paired with a None id.
+        """
+        if session.query(StartUrl).count() == 0:
+            return [(None, url) for url in cls.start_urls]
+        rows = (
+            session.query(StartUrl)
+            .filter(StartUrl.type == START_URL_TYPE_HTML_CRAWL)
+            .order_by(StartUrl.name)
+            .all()
+        )
+        return [(row.id, row.url) for row in rows]
 
     def start_requests(self) -> Iterator[scrapy.Request]:
         """Yield one request per configured start URL, tagged with its row id."""
