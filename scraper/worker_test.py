@@ -360,8 +360,10 @@ class TestJobWorker(unittest.TestCase):
 
 
 class TestHandleItemPersistsThroughARealEngine(unittest.TestCase):
-    """A mocked session covers our branching logic but not the column
-    mapping itself, so this runs _handle_item against a real SQLite engine.
+    """Runs _handle_item against a real SQLite engine rather than a mocked
+    session, to prove start_url_id is genuinely mapped to a column of that
+    name and survives a write and a read back through SQLAlchemy. A mock
+    can't catch a mismatch like RawJobPosting.metadata_'s column name.
     """
 
     def setUp(self):
