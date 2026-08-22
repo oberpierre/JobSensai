@@ -18,6 +18,12 @@ services:
     depends_on:
       - postgres
       - redis
+    ports:
+      - "20003:5173"
+      - "20004:8000"
+    environment:
+      WEB_HOST: "0.0.0.0"
+      WEB_PUBLIC_PORT: "20003"
     volumes:
       - ..:/workspace:cached
     command: sleep infinity

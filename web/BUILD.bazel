@@ -25,18 +25,15 @@ vite_bin.vite_binary(
     chdir = package_name(),
 )
 
-# Vite's dev server binds 127.0.0.1 by default, unreachable from outside the
-# devcontainer. --host exposes it on the forwarded port fixed by --port.
+# Host and port come from WEB_HOST/WEB_PORT in vite.config.ts, so this target
+# serves 5173 on a laptop and the devcontainer's forwarded 20003 unmodified.
+# `data` is what makes vite.config.ts and the rest of the package a tracked
+# input, rather than whatever another target's build happened to leave in bin.
 vite_bin.vite_binary(
     name = "dev",
-    args = [
-        "dev",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "5173",
-    ],
+    args = ["dev"],
     chdir = package_name(),
+    data = SRCS,
 )
 
 js_run_binary(
