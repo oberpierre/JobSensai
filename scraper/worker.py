@@ -153,10 +153,11 @@ class JobWorker:
             existing.html_content = item.get("html_content")
             # Merge or overwrite metadata? Overwriting for now as it's "raw" state
             existing.metadata_ = item.get("metadata") or {}
-            # A re-crawl re-attributes the row, but an item silent on
-            # attribution (e.g. one enqueued by a pre-rollout crawler) must
-            # not blank out what a previous run already recorded.
-            if raw_start_url_id:
+            # First-writer-wins: a posting reachable from more than one start
+            # URL keeps whichever one discovered it first, because the column
+            # cannot express membership in two boards. The NULL check still
+            # lets a backfill attribute a row older than this column.
+            if raw_start_url_id and existing.start_url_id is None:
                 existing.start_url_id = start_url_id
             if existing.deleted_at:
                 logger.info(f"Reviving item: {url}")

@@ -153,6 +153,42 @@ class TestJobWorker(unittest.TestCase):
 
         self.assertEqual(existing_posting.start_url_id, start_url_id)
 
+    def test_process_message_item_update_keeps_the_first_attribution(self):
+        # A posting reachable from two start URLs must not flip attribution
+        # depending on which one the crawl reaches it from last.
+        run_id = str(uuid.uuid4())
+        first_start_url_id = uuid.uuid4()
+        second_start_url_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        message = json.dumps(
+            {
+                "type": "ITEM",
+                "run_id": run_id,
+                "item": {
+                    "url": item_url,
+                    "html_content": "<html></html>",
+                    "metadata": {"spider": "test_spider"},
+                    "start_url_id": str(second_start_url_id),
+                },
+            }
+        )
+
+        mock_run = ScraperRun(id=uuid.UUID(run_id), spider_name="test_spider")
+        self.mock_session.get.return_value = mock_run
+
+        existing_posting = RawJobPosting(
+            url=item_url,
+            html_content="<html>old</html>",
+            start_url_id=first_start_url_id,
+        )
+        self.mock_session.execute.return_value.scalar_one_or_none.return_value = (
+            existing_posting
+        )
+
+        self.worker.process_message(message)
+
+        self.assertEqual(existing_posting.start_url_id, first_start_url_id)
+
     def test_process_message_item_omitting_start_url_id_leaves_it_unchanged(self):
         # A rolling deploy drains items enqueued by a crawler that predates
         # this field; absence must not blank out an existing attribution.
