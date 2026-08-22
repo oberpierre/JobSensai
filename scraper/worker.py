@@ -189,7 +189,9 @@ class JobWorker:
             return None
         try:
             return uuid.UUID(raw_start_url_id)
-        except ValueError:
+        except (ValueError, AttributeError):
+            # uuid.UUID() raises AttributeError, not ValueError, for a non-string
+            # input (int, float, list, dict, bool) since it calls .replace() on it.
             logger.warning(f"Invalid start_url_id on item: {raw_start_url_id!r}")
             return None
 
