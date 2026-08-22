@@ -25,6 +25,20 @@ vite_bin.vite_binary(
     chdir = package_name(),
 )
 
+# Vite's dev server binds 127.0.0.1 by default, unreachable from outside the
+# devcontainer. --host exposes it on the forwarded port fixed by --port.
+vite_bin.vite_binary(
+    name = "dev",
+    args = [
+        "dev",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5173",
+    ],
+    chdir = package_name(),
+)
+
 js_run_binary(
     name = "dist",
     srcs = SRCS,
