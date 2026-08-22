@@ -38,16 +38,6 @@
     "@types/react-dom": "19.2.4"
   },
   "pnpm": {
-    "supportedArchitectures": {
-      "os": [
-        "linux",
-        "darwin"
-      ],
-      "cpu": [
-        "x64",
-        "arm64"
-      ]
-    },
     "onlyBuiltDependencies": [
       "esbuild"
     ]
