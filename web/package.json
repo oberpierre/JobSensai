@@ -1,0 +1,47 @@
+{
+  "name": "jobsensai-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router": "8.3.0",
+    "@tanstack/react-query": "5.101.4",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite": "7.3.6",
+    "@vitejs/plugin-react": "5.2.0",
+    "vitest": "4.1.11",
+    "jsdom": "30.0.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.6",
+    "@testing-library/jest-dom": "7.0.1",
+    "eslint": "10.9.0",
+    "@eslint/js": "10.0.1",
+    "typescript-eslint": "8.67.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.4",
+    "globals": "17.11.0",
+    "prettier": "3.9.6",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4"
+  },
+  "pnpm": {
+    "supportedArchitectures": {
+      "os": ["linux"],
+      "cpu": ["x64", "arm64"]
+    },
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
