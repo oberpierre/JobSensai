@@ -145,10 +145,10 @@ class DiscoverySpider(BaseJobSpider):
         """Push listing HTML to discovery_learning_tasks queue.
 
         Payload schema (consumed by LLM worker):
-          domain    – netloc extracted from the URL (required for deduplication lock)
-          url       – full URL for context
-          html      – raw page HTML
-          timestamp – ISO-8601 string
+          domain    - netloc extracted from the URL (required for deduplication lock)
+          url       - full URL for context
+          html      - raw page HTML
+          timestamp - ISO-8601 string
         """
         from urllib.parse import urlsplit
 

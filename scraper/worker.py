@@ -184,7 +184,7 @@ class JobWorker:
 
     @staticmethod
     def _parse_start_url_id(raw_start_url_id: Any) -> Optional[uuid.UUID]:
-        """The item carries start_url_id as a string; the column needs a UUID."""
+        """The item carries start_url_id as a string, but the column needs a UUID."""
         if not raw_start_url_id:
             return None
         try:
