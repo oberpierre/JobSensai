@@ -41,6 +41,16 @@ class TestCreateItem(unittest.TestCase):
 
         self.assertIsNone(item["start_url_id"])
 
+    def test_start_url_id_is_keyword_only(self):
+        # A positional 3rd argument must raise rather than silently bind to
+        # start_url_id when it was meant as an arbitrary metadata value.
+        spider = _FixtureSpider()
+
+        with self.assertRaises(TypeError):
+            spider.create_item(
+                "https://example.com/job/1", "<html/>", "not-a-column-value"
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

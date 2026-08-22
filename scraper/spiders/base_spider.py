@@ -28,6 +28,7 @@ class BaseJobSpider(scrapy.Spider, ABC):
         self,
         url: str,
         html: str,
+        *,
         start_url_id: uuid.UUID | None = None,
         **metadata: Any,
     ) -> RawJobItem:
