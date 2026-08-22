@@ -30,7 +30,7 @@ ruff_test(
         "//scraper:backfill_silver_test",
         "//scraper:pipelines_test",
         "//scraper:database_test",
-        "//scraper:google_spider_test",
+        "//scraper:discovery_spider_test",
         "//adapters:adapters",
         "//adapters:adapter_test",
         "//adapters:snapshot_test",

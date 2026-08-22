@@ -26,7 +26,7 @@ from scraper.spiders.base_spider import BaseJobSpider
 logger = logging.getLogger(__name__)
 
 
-class GoogleSpider(BaseJobSpider):
+class DiscoverySpider(BaseJobSpider):
     """Spider for scraping Google job postings."""
 
     name = "google"

@@ -36,13 +36,13 @@ def crawl_outcome(stats: Mapping[str, object]) -> tuple[int, str]:
 def main() -> None:
     """Run Scrapy crawler. Exits non-zero if it scraped nothing or logged an error."""
     import scraper.settings as settings
-    from scraper.spiders.google_spider import GoogleSpider
+    from scraper.spiders.discovery_spider import DiscoverySpider
 
     # Filter settings to only include valid configuration (uppercase variables)
     # This avoids passing imported modules (like 'os') which cause pickling errors
     conf = {k: v for k, v in vars(settings).items() if k.isupper()}
     process = CrawlerProcess(settings=conf)
-    crawler = process.create_crawler(GoogleSpider)
+    crawler = process.create_crawler(DiscoverySpider)
     process.crawl(crawler)
     process.start()
 

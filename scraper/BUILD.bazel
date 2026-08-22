@@ -145,8 +145,8 @@ py_test(
 )
 
 py_test(
-    name = "google_spider_test",
-    srcs = ["spiders/google_spider_test.py"],
+    name = "discovery_spider_test",
+    srcs = ["spiders/discovery_spider_test.py"],
     imports = ["."],
     deps = [
         ":scraper_lib",
