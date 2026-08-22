@@ -24,6 +24,7 @@ format_multirun(
 format_test(
     name = "format_tests",
     size = "small",
+    javascript = ":prettier",
     python = "@aspect_rules_lint//format:ruff",
     no_sandbox = True,
     workspace = "//:BUILD.bazel"
