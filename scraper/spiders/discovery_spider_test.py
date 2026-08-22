@@ -30,7 +30,10 @@ class _FixtureSpider(DiscoverySpider):
     """Overrides the real board's start URLs so the fallback path is exercised."""
 
     name = "fixture"
-    start_urls = ["https://example.com/literal-a", "https://example.com/literal-b"]
+    fallback_start_urls = [
+        "https://example.com/literal-a",
+        "https://example.com/literal-b",
+    ]
 
 
 class TestLoadStartUrls(unittest.TestCase):

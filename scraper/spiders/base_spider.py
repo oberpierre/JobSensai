@@ -17,7 +17,6 @@ class BaseJobSpider(scrapy.Spider, ABC):
     """Abstract base spider for job board scraping.
 
     Subclasses must implement:
-    - start_urls: List of entry page URLs
     - parse(): Extract job links from entry pages
     - parse_job(): Extract HTML from individual job postings
     """

@@ -9,7 +9,6 @@ class _FixtureSpider(BaseJobSpider):
     """Minimal concrete spider so create_item can be exercised."""
 
     name = "fixture"
-    start_urls = ["https://example.com/literal-a"]
 
     def parse(self, response) -> Iterator:
         return iter(())

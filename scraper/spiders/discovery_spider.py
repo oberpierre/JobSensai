@@ -30,12 +30,13 @@ logger = logging.getLogger(__name__)
 
 
 class DiscoverySpider(BaseJobSpider):
-    """Spider for scraping Google job postings."""
+    """Generic spider: resolves a discovery adapter by URL netloc and enqueues
+    a learning task when none is registered yet.
+    """
 
     name = "google"
 
-    # TODO: Configure these based on search criteria
-    start_urls = [
+    fallback_start_urls = [
         "https://www.google.com/about/careers/applications/jobs/results/?location=Switzerland&location=Singapore&sort_by=date",
         # https://www.google.com/about/careers/applications/jobs/results/120830781164528326-program-manager-talent-outreach-talent-engagement?location=Switzerland&location=Singapore&sort_by=date
         # Greenhouse is read through its JSON board API instead, so crawling this HTML
@@ -79,11 +80,11 @@ class DiscoverySpider(BaseJobSpider):
         """Return (start_url_id, url) pairs to crawl, newest configuration first.
 
         Reads `html_crawl` rows ordered by name. When the table holds none, falls back
-        to the class's own `start_urls` literal, each paired with a None id.
+        to the class's own `fallback_start_urls` literal, each paired with a None id.
         """
         total_count = session.query(StartUrl).count()
         if total_count == 0:
-            return [(None, url) for url in cls.start_urls]
+            return [(None, url) for url in cls.fallback_start_urls]
         rows = (
             session.query(StartUrl)
             .filter(StartUrl.type == START_URL_TYPE_HTML_CRAWL)
