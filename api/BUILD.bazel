@@ -1,0 +1,45 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "app",
+    srcs = ["app.py"],
+    imports = ["."],
+    deps = [
+        "@pip//fastapi",
+        "@pip//starlette",
+    ],
+)
+
+# Named `server` rather than `main`, which is a Bazel query result for the
+# process rather than the entrypoint file's name.
+py_binary(
+    name = "server",
+    srcs = ["main.py"],
+    main = "main.py",
+    imports = ["."],
+    deps = [
+        ":app",
+        "@pip//uvicorn",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "app_test",
+    srcs = ["app_test.py"],
+    imports = ["."],
+    deps = [
+        ":app",
+        "@pip//fastapi",
+        "@pip//httpx",
+    ],
+)
+
+py_test(
+    name = "main_test",
+    srcs = ["main_test.py"],
+    imports = ["."],
+    deps = [":server"],
+)
