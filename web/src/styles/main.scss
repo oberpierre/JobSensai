@@ -1,0 +1,11 @@
+// Self-hosted so the app announces no page load to a third-party font host.
+// Each weight file's own name starts with a digit, not a valid Sass namespace,
+// so every @use here needs an explicit "as" even though nothing reads it.
+@use "@fontsource/inter-tight/400.css" as inter-400;
+@use "@fontsource/inter-tight/500.css" as inter-500;
+@use "@fontsource/inter-tight/600.css" as inter-600;
+@use "@fontsource/ibm-plex-mono/400.css" as plex-400;
+@use "@fontsource/ibm-plex-mono/500.css" as plex-500;
+@use "@fontsource/ibm-plex-mono/600.css" as plex-600;
+@use "./tokens";
+@use "./base";

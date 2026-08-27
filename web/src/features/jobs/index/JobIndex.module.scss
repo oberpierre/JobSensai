@@ -1,0 +1,12 @@
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 26px 22px;
+}
+
+.message {
+  margin: 0;
+  font: 500 16px/1.3 var(--font-sans);
+  color: var(--ink);
+}

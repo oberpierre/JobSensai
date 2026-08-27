@@ -1,0 +1,18 @@
+// Every value here is used by name elsewhere; a component never restates a colour.
+:root {
+  --page: #e8e5df;
+  --surface: #f4f2ed;
+  --raised: #fbfaf7;
+  --band: #efece6;
+  --ink: #17140f;
+  --accent: #8a4b12;
+  --accent-hover: #5e3208;
+  --rule-strong: rgba(23, 20, 15, 0.18);
+  --rule: rgba(23, 20, 15, 0.12);
+  --muted: rgba(23, 20, 15, 0.6);
+  --faint: rgba(23, 20, 15, 0.45);
+  --ghost: rgba(23, 20, 15, 0.35);
+
+  --font-sans: "Inter Tight", Helvetica, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}

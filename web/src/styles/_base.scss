@@ -1,0 +1,28 @@
+// Zero border radius everywhere is deliberate, so nothing here sets one.
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+// The shell fills the viewport width with no page-level max-width; a prose
+// column clamps its own measure instead, where reading demands it.
+#root {
+  min-height: 100vh;
+  background: var(--surface);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
