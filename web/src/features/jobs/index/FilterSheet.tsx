@@ -1,6 +1,6 @@
 import { FacetGroup } from "./FacetGroup";
 import type { FacetsResponse } from "../../../api/types";
-import type { JobFilters } from "./useJobFilters";
+import type { FacetKey, JobFilters } from "./useJobFilters";
 import styles from "./FilterSheet.module.scss";
 
 // The mobile filter sheet, reached from the header's Filters button below the
@@ -23,10 +23,7 @@ export function FilterSheet({
     JobFilters,
     "locations" | "companies" | "employmentTypes" | "includeClosed"
   >;
-  onToggleFacet: (
-    key: "location" | "company" | "employment_type",
-    value: string,
-  ) => void;
+  onToggleFacet: (key: FacetKey, value: string) => void;
   onIncludeClosedChange: (value: boolean) => void;
   onClearAll: () => void;
   total: number;

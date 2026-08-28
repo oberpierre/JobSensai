@@ -1,6 +1,6 @@
 import { FacetGroup } from "./FacetGroup";
 import type { FacetsResponse } from "../../../api/types";
-import type { JobFilters } from "./useJobFilters";
+import type { FacetKey, JobFilters } from "./useJobFilters";
 import styles from "./FacetSidebar.module.scss";
 
 // The desktop facet sidebar, hidden below the 768px breakpoint in favour of the
@@ -16,10 +16,7 @@ export function FacetSidebar({
     JobFilters,
     "locations" | "companies" | "employmentTypes" | "includeClosed"
   >;
-  onToggleFacet: (
-    key: "location" | "company" | "employment_type",
-    value: string,
-  ) => void;
+  onToggleFacet: (key: FacetKey, value: string) => void;
   onIncludeClosedChange: (value: boolean) => void;
 }) {
   return (
