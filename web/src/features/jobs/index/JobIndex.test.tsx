@@ -1,12 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, useNavigate } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { JobIndex } from "./JobIndex";
 import { JobsApiProvider } from "../../../api/JobsApiProvider";
 import { ApiError } from "../../../api/ApiError";
+import { createQueryClient } from "../../../api/queryClient";
 import type { JobsApi } from "../../../api/jobsApi";
 import type { JobListResponse, JobSummary } from "../../../api/types";
 
@@ -34,24 +35,42 @@ function job(overrides: Partial<JobSummary> = {}): JobSummary {
   };
 }
 
-function listResponse(items: JobSummary[]): JobListResponse {
+function listResponse(
+  items: JobSummary[],
+  overrides: Partial<JobListResponse> = {},
+): JobListResponse {
   return {
     items,
     total: items.length,
     page: 1,
     page_size: 25,
     company_count: new Set(items.map((item) => item.company_name)).size,
+    ...overrides,
   };
 }
 
-function renderWithProviders(api: JobsApi, initialEntries = ["/"]) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+// Exercises real back-navigation rather than a second render, which is the only
+// way to reproduce the history-navigation defects this suite pins.
+function GoBack() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      go back
+    </button>
+  );
+}
+
+function renderWithProviders(
+  api: JobsApi,
+  initialEntries = ["/"],
+  initialIndex?: number,
+) {
+  const queryClient = createQueryClient();
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={initialEntries}>
+      <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
         <JobsApiProvider api={api}>
+          <GoBack />
           <JobIndex />
         </JobsApiProvider>
       </MemoryRouter>
@@ -121,6 +140,84 @@ describe("JobIndex", () => {
     await waitFor(() => {
       const lastCall = listJobs.mock.calls.at(-1)?.[0];
       expect(lastCall?.q).toBe("staff");
+    });
+  });
+
+  it("pluralizes the posting count", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(
+      listResponse([job()], { total: 1 }),
+    );
+    renderWithProviders({ listJobs });
+    expect(await screen.findByText("1 posting")).toBeInTheDocument();
+  });
+
+  it("renders the total rather than a false empty state on page two", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) => {
+      if (page === 2) {
+        return listResponse([], { total: 5, page: 2 });
+      }
+      return listResponse([job()], { total: 5, page: 1 });
+    });
+    renderWithProviders({ listJobs }, ["/?page=2"]);
+
+    expect(await screen.findByText("5 postings")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Nothing matches these filters."),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText("Include closed postings"));
+
+    await waitFor(() => {
+      const lastCall = listJobs.mock.calls.at(-1)?.[0];
+      expect(lastCall?.page).toBe(1);
+    });
+  });
+
+  it("restores includeClosed from the URL on reload", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderWithProviders({ listJobs }, ["/?include_closed=true"]);
+    await screen.findByText("Backend Engineer");
+
+    expect(screen.getByLabelText("Include closed postings")).toBeChecked();
+    expect(listJobs.mock.calls[0][0]).toMatchObject({ includeClosed: true });
+  });
+
+  it("pages forward and back with prev/next", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) => {
+      if (page === 2) {
+        return listResponse([job({ id: "2", title: "Staff Engineer" })], {
+          total: 30,
+          page: 2,
+        });
+      }
+      return listResponse([job({ id: "1", title: "Backend Engineer" })], {
+        total: 30,
+        page: 1,
+      });
+    });
+    renderWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    await userEvent.click(screen.getByText("next →"));
+    await screen.findByText("Staff Engineer");
+
+    await userEvent.click(screen.getByText("← prev"));
+    await screen.findByText("Backend Engineer");
+  });
+
+  it("keeps the search input in step with q after a back navigation", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderWithProviders({ listJobs }, ["/?q=foo", "/?q=bar"], 1);
+    await screen.findByText("Backend Engineer");
+
+    expect(screen.getByPlaceholderText("Title or company")).toHaveValue("bar");
+
+    await userEvent.click(screen.getByText("go back"));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Title or company")).toHaveValue(
+        "foo",
+      );
     });
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { MicroLabel } from "../../../components/MicroLabel";
@@ -8,28 +8,67 @@ import type { JobListResponse } from "../../../api/types";
 import { relativeTime } from "./relativeTime";
 import styles from "./JobIndex.module.scss";
 
-// The facet sidebar is not built here: it has nothing to filter by until the
-// facets endpoint exists, so this screen carries only search and the
-// closed-postings toggle.
+const SEARCH_DEBOUNCE_MS = 300;
+
+// Lists postings from the API, filtered by search and the closed-postings toggle
+// and paged, with every filter held in the URL so a view is linkable and survives
+// a reload.
 export function JobIndex() {
   const api = useJobsApi();
   const [searchParams, setSearchParams] = useSearchParams();
   const q = searchParams.get("q") ?? "";
   const page = Number(searchParams.get("page") ?? "1");
-  const [includeClosed, setIncludeClosed] = useState(false);
+  const includeClosed = searchParams.get("include_closed") === "true";
+
+  const [searchText, setSearchText] = useState(q);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+
+  // Keeps the controlled input in step with q from every source that can change
+  // it besides typing: back/forward navigation, a reload, or a linked-to URL.
+  const [syncedQ, setSyncedQ] = useState(q);
+  if (q !== syncedQ) {
+    setSyncedQ(q);
+    setSearchText(q);
+  }
+
+  useEffect(() => {
+    return () => clearTimeout(debounceTimer.current);
+  }, []);
 
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ["jobs", q, page, includeClosed],
     queryFn: () => api.listJobs({ q: q || undefined, page, includeClosed }),
   });
 
-  function setSearch(value: string) {
+  function handleSearchChange(value: string) {
+    setSearchText(value);
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (value) {
+            next.set("q", value);
+          } else {
+            next.delete("q");
+          }
+          next.delete("page");
+          return next;
+        },
+        { replace: true },
+      );
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  function handleIncludeClosedChange(value: boolean) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (value) {
-        next.set("q", value);
+        next.set("include_closed", "true");
       } else {
-        next.delete("q");
+        next.delete("include_closed");
       }
       next.delete("page");
       return next;
@@ -52,15 +91,17 @@ export function JobIndex() {
           <input
             type="text"
             placeholder="Title or company"
-            defaultValue={q}
-            onChange={(event) => setSearch(event.target.value)}
+            value={searchText}
+            onChange={(event) => handleSearchChange(event.target.value)}
           />
         </label>
         <label className={styles.closedToggle}>
           <input
             type="checkbox"
             checked={includeClosed}
-            onChange={(event) => setIncludeClosed(event.target.checked)}
+            onChange={(event) =>
+              handleIncludeClosedChange(event.target.checked)
+            }
           />
           Include closed postings
         </label>
@@ -73,10 +114,8 @@ export function JobIndex() {
           onRetry={() => refetch()}
         />
       )}
-      {!isPending && !isError && data && data.items.length === 0 && (
-        <EmptyState />
-      )}
-      {!isPending && !isError && data && data.items.length > 0 && (
+      {!isPending && !isError && data && data.total === 0 && <EmptyState />}
+      {!isPending && !isError && data && data.total > 0 && (
         <ResultsList data={data} onSetPage={setPage} />
       )}
     </div>
@@ -96,7 +135,9 @@ function ResultsList({
   return (
     <>
       <div className={styles.summary}>
-        <span className={styles.total}>{data.total} postings</span>
+        <span className={styles.total}>
+          {data.total} {data.total === 1 ? "posting" : "postings"}
+        </span>
         <span className={styles.companyCount}>
           {data.company_count}{" "}
           {data.company_count === 1 ? "company" : "companies"}
