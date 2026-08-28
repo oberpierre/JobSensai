@@ -22,13 +22,22 @@ export function FacetGroup({
 }) {
   const [expanded, setExpanded] = useState(false);
 
+  // A selected value the response no longer carries still gets a row, always
+  // visible: narrowing the search or pasting a URL can select something the
+  // counts do not list, and a checkbox that is never drawn leaves a filter
+  // applied that nothing on the page can switch off.
+  const orphaned = selected
+    .filter((value) => !values.some((facet) => facet.value === value))
+    .map((value) => ({ value, count: 0 }));
+
   // A facet no board reports yet is absent rather than empty, a heading over a
   // message about a field nobody has sent being a row spent on nothing.
-  if (values.length === 0) {
+  if (values.length === 0 && orphaned.length === 0) {
     return null;
   }
 
-  const shown = expanded ? values : values.slice(0, INITIALLY_SHOWN);
+  const listed = expanded ? values : values.slice(0, INITIALLY_SHOWN);
+  const shown = [...orphaned, ...listed];
   const hidden = values.length - INITIALLY_SHOWN;
 
   return (

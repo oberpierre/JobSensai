@@ -57,4 +57,35 @@ describe("FacetGroup", () => {
     expect(screen.queryByText("Location 25")).not.toBeInTheDocument();
     expect(screen.getByText("+ 21 more")).toBeInTheDocument();
   });
+
+  it("keeps a selected value on the list after it leaves the response", async () => {
+    const onToggle = vi.fn();
+    render(
+      <FacetGroup
+        label="Location"
+        values={values(4)}
+        selected={["Munich, Germany"]}
+        onToggle={onToggle}
+      />,
+    );
+
+    // Narrowing the search can drop a selected value from the counts. Without a
+    // row for it the filter stays applied with nothing on the page to clear it.
+    const orphan = screen.getByText("Munich, Germany");
+    expect(orphan).toBeInTheDocument();
+    await userEvent.click(orphan);
+    expect(onToggle).toHaveBeenCalledWith("Munich, Germany");
+  });
+
+  it("shows a selected value even when the facet is otherwise empty", () => {
+    render(
+      <FacetGroup
+        label="Location"
+        values={[]}
+        selected={["Nowhere"]}
+        onToggle={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Nowhere")).toBeInTheDocument();
+  });
 });

@@ -73,8 +73,8 @@ function GoBack() {
   );
 }
 
-// Every test here exercises listJobs. A caller that only cares about the list gets
-// a fixed empty-facets stub for free, since the facets sidebar has its own suite.
+// Every test here exercises listJobs, so a caller that only cares about the list
+// gets a fixed empty-facets stub rather than restating one per test.
 function renderWithProviders(
   api: Partial<JobsApi>,
   initialEntries = ["/"],
