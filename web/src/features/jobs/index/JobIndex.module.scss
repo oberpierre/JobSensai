@@ -1,9 +1,12 @@
+@use "../../../styles/layout";
+
 .page {
+  @include layout.container;
+
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 20px 22px 40px;
-  max-width: 900px;
+  padding-block: 20px 40px;
 }
 
 .controls {

@@ -11,8 +11,8 @@ body {
   font-family: var(--font-sans);
 }
 
-// The shell fills the viewport width with no page-level max-width, since a prose
-// column clamps its own measure instead, where reading demands it.
+// The shell fills the viewport; what sits inside it is centred and width-capped by
+// the container mixin, which the nav and every screen body share.
 #root {
   min-height: 100vh;
   background: var(--surface);

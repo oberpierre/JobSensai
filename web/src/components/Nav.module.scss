@@ -1,12 +1,15 @@
+@use "../styles/layout";
+
 .nav {
   display: flex;
   align-items: center;
-  padding: 0 22px;
   height: 48px;
   border-bottom: 1px solid var(--ink);
 }
 
 .tabs {
+  @include layout.container;
+
   display: flex;
   align-items: baseline;
   gap: 18px;

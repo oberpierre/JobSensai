@@ -1,0 +1,28 @@
+// The one place page width is decided. Both the nav's contents and each screen's
+// body take this, so the two stay aligned down the same edges.
+//
+// The breakpoints and widths are Bootstrap's, adopted rather than invented: they
+// are the widely-tested answer to the same question, and a 1440p screen makes a
+// single fixed column look stranded.
+@mixin container {
+  width: 100%;
+  max-width: 540px;
+  margin-inline: auto;
+  padding-inline: 22px;
+
+  @media (min-width: 768px) {
+    max-width: 720px;
+  }
+
+  @media (min-width: 992px) {
+    max-width: 960px;
+  }
+
+  @media (min-width: 1200px) {
+    max-width: 1140px;
+  }
+
+  @media (min-width: 1400px) {
+    max-width: 1320px;
+  }
+}
