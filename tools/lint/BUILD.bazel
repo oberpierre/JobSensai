@@ -50,5 +50,6 @@ ruff_test(
         "//adapters:registry_test",
         "//publisher:publisher",
         "//publisher:publisher_test",
+        "//web:style_tokens_test",
     ],
 )

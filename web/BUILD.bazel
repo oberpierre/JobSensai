@@ -2,6 +2,7 @@
 
 load("@aspect_rules_js//js:defs.bzl", "js_run_binary")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@rules_python//python:defs.bzl", "py_test")
 load("@npm//web:eslint/package_json.bzl", eslint_bin = "bin")
 load("@npm//web:typescript/package_json.bzl", tsc_bin = "bin")
 load("@npm//web:vite/package_json.bzl", vite_bin = "bin")
@@ -64,4 +65,14 @@ eslint_bin.eslint_test(
     args = ["."],
     chdir = package_name(),
     data = SRCS,
+)
+
+# Fails a stylesheet under src/ that writes a literal a design token already
+# names, so the check runs on every build rather than only when someone greps.
+py_test(
+    name = "style_tokens_test",
+    srcs = ["style_tokens_test.py"],
+    data = glob(["src/**/*.scss"]),
+    imports = ["."],
+    visibility = ["//visibility:public"],
 )

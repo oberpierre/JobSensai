@@ -46,7 +46,6 @@
   display: flex;
   align-items: baseline;
   gap: var(--space-8);
-  padding-top: var(--space-4);
   border-top: var(--border-width) solid var(--ink);
   padding-top: var(--space-12);
 }
@@ -191,7 +190,7 @@
 }
 
 .skeletonRow {
-  height: 0.9375rem;
+  height: var(--space-16);
   width: 70%;
   background: var(--rule);
 
