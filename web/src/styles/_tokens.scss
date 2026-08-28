@@ -1,4 +1,5 @@
-// Every value here is used by name elsewhere; a component never restates a colour.
+// The full palette is declared here in one file, so a component reaches for a token
+// here instead of restating a colour. Five tokens currently have no consumer yet.
 :root {
   --page: #e8e5df;
   --surface: #f4f2ed;
