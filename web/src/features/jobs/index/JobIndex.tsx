@@ -45,6 +45,11 @@ export function JobIndex() {
   function handleSearchChange(value: string) {
     setSearchText(value);
     clearTimeout(debounceTimer.current);
+    // Starting or clearing a search is a state the reader may want to come back
+    // to, whereas refining one is not, so only the first of a run gets a history
+    // entry. Replacing every time would overwrite the unfiltered list a fresh tab
+    // opened on, leaving the back button to exit the app.
+    const startsOrClearsASearch = (q !== "") !== (value !== "");
     debounceTimer.current = setTimeout(() => {
       setSearchParams(
         (prev) => {
@@ -57,7 +62,7 @@ export function JobIndex() {
           next.delete("page");
           return next;
         },
-        { replace: true },
+        { replace: !startsOrClearsASearch },
       );
     }, SEARCH_DEBOUNCE_MS);
   }
@@ -78,7 +83,12 @@ export function JobIndex() {
   function setPage(nextPage: number) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      next.set("page", String(nextPage));
+      // The first page is the absence of the parameter, so one state has one URL.
+      if (nextPage > 1) {
+        next.set("page", String(nextPage));
+      } else {
+        next.delete("page");
+      }
       return next;
     });
   }

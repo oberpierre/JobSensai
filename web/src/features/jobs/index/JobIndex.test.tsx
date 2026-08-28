@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, useNavigate } from "react-router";
+import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { JobIndex } from "./JobIndex";
 import { JobsApiProvider } from "../../../api/JobsApiProvider";
@@ -51,6 +51,11 @@ function listResponse(
 
 // Exercises real back-navigation rather than a second render, which is the only
 // way to reproduce the history-navigation defects this suite pins.
+function ShowUrl() {
+  const location = useLocation();
+  return <span data-testid="url">{location.pathname + location.search}</span>;
+}
+
 function GoBack() {
   const navigate = useNavigate();
   return (
@@ -71,6 +76,7 @@ function renderWithProviders(
       <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
         <JobsApiProvider api={api}>
           <GoBack />
+          <ShowUrl />
           <JobIndex />
         </JobsApiProvider>
       </MemoryRouter>
@@ -219,5 +225,59 @@ describe("JobIndex", () => {
         "foo",
       );
     });
+  });
+
+  it("keeps the unfiltered list reachable by back after a first search", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    await userEvent.type(screen.getByRole("textbox"), "AI");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("q=AI"),
+    );
+
+    await userEvent.click(screen.getByText("go back"));
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("/"),
+    );
+    expect(screen.getByTestId("url")).not.toHaveTextContent("q=AI");
+  });
+
+  it("does not add a history entry while a search is being refined", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    const box = screen.getByRole("textbox");
+    await userEvent.type(box, "A");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("q=A"),
+    );
+    await userEvent.type(box, "I");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("q=AI"),
+    );
+
+    // One entry for the whole search, so back lands on the unfiltered list
+    // rather than on the half-typed query.
+    await userEvent.click(screen.getByText("go back"));
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("/"),
+    );
+    expect(screen.getByTestId("url")).not.toHaveTextContent("q=");
+  });
+
+  it("drops the page parameter rather than writing page=1", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(
+      listResponse([job()], { total: 40, page: 2 }),
+    );
+    renderWithProviders({ listJobs }, ["/?page=2"]);
+    await screen.findByText("Backend Engineer");
+
+    await userEvent.click(screen.getByText("← prev"));
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).not.toHaveTextContent("page"),
+    );
   });
 });
