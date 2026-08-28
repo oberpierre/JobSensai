@@ -2,6 +2,7 @@
 
 import uuid
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -120,31 +121,54 @@ def paged_job_postings(
     return JobPage(items=items, total=total, company_count=company_count)
 
 
-def _sorted_counts(counter: Counter) -> list[tuple[str, int]]:
-    return sorted(counter.items(), key=lambda pair: (-pair[1], pair[0]))
+def _sorted_counts(pairs: Iterable[tuple[str, int]]) -> list[tuple[str, int]]:
+    return sorted(pairs, key=lambda pair: (-pair[1], pair[0]))
+
+
+def _company_counts(query: Query) -> list[tuple[str, int]]:
+    rows = (
+        query.with_entities(JobPosting.company_name, func.count())
+        .group_by(JobPosting.company_name)
+        .all()
+    )
+    return _sorted_counts(rows)
+
+
+def _employment_type_counts(query: Query) -> list[tuple[str, int]]:
+    """Real values are one GROUP BY / COUNT. The unspecified bucket is a second
+    COUNT rather than a member of that GROUP BY, since a board that has never
+    reported the field would otherwise show a trivial "Unspecified: everything"
+    facet, which teaches the reader nothing to filter."""
+    real_rows = (
+        query.filter(JobPosting.employment_type.isnot(None))
+        .with_entities(JobPosting.employment_type, func.count())
+        .group_by(JobPosting.employment_type)
+        .all()
+    )
+    if not real_rows:
+        return []
+    unspecified_count = query.filter(JobPosting.employment_type.is_(None)).count()
+    pairs = list(real_rows)
+    if unspecified_count:
+        pairs.append((UNSPECIFIED_EMPLOYMENT_TYPE, unspecified_count))
+    return _sorted_counts(pairs)
 
 
 def facet_counts(db: Session, q: str | None, include_closed: bool) -> FacetCounts:
     """Counts honour q and include_closed and ignore every facet selection, so a
-    click never moves a number the sidebar is not currently narrowing by."""
-    jobs = _q_and_closed_filtered(db, q, include_closed).all()
-
-    company = Counter(job.company_name for job in jobs)
+    click never moves a number the sidebar is not currently narrowing by. Company
+    and employment_type are a GROUP BY / COUNT in SQL, whereas location stays a
+    Python pass over the locations column alone, since it is a JSON array with
+    no membership comparator portable across Postgres and the SQLite the tests
+    run against."""
+    query = _q_and_closed_filtered(db, q, include_closed)
 
     location = Counter()
-    for job in jobs:
-        location.update(set(job.locations or []))
-
-    real = Counter(job.employment_type for job in jobs if job.employment_type)
-    unspecified_count = sum(1 for job in jobs if not job.employment_type)
-    employment_type = Counter(real)
-    # A board that has never reported the field would otherwise show a trivial
-    # "Unspecified: everything" facet, which teaches the reader nothing to filter.
-    if real and unspecified_count:
-        employment_type[UNSPECIFIED_EMPLOYMENT_TYPE] = unspecified_count
+    for (locations,) in query.with_entities(JobPosting.locations).all():
+        location.update(set(locations or []))
 
     return FacetCounts(
-        location=_sorted_counts(location),
-        company=_sorted_counts(company),
-        employment_type=_sorted_counts(employment_type),
+        location=_sorted_counts(location.items()),
+        company=_company_counts(query),
+        employment_type=_employment_type_counts(query),
     )

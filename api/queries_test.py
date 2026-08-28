@@ -339,5 +339,34 @@ class TestFacetCounts(QueriesTestCase):
         self.assertEqual(counts.employment_type, [])
 
 
+class TestFacetCountsGroupBy(QueriesTestCase):
+    """Group sizes uneven enough that a GROUP BY on the wrong column, a dropped
+    filter, or a lost COUNT would each report a value neither the SQL path nor
+    the Python path it replaced could produce by accident."""
+
+    def setUp(self):
+        super().setUp()
+        self.session.add_all(
+            [
+                _job(title="A1", company_name="Acme", employment_type="full_time"),
+                _job(title="A2", company_name="Acme", employment_type="full_time"),
+                _job(title="A3", company_name="Acme", employment_type="contract"),
+                _job(title="G1", company_name="Globex", employment_type="full_time"),
+                _job(
+                    title="A4 closed",
+                    company_name="Acme",
+                    employment_type="full_time",
+                    deleted_at=datetime(2026, 1, 2),
+                ),
+            ]
+        )
+        self.session.commit()
+
+    def test_company_and_employment_type_counts_match_the_grouped_rows(self):
+        counts = facet_counts(self.session, q=None, include_closed=False)
+        self.assertEqual(dict(counts.company), {"Acme": 3, "Globex": 1})
+        self.assertEqual(dict(counts.employment_type), {"full_time": 3, "contract": 1})
+
+
 if __name__ == "__main__":
     unittest.main()
