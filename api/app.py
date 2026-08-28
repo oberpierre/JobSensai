@@ -29,7 +29,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     web_dist_dir = os.environ.get("WEB_DIST_DIR")
-    if web_dist_dir and os.path.isdir(web_dist_dir):
+    if web_dist_dir and os.path.isfile(os.path.join(web_dist_dir, "index.html")):
         app.mount("/", StaticFiles(directory=web_dist_dir, html=True), name="spa")
         app.add_exception_handler(404, _spa_fallback_handler(web_dist_dir))
 

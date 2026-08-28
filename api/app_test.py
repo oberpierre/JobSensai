@@ -34,6 +34,17 @@ class TestMountSkippedWhenDistDirIsAbsent(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
 
+class TestMountSkippedWhenDistDirHasNoIndex(unittest.TestCase):
+    def test_root_does_not_500_when_the_bundle_directory_is_empty(self):
+        with (
+            tempfile.TemporaryDirectory() as empty_dir,
+            patch.dict(os.environ, {"WEB_DIST_DIR": empty_dir}),
+        ):
+            client = TestClient(create_app())
+            response = client.get("/")
+        self.assertEqual(response.status_code, 404)
+
+
 class TestSpaMount(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
