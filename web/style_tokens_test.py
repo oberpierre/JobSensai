@@ -1,5 +1,6 @@
 """Fails the build when a stylesheet under web/src/ writes a literal a design
-token already exists for.
+token already exists for, including inside an @media prelude, where a custom
+property cannot appear and a Sass variable stands in for one instead.
 """
 
 import re
@@ -20,6 +21,9 @@ FILES_EXEMPT_FROM_PX_CHECK = {"_layout.scss"}
 DECLARATION_RE = re.compile(
     r"^[ \t]*(?P<prop>[a-zA-Z-]+)\s*:\s*(?P<value>[^;{]*);", re.MULTILINE
 )
+# The prelude between "@media" and its opening brace. A prelude ends with a
+# brace rather than a semicolon, so DECLARATION_RE never matches inside one.
+MEDIA_PRELUDE_RE = re.compile(r"@media\s*(?P<condition>[^{]*)\{")
 VAR_RE = re.compile(r"var\(--[\w-]+\)")
 COLOR_RE = re.compile(r"oklch\(|#[0-9a-fA-F]{3,8}\b|rgba?\(")
 PX_RE = re.compile(r"\d+(?:\.\d+)?px")
@@ -54,6 +58,14 @@ def find_violations(path: Path) -> list[str]:
                         f"{path}: `{prop}: {value};` writes a px literal"
                         " outside _tokens.scss, _layout.scss and one-pixel rules"
                     )
+    if path.name not in FILES_EXEMPT_FROM_PX_CHECK:
+        for prelude in MEDIA_PRELUDE_RE.finditer(text):
+            condition = prelude.group("condition").strip()
+            if PX_RE.search(condition):
+                violations.append(
+                    f"{path}: `@media {condition}` writes a raw px length in its"
+                    " prelude, where a custom property cannot appear"
+                )
     return violations
 
 

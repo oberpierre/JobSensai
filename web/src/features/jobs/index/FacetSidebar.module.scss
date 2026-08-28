@@ -1,3 +1,5 @@
+@use "../../../styles/layout";
+
 .sidebar {
   display: none;
   flex-direction: column;
@@ -5,7 +7,7 @@
   padding: var(--space-20) var(--space-20) var(--space-40) 0;
   border-right: var(--border-width) solid var(--rule-strong);
 
-  @media (min-width: 768px) {
+  @media (min-width: layout.$breakpoint-md) {
     display: flex;
     width: 13.375rem;
   }
