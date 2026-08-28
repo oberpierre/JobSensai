@@ -4,13 +4,6 @@
   gap: var(--space-8);
 }
 
-.emptyMessage {
-  margin: 0;
-  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-md)
-    var(--font-sans);
-  color: var(--faint);
-}
-
 .options {
   display: flex;
   flex-direction: column;

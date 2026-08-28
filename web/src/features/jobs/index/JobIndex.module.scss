@@ -24,6 +24,9 @@
   min-width: 13.75rem;
 
   input {
+    // Shared with the Filters button beside it, so the two line up rather than
+    // differing by the border the input has and the button does not.
+    height: var(--space-32);
     border: var(--border-width) solid var(--rule-strong);
     background: var(--raised);
     padding: var(--space-8);
@@ -35,6 +38,8 @@
 
 .filtersButton {
   display: inline-flex;
+  align-items: center;
+  height: var(--space-32);
   border: none;
   background: var(--ink);
   color: var(--surface);

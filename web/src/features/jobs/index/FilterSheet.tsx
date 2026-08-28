@@ -68,7 +68,6 @@ export function FilterSheet({
         values={facets?.employment_type ?? []}
         selected={filters.employmentTypes}
         onToggle={(value) => onToggleFacet("employment_type", value)}
-        emptyMessage="No board reports this field yet."
       />
       <label className={styles.closedToggle}>
         <input

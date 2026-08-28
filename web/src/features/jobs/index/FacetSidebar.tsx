@@ -1,4 +1,3 @@
-import { MicroLabel } from "../../../components/MicroLabel";
 import { FacetGroup } from "./FacetGroup";
 import type { FacetsResponse } from "../../../api/types";
 import type { JobFilters } from "./useJobFilters";
@@ -42,15 +41,7 @@ export function FacetSidebar({
         values={facets?.employment_type ?? []}
         selected={filters.employmentTypes}
         onToggle={(value) => onToggleFacet("employment_type", value)}
-        emptyMessage="No board reports this field yet. Values appear here as soon as one does."
       />
-      <div className={styles.reserved}>
-        <MicroLabel>Mapped fields</MicroLabel>
-        <p className={styles.reservedNote}>
-          Reserved slot: curated metadata facets drop in here without moving
-          anything above.
-        </p>
-      </div>
       <label className={styles.closedToggle}>
         <input
           type="checkbox"
