@@ -13,7 +13,8 @@ const TABS: Tab[] = [
   {
     label: "Jobs",
     to: "/",
-    isActive: (path) => path === "/" || path.startsWith("/jobs"),
+    isActive: (path) =>
+      path === "/" || path === "/jobs" || path.startsWith("/jobs/"),
   },
 ];
 

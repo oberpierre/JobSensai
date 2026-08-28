@@ -13,7 +13,8 @@ def _spa_fallback_handler(web_dist_dir: str):
     rather than a 404; an unmatched /api path stays a genuine JSON 404."""
 
     async def handler(request: Request, exc: StarletteHTTPException):
-        if request.url.path.startswith("/api"):
+        path = request.url.path
+        if path == "/api" or path.startswith("/api/"):
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         index_path = os.path.join(web_dist_dir, "index.html")
         return FileResponse(index_path)

@@ -15,6 +15,15 @@ describe("Nav", () => {
     expect(screen.getByText("Jobs").tagName).toBe("A");
   });
 
+  it("does not mark Jobs active for a path that merely starts with /jobs", () => {
+    render(
+      <MemoryRouter initialEntries={["/jobsomething"]}>
+        <Nav />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Jobs")).not.toHaveAttribute("aria-current");
+  });
+
   it("offers no destination that has no route", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>

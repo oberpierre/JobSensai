@@ -72,6 +72,11 @@ class TestSpaMount(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.headers["content-type"], "application/json")
 
+    def test_a_path_merely_starting_with_api_falls_through_to_index(self):
+        response = self.client.get("/apidocs")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("spa", response.text)
+
 
 if __name__ == "__main__":
     unittest.main()
