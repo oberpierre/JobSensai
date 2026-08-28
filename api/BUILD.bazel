@@ -3,10 +3,43 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 package(default_visibility = ["//visibility:public"])
 
 py_library(
+    name = "schemas",
+    srcs = ["schemas.py"],
+    imports = ["."],
+    deps = ["@pip//pydantic"],
+)
+
+# This is the first target in the package to query Postgres, so it takes the
+# models-only edge rather than //scraper:scraper_lib, which also pulls in Scrapy
+# and Playwright.
+py_library(
+    name = "queries",
+    srcs = ["queries.py"],
+    imports = ["."],
+    deps = [
+        "@pip//sqlalchemy",
+        "//scraper:models_lib",
+    ],
+)
+
+py_library(
+    name = "jobs_router",
+    srcs = ["routers/jobs.py"],
+    imports = ["."],
+    deps = [
+        ":queries",
+        ":schemas",
+        "@pip//fastapi",
+        "//scraper:models_lib",
+    ],
+)
+
+py_library(
     name = "app",
     srcs = ["app.py"],
     imports = ["."],
     deps = [
+        ":jobs_router",
         "@pip//fastapi",
         "@pip//starlette",
     ],
@@ -42,4 +75,29 @@ py_test(
     srcs = ["main_test.py"],
     imports = ["."],
     deps = [":server"],
+)
+
+py_test(
+    name = "queries_test",
+    srcs = ["queries_test.py"],
+    imports = ["."],
+    deps = [
+        ":queries",
+        "//scraper:models_lib",
+        "@pip//sqlalchemy",
+    ],
+)
+
+py_test(
+    name = "jobs_router_test",
+    srcs = ["routers/jobs_test.py"],
+    main = "routers/jobs_test.py",
+    imports = ["."],
+    deps = [
+        ":app",
+        "//scraper:models_lib",
+        "@pip//fastapi",
+        "@pip//httpx",
+        "@pip//sqlalchemy",
+    ],
 )

@@ -1,4 +1,4 @@
-"""create_app(): the health route and the SPA mount."""
+"""create_app(): the health route, the jobs router and the SPA mount."""
 
 import os
 
@@ -6,6 +6,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from api.routers.jobs import router as jobs_router
 
 
 def _spa_fallback_handler(web_dist_dir: str):
@@ -24,11 +26,14 @@ def _spa_fallback_handler(web_dist_dir: str):
 
 def create_app() -> FastAPI:
     app = FastAPI()
+    app.include_router(jobs_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    # Every router goes above this mount: the SPA catches "/" and anything a route
+    # registered after it would shadow that route with index.html instead.
     web_dist_dir = os.environ.get("WEB_DIST_DIR")
     if web_dist_dir and os.path.isfile(os.path.join(web_dist_dir, "index.html")):
         app.mount("/", StaticFiles(directory=web_dist_dir, html=True), name="spa")
