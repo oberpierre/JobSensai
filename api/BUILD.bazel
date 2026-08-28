@@ -9,9 +9,8 @@ py_library(
     deps = ["@pip//pydantic"],
 )
 
-# This is the first target in the package to query Postgres, so it takes the
-# models-only edge rather than //scraper:scraper_lib, which also pulls in Scrapy
-# and Playwright.
+# Depends on the models-only library rather than //scraper:scraper_lib, so this
+# target pulls in neither Scrapy nor Playwright.
 py_library(
     name = "queries",
     srcs = ["queries.py"],
