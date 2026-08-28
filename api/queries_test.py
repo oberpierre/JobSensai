@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
-from api.queries import paged_job_postings
+from api.queries import UNSPECIFIED_EMPLOYMENT_TYPE, facet_counts, paged_job_postings
 from scraper.models import Base, JobPosting
 
 
@@ -48,7 +48,11 @@ class QueriesTestCase(unittest.TestCase):
 
     def _page(self, **kwargs):
         kwargs.setdefault("q", None)
+        kwargs.setdefault("locations", [])
+        kwargs.setdefault("companies", [])
+        kwargs.setdefault("employment_types", [])
         kwargs.setdefault("include_closed", False)
+        kwargs.setdefault("sort", "newest")
         kwargs.setdefault("page", 1)
         kwargs.setdefault("page_size", 25)
         return paged_job_postings(self.session, **kwargs)
@@ -113,6 +117,61 @@ class TestWildcardEscaping(QueriesTestCase):
         self.assertEqual({j.title for j in page.items}, {"AC%ME Corp"})
 
 
+class TestFacetFiltering(QueriesTestCase):
+    def setUp(self):
+        super().setUp()
+        self.session.add_all(
+            [
+                _job(
+                    title="Backend Engineer",
+                    company_name="Acme",
+                    employment_type="full_time",
+                    locations=["Zurich"],
+                ),
+                _job(
+                    title="Frontend Engineer",
+                    company_name="Globex",
+                    employment_type="contract",
+                    locations=["Singapore"],
+                ),
+                _job(
+                    title="Data Scientist",
+                    company_name="Acme",
+                    employment_type=None,
+                    locations=["Zurich", "Singapore"],
+                ),
+            ]
+        )
+        self.session.commit()
+
+    def test_location_facet_is_or_within(self):
+        page = self._page(locations=["Singapore", "Zurich"])
+        self.assertEqual(page.total, 3)
+
+    def test_company_facet_filters(self):
+        page = self._page(companies=["Globex"])
+        self.assertEqual({j.title for j in page.items}, {"Frontend Engineer"})
+
+    def test_employment_type_unspecified_matches_null_column(self):
+        page = self._page(employment_types=[UNSPECIFIED_EMPLOYMENT_TYPE])
+        self.assertEqual({j.title for j in page.items}, {"Data Scientist"})
+
+    def test_facets_combine_and_across_or_within(self):
+        page = self._page(
+            locations=["Zurich"],
+            companies=["Acme"],
+            employment_types=["full_time", UNSPECIFIED_EMPLOYMENT_TYPE],
+        )
+        self.assertEqual(
+            {j.title for j in page.items}, {"Backend Engineer", "Data Scientist"}
+        )
+
+    def test_facet_selection_narrows_the_total_and_the_company_count(self):
+        page = self._page(companies=["Acme"])
+        self.assertEqual(page.total, 2)
+        self.assertEqual(page.company_count, 1)
+
+
 class TestOrdering(QueriesTestCase):
     def test_newest_first_by_created_at(self):
         self.session.add_all(
@@ -125,6 +184,18 @@ class TestOrdering(QueriesTestCase):
         self.session.commit()
         page = self._page()
         self.assertEqual([j.title for j in page.items], ["Newest", "Middle", "Oldest"])
+
+    def test_oldest_first_by_created_at(self):
+        self.session.add_all(
+            [
+                _job(title="Middle", created_at=datetime(2026, 1, 15)),
+                _job(title="Oldest", created_at=datetime(2026, 1, 1)),
+                _job(title="Newest", created_at=datetime(2026, 1, 30)),
+            ]
+        )
+        self.session.commit()
+        page = self._page(sort="oldest")
+        self.assertEqual([j.title for j in page.items], ["Oldest", "Middle", "Newest"])
 
     def test_id_breaks_a_tie_on_a_shared_created_at(self):
         shared = datetime(2026, 1, 1)
@@ -204,6 +275,68 @@ class TestIncludeClosedOnAPairThatDiffersOnlyInDeletedAt(QueriesTestCase):
     def test_include_closed_true_returns_both_rows(self):
         page = self._page(include_closed=True)
         self.assertEqual({j.id for j in page.items}, {self.open_id, self.closed_id})
+
+
+class TestFacetCounts(QueriesTestCase):
+    def setUp(self):
+        super().setUp()
+        self.session.add_all(
+            [
+                _job(
+                    title="Backend Engineer",
+                    company_name="Acme",
+                    employment_type="full_time",
+                    locations=["Zurich"],
+                ),
+                _job(
+                    title="Backend Lead",
+                    company_name="Acme",
+                    employment_type="full_time",
+                    locations=["Zurich", "Singapore"],
+                ),
+                _job(
+                    title="Ops",
+                    company_name="Globex",
+                    employment_type=None,
+                    locations=["Singapore"],
+                ),
+                _job(
+                    title="Closed Backend Role",
+                    company_name="Acme",
+                    employment_type="full_time",
+                    locations=["Zurich"],
+                    deleted_at=datetime(2026, 1, 2),
+                ),
+            ]
+        )
+        self.session.commit()
+
+    def test_counts_honour_q(self):
+        counts = facet_counts(self.session, q="backend", include_closed=False)
+        self.assertEqual(dict(counts.company), {"Acme": 2})
+
+    def test_counts_honour_include_closed(self):
+        without_closed = facet_counts(self.session, q=None, include_closed=False)
+        with_closed = facet_counts(self.session, q=None, include_closed=True)
+        self.assertEqual(dict(without_closed.company)["Acme"], 2)
+        self.assertEqual(dict(with_closed.company)["Acme"], 3)
+
+    def test_location_counts_are_distinct_postings_ordered_by_count_then_value(self):
+        counts = facet_counts(self.session, q=None, include_closed=False)
+        # Both values sit at count 2, so the tiebreak is value ascending.
+        self.assertEqual(counts.location, [("Singapore", 2), ("Zurich", 2)])
+
+    def test_employment_type_unspecified_appears_only_alongside_real_values(self):
+        counts = facet_counts(self.session, q=None, include_closed=False)
+        self.assertEqual(dict(counts.employment_type)[UNSPECIFIED_EMPLOYMENT_TYPE], 1)
+        self.assertEqual(dict(counts.employment_type)["full_time"], 2)
+
+    def test_employment_type_is_empty_when_no_board_reports_it(self):
+        self.session.execute(JobPosting.__table__.delete())
+        self.session.add(_job(title="Solo", company_name="Acme", employment_type=None))
+        self.session.commit()
+        counts = facet_counts(self.session, q=None, include_closed=False)
+        self.assertEqual(counts.employment_type, [])
 
 
 if __name__ == "__main__":

@@ -9,12 +9,20 @@ import { JobsApiProvider } from "../../../api/JobsApiProvider";
 import { ApiError } from "../../../api/ApiError";
 import { createQueryClient } from "../../../api/queryClient";
 import type { JobsApi } from "../../../api/jobsApi";
-import type { JobListResponse, JobSummary } from "../../../api/types";
+import type {
+  FacetsResponse,
+  JobListResponse,
+  JobSummary,
+} from "../../../api/types";
 
 // Typed once here so every test's mock rejects/resolves against the real
 // listJobs signature instead of `unknown`.
 function mockListJobs() {
   return vi.fn<JobsApi["listJobs"]>();
+}
+
+function emptyFacets(): FacetsResponse {
+  return { location: [], company: [], employment_type: [] };
 }
 
 function job(overrides: Partial<JobSummary> = {}): JobSummary {
@@ -65,16 +73,22 @@ function GoBack() {
   );
 }
 
+// Every test here exercises listJobs. A caller that only cares about the list gets
+// a fixed empty-facets stub for free, since the facets sidebar has its own suite.
 function renderWithProviders(
-  api: JobsApi,
+  api: Partial<JobsApi>,
   initialEntries = ["/"],
   initialIndex?: number,
 ) {
+  const fullApi: JobsApi = {
+    getFacets: () => Promise.resolve(emptyFacets()),
+    ...api,
+  } as JobsApi;
   const queryClient = createQueryClient();
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
-        <JobsApiProvider api={api}>
+        <JobsApiProvider api={fullApi}>
           <GoBack />
           <ShowUrl />
           <JobIndex />
@@ -86,7 +100,7 @@ function renderWithProviders(
 
 describe("JobIndex", () => {
   it("renders the loading state before the response resolves", () => {
-    const api: JobsApi = { listJobs: () => new Promise(() => {}) };
+    const api: Partial<JobsApi> = { listJobs: () => new Promise(() => {}) };
     renderWithProviders(api);
     expect(screen.getByText("loading")).toBeInTheDocument();
   });

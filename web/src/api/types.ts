@@ -23,3 +23,14 @@ export interface JobListResponse {
   page_size: number;
   company_count: number;
 }
+
+export interface FacetValue {
+  value: string;
+  count: number;
+}
+
+export interface FacetsResponse {
+  location: FacetValue[];
+  company: FacetValue[];
+  employment_type: FacetValue[];
+}

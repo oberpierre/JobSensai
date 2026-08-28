@@ -1,36 +1,46 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { MicroLabel } from "../../../components/MicroLabel";
 import { useJobsApi } from "../../../api/useJobsApi";
 import { ApiError } from "../../../api/ApiError";
+import type { SortOrder } from "../../../api/jobsApi";
 import type { JobListResponse } from "../../../api/types";
 import { relativeTime } from "./relativeTime";
+import { useJobFilters } from "./useJobFilters";
+import { FacetSidebar } from "./FacetSidebar";
+import { FilterSheet } from "./FilterSheet";
 import styles from "./JobIndex.module.scss";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-// Lists postings from the API, filtered by search and the closed-postings toggle
-// and paged, with every filter held in the URL so a view is linkable and survives
-// a reload.
+// Lists postings from the API, filtered by search, the facet sidebar, the closed
+// toggle and sort, and paged, with every filter held in the URL so a view is
+// linkable and survives a reload.
 export function JobIndex() {
   const api = useJobsApi();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const q = searchParams.get("q") ?? "";
-  const page = Number(searchParams.get("page") ?? "1");
-  const includeClosed = searchParams.get("include_closed") === "true";
+  const {
+    filters,
+    setPage,
+    setQ,
+    setIncludeClosed,
+    setSort,
+    toggleFacetValue,
+    clearFacets,
+    activeFacetCount,
+  } = useJobFilters();
 
-  const [searchText, setSearchText] = useState(q);
+  const [searchText, setSearchText] = useState(filters.q);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Keeps the controlled input in step with q from every source that can change
   // it besides typing: back/forward navigation, a reload, or a linked-to URL.
-  const [syncedQ, setSyncedQ] = useState(q);
-  if (q !== syncedQ) {
-    setSyncedQ(q);
-    setSearchText(q);
+  const [syncedQ, setSyncedQ] = useState(filters.q);
+  if (filters.q !== syncedQ) {
+    setSyncedQ(filters.q);
+    setSearchText(filters.q);
   }
 
   useEffect(() => {
@@ -38,8 +48,37 @@ export function JobIndex() {
   }, []);
 
   const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: ["jobs", q, page, includeClosed],
-    queryFn: () => api.listJobs({ q: q || undefined, page, includeClosed }),
+    queryKey: [
+      "jobs",
+      filters.q,
+      filters.page,
+      filters.includeClosed,
+      filters.sort,
+      filters.locations,
+      filters.companies,
+      filters.employmentTypes,
+    ],
+    queryFn: () =>
+      api.listJobs({
+        q: filters.q || undefined,
+        page: filters.page,
+        includeClosed: filters.includeClosed,
+        sort: filters.sort,
+        location: filters.locations,
+        company: filters.companies,
+        employmentType: filters.employmentTypes,
+      }),
+  });
+
+  // Facet counts honour q and include_closed only, never the facet selections
+  // themselves, so this query key omits them on purpose.
+  const { data: facets } = useQuery({
+    queryKey: ["jobFacets", filters.q, filters.includeClosed],
+    queryFn: () =>
+      api.getFacets({
+        q: filters.q || undefined,
+        includeClosed: filters.includeClosed,
+      }),
   });
 
   function handleSearchChange(value: string) {
@@ -49,53 +88,26 @@ export function JobIndex() {
     // to, whereas refining one is not, so only the first of a run gets a history
     // entry. Replacing every time would overwrite the unfiltered list a fresh tab
     // opened on, leaving the back button to exit the app.
-    const startsOrClearsASearch = (q !== "") !== (value !== "");
+    const startsOrClearsASearch = (filters.q !== "") !== (value !== "");
     debounceTimer.current = setTimeout(() => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          if (value) {
-            next.set("q", value);
-          } else {
-            next.delete("q");
-          }
-          next.delete("page");
-          return next;
-        },
-        { replace: !startsOrClearsASearch },
-      );
+      setQ(value, { replace: !startsOrClearsASearch });
     }, SEARCH_DEBOUNCE_MS);
   }
 
-  function handleIncludeClosedChange(value: boolean) {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (value) {
-        next.set("include_closed", "true");
-      } else {
-        next.delete("include_closed");
-      }
-      next.delete("page");
-      return next;
-    });
-  }
-
-  function setPage(nextPage: number) {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      // The first page is the absence of the parameter, so one state has one URL.
-      if (nextPage > 1) {
-        next.set("page", String(nextPage));
-      } else {
-        next.delete("page");
-      }
-      return next;
-    });
-  }
+  const facetProps = {
+    filters: {
+      locations: filters.locations,
+      companies: filters.companies,
+      employmentTypes: filters.employmentTypes,
+      includeClosed: filters.includeClosed,
+    },
+    onToggleFacet: toggleFacetValue,
+    onIncludeClosedChange: setIncludeClosed,
+  };
 
   return (
     <div className={styles.page}>
-      <div className={styles.controls}>
+      <div className={styles.topRow}>
         <label className={styles.search}>
           <MicroLabel>Search</MicroLabel>
           <input
@@ -105,38 +117,59 @@ export function JobIndex() {
             onChange={(event) => handleSearchChange(event.target.value)}
           />
         </label>
-        <label className={styles.closedToggle}>
-          <input
-            type="checkbox"
-            checked={includeClosed}
-            onChange={(event) =>
-              handleIncludeClosedChange(event.target.checked)
-            }
-          />
-          Include closed postings
-        </label>
+        <button
+          type="button"
+          className={styles.filtersButton}
+          onClick={() => setSheetOpen(true)}
+        >
+          Filters{activeFacetCount > 0 ? ` · ${activeFacetCount}` : ""}
+        </button>
       </div>
 
-      {isPending && <LoadingState />}
-      {isError && (
-        <ErrorState
-          status={error instanceof ApiError ? error.status : undefined}
-          onRetry={() => refetch()}
-        />
-      )}
-      {!isPending && !isError && data && data.total === 0 && <EmptyState />}
-      {!isPending && !isError && data && data.total > 0 && (
-        <ResultsList data={data} onSetPage={setPage} />
-      )}
+      <div className={styles.layout}>
+        <FacetSidebar facets={facets} {...facetProps} />
+
+        <main className={styles.main}>
+          {isPending && <LoadingState />}
+          {isError && (
+            <ErrorState
+              status={error instanceof ApiError ? error.status : undefined}
+              onRetry={() => refetch()}
+            />
+          )}
+          {!isPending && !isError && data && data.total === 0 && <EmptyState />}
+          {!isPending && !isError && data && data.total > 0 && (
+            <ResultsList
+              data={data}
+              sort={filters.sort}
+              onSetSort={setSort}
+              onSetPage={setPage}
+            />
+          )}
+        </main>
+      </div>
+
+      <FilterSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        facets={facets}
+        {...facetProps}
+        onClearAll={clearFacets}
+        total={data?.total ?? 0}
+      />
     </div>
   );
 }
 
 function ResultsList({
   data,
+  sort,
+  onSetSort,
   onSetPage,
 }: {
   data: JobListResponse;
+  sort: SortOrder;
+  onSetSort: (sort: SortOrder) => void;
   onSetPage: (page: number) => void;
 }) {
   const firstShown = (data.page - 1) * data.page_size + 1;
@@ -145,13 +178,25 @@ function ResultsList({
   return (
     <>
       <div className={styles.summary}>
-        <span className={styles.total}>
-          {data.total} {data.total === 1 ? "posting" : "postings"}
+        <span className={styles.counts}>
+          <span className={styles.total}>
+            {data.total} {data.total === 1 ? "posting" : "postings"}
+          </span>
+          <span className={styles.companyCount}>
+            {data.company_count}{" "}
+            {data.company_count === 1 ? "company" : "companies"}
+          </span>
         </span>
-        <span className={styles.companyCount}>
-          {data.company_count}{" "}
-          {data.company_count === 1 ? "company" : "companies"}
-        </span>
+        <label className={styles.sort}>
+          sort:
+          <select
+            value={sort}
+            onChange={(event) => onSetSort(event.target.value as SortOrder)}
+          >
+            <option value="newest">newest first</option>
+            <option value="oldest">oldest first</option>
+          </select>
+        </label>
       </div>
       <ul className={styles.list}>
         {data.items.map((job) => (

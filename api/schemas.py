@@ -33,3 +33,14 @@ class JobListResponse(BaseModel):
     page: int
     page_size: int
     company_count: int
+
+
+class FacetValue(BaseModel):
+    value: str
+    count: int
+
+
+class FacetsResponse(BaseModel):
+    location: list[FacetValue]
+    company: list[FacetValue]
+    employment_type: list[FacetValue]

@@ -240,5 +240,139 @@ class TestIncludeClosedOnAPairThatDiffersOnlyInDeletedAt(JobsRouterTestCase):
         self.assertEqual({item["closed"] for item in body["items"]}, {False, True})
 
 
+class TestSort(JobsRouterTestCase):
+    def setUp(self):
+        super().setUp()
+        self._seed(
+            _job(
+                url="https://example.com/1",
+                title="Oldest",
+                created_at=datetime(2026, 1, 1),
+            ),
+            _job(
+                url="https://example.com/2",
+                title="Newest",
+                created_at=datetime(2026, 1, 30),
+            ),
+        )
+
+    def test_default_sort_is_newest_first(self):
+        response = self.client.get("/api/jobs")
+        titles = [item["title"] for item in response.json()["items"]]
+        self.assertEqual(titles, ["Newest", "Oldest"])
+
+    def test_sort_oldest_reverses_the_order(self):
+        response = self.client.get("/api/jobs", params={"sort": "oldest"})
+        titles = [item["title"] for item in response.json()["items"]]
+        self.assertEqual(titles, ["Oldest", "Newest"])
+
+
+class TestFacetParameters(JobsRouterTestCase):
+    def setUp(self):
+        super().setUp()
+        self._seed(
+            _job(
+                url="https://example.com/1",
+                title="Backend Engineer",
+                company_name="Acme",
+                employment_type="full_time",
+                locations=["Zurich"],
+            ),
+            _job(
+                url="https://example.com/2",
+                title="Frontend Engineer",
+                company_name="Globex",
+                employment_type="contract",
+                locations=["Singapore"],
+            ),
+            _job(
+                url="https://example.com/3",
+                title="Data Scientist",
+                company_name="Acme",
+                employment_type=None,
+                locations=["Zurich", "Singapore"],
+            ),
+        )
+
+    def test_location_is_or_within_the_facet(self):
+        response = self.client.get(
+            "/api/jobs", params={"location": ["Zurich", "Singapore"]}
+        )
+        self.assertEqual(response.json()["total"], 3)
+
+    def test_company_narrows_to_the_selected_companies(self):
+        response = self.client.get("/api/jobs", params={"company": "Globex"})
+        body = response.json()
+        self.assertEqual(body["total"], 1)
+        self.assertEqual(body["items"][0]["title"], "Frontend Engineer")
+
+    def test_employment_type_unspecified_matches_null(self):
+        response = self.client.get(
+            "/api/jobs", params={"employment_type": "__unspecified__"}
+        )
+        body = response.json()
+        self.assertEqual(body["total"], 1)
+        self.assertEqual(body["items"][0]["title"], "Data Scientist")
+
+    def test_facets_combine_and_across_or_within(self):
+        response = self.client.get(
+            "/api/jobs",
+            params={
+                "location": "Zurich",
+                "company": "Acme",
+                "employment_type": ["full_time", "__unspecified__"],
+            },
+        )
+        titles = {item["title"] for item in response.json()["items"]}
+        self.assertEqual(titles, {"Backend Engineer", "Data Scientist"})
+
+
+class TestJobFacets(JobsRouterTestCase):
+    def setUp(self):
+        super().setUp()
+        self._seed(
+            _job(
+                url="https://example.com/1",
+                title="Backend Engineer",
+                company_name="Acme",
+                locations=["Zurich"],
+            ),
+            _job(
+                url="https://example.com/2",
+                title="Backend Lead",
+                company_name="Acme",
+                locations=["Zurich", "Singapore"],
+            ),
+            _job(
+                url="https://example.com/3",
+                title="Frontend Engineer",
+                company_name="Globex",
+                locations=["Singapore"],
+            ),
+        )
+
+    def test_facets_report_value_and_count(self):
+        response = self.client.get("/api/jobs/facets")
+        body = response.json()
+        self.assertIn({"value": "Acme", "count": 2}, body["company"])
+        self.assertIn({"value": "Globex", "count": 1}, body["company"])
+
+    def test_facet_selection_params_do_not_narrow_the_counts(self):
+        # Two companies and two locations, each a strict subset of the seeded
+        # postings, so a selection would narrow the counts below if it were
+        # (wrongly) honoured. A fixture where every posting shared one facet
+        # value could not tell that behaviour apart from this one.
+        bare = self.client.get("/api/jobs/facets").json()
+        by_location = self.client.get(
+            "/api/jobs/facets", params={"location": "Zurich"}
+        ).json()
+        by_company = self.client.get(
+            "/api/jobs/facets", params={"company": "Acme"}
+        ).json()
+
+        self.assertEqual(bare, by_location)
+        self.assertEqual(bare, by_company)
+
+
 if __name__ == "__main__":
     unittest.main()
