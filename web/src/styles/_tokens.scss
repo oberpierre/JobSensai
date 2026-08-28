@@ -16,4 +16,25 @@
 
   --font-sans: "Inter Tight", Helvetica, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  // The scale is 2, 4, 8, 12, 16, 20, 24, 32, 40px, and a screen snaps to the nearest
+  // step rather than picking its own number.
+  --space-2: 0.125rem;
+  --space-4: 0.25rem;
+  --space-8: 0.5rem;
+  --space-12: 0.75rem;
+  --space-16: 1rem;
+  --space-20: 1.25rem;
+  --space-24: 1.5rem;
+  --space-32: 2rem;
+  --space-40: 2.5rem;
+
+  // Six roles, not six measurements: a screen picks the job a size does, never a
+  // pixel value off the canvas.
+  --type-micro: 0.625rem; // uppercase micro-labels and badges, mono
+  --type-aside: 0.71875rem; // counts, timestamps, codes, pagination, mono
+  --type-brand: 0.875rem; // the wordmark, mono
+  --type-small: 0.8125rem; // controls, tabs, body prose, sans
+  --type-heading: 1.03125rem; // posting titles and empty-state messages, sans
+  --type-display: 1.25rem; // the result total, sans
 }

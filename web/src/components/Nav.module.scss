@@ -3,7 +3,7 @@
 .nav {
   display: flex;
   align-items: center;
-  height: 48px;
+  height: 3rem;
   border-bottom: 1px solid var(--ink);
 }
 
@@ -12,20 +12,20 @@
 
   display: flex;
   align-items: baseline;
-  gap: 18px;
+  gap: var(--space-16);
 }
 
 .wordmark {
-  font: 600 14px/1 var(--font-mono);
+  font: 600 var(--type-brand)/1 var(--font-mono);
   letter-spacing: -0.02em;
   color: var(--ink);
 }
 
 .tab {
-  font: 500 12.5px/1 var(--font-sans);
+  font: 500 var(--type-small)/1 var(--font-sans);
   color: var(--muted);
   text-decoration: none;
-  padding-bottom: 3px;
+  padding-bottom: var(--space-2);
   border-bottom: 2px solid transparent;
 }
 
