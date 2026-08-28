@@ -64,7 +64,7 @@ export function FacetGroup({
             aria-expanded={expanded}
             onClick={() => setExpanded((open) => !open)}
           >
-            {expanded ? "− show fewer" : `+ ${hidden} more`}
+            {expanded ? "- show fewer" : `+ ${hidden} more`}
           </button>
         )}
       </div>

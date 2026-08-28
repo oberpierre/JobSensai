@@ -53,7 +53,7 @@ describe("FacetGroup", () => {
     await userEvent.click(screen.getByText("+ 21 more"));
     expect(screen.getByText("Location 25")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByText("− show fewer"));
+    await userEvent.click(screen.getByText("- show fewer"));
     expect(screen.queryByText("Location 25")).not.toBeInTheDocument();
     expect(screen.getByText("+ 21 more")).toBeInTheDocument();
   });
