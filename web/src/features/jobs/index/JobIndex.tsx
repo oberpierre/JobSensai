@@ -70,14 +70,24 @@ export function JobIndex() {
       }),
   });
 
-  // Facet counts honour q and include_closed only, never the facet selections
-  // themselves, so this query key omits them on purpose.
+  // Each facet's counts narrow by every other filter, including the other
+  // facets, so the key carries them all and refetches when any of them changes.
   const { data: facets } = useQuery({
-    queryKey: ["jobFacets", filters.q, filters.includeClosed],
+    queryKey: [
+      "jobFacets",
+      filters.q,
+      filters.includeClosed,
+      filters.locations,
+      filters.companies,
+      filters.employmentTypes,
+    ],
     queryFn: () =>
       api.getFacets({
         q: filters.q || undefined,
         includeClosed: filters.includeClosed,
+        location: filters.locations,
+        company: filters.companies,
+        employmentType: filters.employmentTypes,
       }),
   });
 

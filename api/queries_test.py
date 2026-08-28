@@ -311,23 +311,31 @@ class TestFacetCounts(QueriesTestCase):
         )
         self.session.commit()
 
+    def _counts(self, **kwargs):
+        kwargs.setdefault("q", None)
+        kwargs.setdefault("include_closed", False)
+        kwargs.setdefault("locations", [])
+        kwargs.setdefault("companies", [])
+        kwargs.setdefault("employment_types", [])
+        return facet_counts(self.session, **kwargs)
+
     def test_counts_honour_q(self):
-        counts = facet_counts(self.session, q="backend", include_closed=False)
+        counts = self._counts(q="backend")
         self.assertEqual(dict(counts.company), {"Acme": 2})
 
     def test_counts_honour_include_closed(self):
-        without_closed = facet_counts(self.session, q=None, include_closed=False)
-        with_closed = facet_counts(self.session, q=None, include_closed=True)
+        without_closed = self._counts()
+        with_closed = self._counts(include_closed=True)
         self.assertEqual(dict(without_closed.company)["Acme"], 2)
         self.assertEqual(dict(with_closed.company)["Acme"], 3)
 
     def test_location_counts_are_distinct_postings_ordered_by_count_then_value(self):
-        counts = facet_counts(self.session, q=None, include_closed=False)
+        counts = self._counts()
         # Both values sit at count 2, so the tiebreak is value ascending.
         self.assertEqual(counts.location, [("Singapore", 2), ("Zurich", 2)])
 
     def test_employment_type_unspecified_appears_only_alongside_real_values(self):
-        counts = facet_counts(self.session, q=None, include_closed=False)
+        counts = self._counts()
         self.assertEqual(dict(counts.employment_type)[UNSPECIFIED_EMPLOYMENT_TYPE], 1)
         self.assertEqual(dict(counts.employment_type)["full_time"], 2)
 
@@ -335,7 +343,7 @@ class TestFacetCounts(QueriesTestCase):
         self.session.execute(JobPosting.__table__.delete())
         self.session.add(_job(title="Solo", company_name="Acme", employment_type=None))
         self.session.commit()
-        counts = facet_counts(self.session, q=None, include_closed=False)
+        counts = self._counts()
         self.assertEqual(counts.employment_type, [])
 
 
@@ -363,9 +371,52 @@ class TestFacetCountsGroupBy(QueriesTestCase):
         self.session.commit()
 
     def test_company_and_employment_type_counts_match_the_grouped_rows(self):
-        counts = facet_counts(self.session, q=None, include_closed=False)
+        counts = facet_counts(
+            self.session,
+            q=None,
+            include_closed=False,
+            locations=[],
+            companies=[],
+            employment_types=[],
+        )
         self.assertEqual(dict(counts.company), {"Acme": 3, "Globex": 1})
         self.assertEqual(dict(counts.employment_type), {"full_time": 3, "contract": 1})
+
+
+class TestFacetCountsNarrowBySiblingsNotSelf(QueriesTestCase):
+    def setUp(self):
+        super().setUp()
+        self.session.add_all(
+            [
+                _job(title="A1", company_name="Acme", locations=["Zurich"]),
+                _job(title="A2", company_name="Acme", locations=["Geneva"]),
+                _job(title="G1", company_name="Globex", locations=["Zurich"]),
+                _job(title="G2", company_name="Globex", locations=["Singapore"]),
+            ]
+        )
+        self.session.commit()
+
+    def _counts(self, **kwargs):
+        kwargs.setdefault("q", None)
+        kwargs.setdefault("include_closed", False)
+        kwargs.setdefault("locations", [])
+        kwargs.setdefault("companies", [])
+        kwargs.setdefault("employment_types", [])
+        return facet_counts(self.session, **kwargs)
+
+    def test_company_selection_narrows_the_location_counts(self):
+        counts = self._counts(companies=["Acme"])
+        self.assertEqual(dict(counts.location), {"Zurich": 1, "Geneva": 1})
+
+    def test_location_selection_does_not_narrow_the_location_counts(self):
+        bare = self._counts()
+        narrowed = self._counts(locations=["Zurich"])
+        self.assertEqual(dict(narrowed.location), dict(bare.location))
+
+    def test_both_hold_together(self):
+        counts = self._counts(companies=["Acme"], locations=["Zurich"])
+        self.assertEqual(dict(counts.location), {"Zurich": 1, "Geneva": 1})
+        self.assertEqual(dict(counts.company), {"Acme": 1, "Globex": 1})
 
 
 if __name__ == "__main__":

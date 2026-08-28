@@ -295,6 +295,21 @@ describe("JobIndex", () => {
     );
   });
 
+  it("passes the active facet filters to getFacets", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    const getFacets = vi
+      .fn<JobsApi["getFacets"]>()
+      .mockResolvedValue(emptyFacets());
+    renderWithProviders({ listJobs, getFacets }, ["/?company=Acme"]);
+    await screen.findByText("Backend Engineer");
+
+    await waitFor(() => {
+      expect(getFacets).toHaveBeenCalledWith(
+        expect.objectContaining({ company: ["Acme"] }),
+      );
+    });
+  });
+
   it("the sort control writes sort=oldest and back", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
     renderWithProviders({ listJobs });

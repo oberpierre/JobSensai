@@ -357,21 +357,31 @@ class TestJobFacets(JobsRouterTestCase):
         self.assertIn({"value": "Acme", "count": 2}, body["company"])
         self.assertIn({"value": "Globex", "count": 1}, body["company"])
 
-    def test_facet_selection_params_do_not_narrow_the_counts(self):
-        # Two companies and two locations, each a strict subset of the seeded
-        # postings, so a selection would narrow the counts below if it were
-        # (wrongly) honoured. A fixture where every posting shared one facet
-        # value could not tell that behaviour apart from this one.
+    def test_other_facets_narrow_a_facets_counts_and_its_own_selection_does_not(self):
+        # Two of the three postings are Acme's, one of those in Singapore
+        # alongside Zurich, so selecting company=Acme drops Singapore's count
+        # from 2 to 1 while selecting location=Zurich leaves location untouched.
         bare = self.client.get("/api/jobs/facets").json()
-        by_location = self.client.get(
-            "/api/jobs/facets", params={"location": "Zurich"}
-        ).json()
         by_company = self.client.get(
             "/api/jobs/facets", params={"company": "Acme"}
         ).json()
+        by_location = self.client.get(
+            "/api/jobs/facets", params={"location": "Zurich"}
+        ).json()
+        by_both = self.client.get(
+            "/api/jobs/facets", params={"company": "Acme", "location": "Zurich"}
+        ).json()
 
-        self.assertEqual(bare, by_location)
-        self.assertEqual(bare, by_company)
+        self.assertEqual(
+            {f["value"]: f["count"] for f in bare["location"]},
+            {"Zurich": 2, "Singapore": 2},
+        )
+        self.assertEqual(
+            {f["value"]: f["count"] for f in by_company["location"]},
+            {"Zurich": 2, "Singapore": 1},
+        )
+        self.assertEqual(by_location["location"], bare["location"])
+        self.assertEqual(by_both["location"], by_company["location"])
 
 
 if __name__ == "__main__":

@@ -67,10 +67,11 @@ def _facet_filtered_query(
     companies: list[str],
     employment_types: list[str],
 ) -> Query:
-    """Narrows by every facet except location in SQL. Location is a JSON array
-    column with no comparator portable across Postgres and the SQLite the tests
-    run against, so its membership check happens in Python, in
-    `_location_matching_ids`."""
+    """Narrows by company and employment_type in SQL, given whichever of the two
+    the caller passes, an empty list leaving that facet unapplied, which is how a
+    facet's own count query omits itself. Location narrows separately, in
+    `_apply_location_filter`, since it is a JSON array column with no membership
+    comparator portable across Postgres and the SQLite the tests run against."""
     query = _q_and_closed_filtered(db, q, include_closed)
     if companies:
         query = query.filter(JobPosting.company_name.in_(companies))
@@ -86,6 +87,13 @@ def _location_matching_ids(query: Query, locations: list[str]) -> set[uuid.UUID]
         return None
     wanted = set(locations)
     return {job.id for job in query.all() if wanted & set(job.locations or [])}
+
+
+def _apply_location_filter(query: Query, locations: list[str]) -> Query:
+    ids = _location_matching_ids(query, locations)
+    if ids is not None:
+        query = query.filter(JobPosting.id.in_(ids))
+    return query
 
 
 def paged_job_postings(
@@ -154,21 +162,39 @@ def _employment_type_counts(query: Query) -> list[tuple[str, int]]:
     return _sorted_counts(pairs)
 
 
-def facet_counts(db: Session, q: str | None, include_closed: bool) -> FacetCounts:
-    """Counts honour q and include_closed and ignore every facet selection, so a
-    click never moves a number the sidebar is not currently narrowing by. Company
-    and employment_type are a GROUP BY / COUNT in SQL, whereas location stays a
-    Python pass over the locations column alone, since it is a JSON array with
-    no membership comparator portable across Postgres and the SQLite the tests
-    run against."""
-    query = _q_and_closed_filtered(db, q, include_closed)
-
+def facet_counts(
+    db: Session,
+    q: str | None,
+    include_closed: bool,
+    locations: list[str],
+    companies: list[str],
+    employment_types: list[str],
+) -> FacetCounts:
+    """Counts honour q and include_closed on every facet, and each facet is
+    additionally narrowed by the other facets' selections and not by its own, so a
+    click on one facet moves its siblings' numbers but never its own. Company and
+    employment_type are a GROUP BY / COUNT in SQL, whereas location stays a Python
+    pass over the locations column alone, since it is a JSON array with no
+    membership comparator portable across Postgres and the SQLite the tests run
+    against."""
+    location_query = _facet_filtered_query(
+        db, q, include_closed, companies, employment_types
+    )
     location = Counter()
-    for (locations,) in query.with_entities(JobPosting.locations).all():
-        location.update(set(locations or []))
+    for (locs,) in location_query.with_entities(JobPosting.locations).all():
+        location.update(set(locs or []))
+
+    company_query = _apply_location_filter(
+        _facet_filtered_query(db, q, include_closed, [], employment_types),
+        locations,
+    )
+    employment_type_query = _apply_location_filter(
+        _facet_filtered_query(db, q, include_closed, companies, []),
+        locations,
+    )
 
     return FacetCounts(
         location=_sorted_counts(location.items()),
-        company=_company_counts(query),
-        employment_type=_employment_type_counts(query),
+        company=_company_counts(company_query),
+        employment_type=_employment_type_counts(employment_type_query),
     )

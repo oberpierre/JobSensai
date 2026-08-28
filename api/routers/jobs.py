@@ -91,10 +91,20 @@ def list_jobs(
 @router.get("/facets", response_model=FacetsResponse)
 def job_facets(
     search_text: str | None = Query(default=None, alias="q"),
+    location: list[str] = Query(default=[]),  # noqa: B008
+    company: list[str] = Query(default=[]),  # noqa: B008
+    employment_type: list[str] = Query(default=[]),  # noqa: B008
     include_closed: bool = Query(default=False),
     db: Session = Depends(get_db),  # noqa: B008 - FastAPI's own dependency-injection idiom
 ) -> FacetsResponse:
-    counts = facet_counts(db, q=search_text, include_closed=include_closed)
+    counts = facet_counts(
+        db,
+        q=search_text,
+        include_closed=include_closed,
+        locations=location,
+        companies=company,
+        employment_types=employment_type,
+    )
     return FacetsResponse(
         location=[FacetValue(value=v, count=c) for v, c in counts.location],
         company=[FacetValue(value=v, count=c) for v, c in counts.company],

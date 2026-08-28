@@ -94,7 +94,7 @@ describe("createHttpJobsApi", () => {
     );
   });
 
-  it("getFacets calls /api/jobs/facets with q and include_closed only", async () => {
+  it("getFacets calls /api/jobs/facets with q and include_closed", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ location: [], company: [], employment_type: [] }),
@@ -106,6 +106,26 @@ describe("createHttpJobsApi", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/jobs/facets?q=staff&include_closed=true",
       expect.objectContaining({ credentials: "same-origin" }),
+    );
+  });
+
+  it("getFacets sends the active facet filters as the wire query string", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ location: [], company: [], employment_type: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createHttpJobsApi().getFacets({
+      location: ["Zurich", "Singapore"],
+      company: ["Acme"],
+      employmentType: ["__unspecified__"],
+    });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(
+      "/api/jobs/facets?location=Zurich&location=Singapore&company=Acme" +
+        "&employment_type=__unspecified__",
     );
   });
 });

@@ -16,6 +16,9 @@ export interface ListJobsParams {
 export interface GetFacetsParams {
   q?: string;
   includeClosed?: boolean;
+  location?: string[];
+  company?: string[];
+  employmentType?: string[];
 }
 
 export interface JobsApi {
@@ -77,10 +80,14 @@ export function createHttpJobsApi(): JobsApi {
       return get<JobListResponse>("/api/jobs", params);
     },
 
-    async getFacets({ q, includeClosed }) {
+    async getFacets({ q, includeClosed, location, company, employmentType }) {
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       if (includeClosed) params.set("include_closed", "true");
+      for (const value of location ?? []) params.append("location", value);
+      for (const value of company ?? []) params.append("company", value);
+      for (const value of employmentType ?? [])
+        params.append("employment_type", value);
       return get<FacetsResponse>("/api/jobs/facets", params);
     },
   };
