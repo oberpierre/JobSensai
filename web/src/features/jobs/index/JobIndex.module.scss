@@ -24,10 +24,11 @@
   min-width: 13.75rem;
 
   input {
-    border: 1px solid var(--rule-strong);
+    border: var(--border-width) solid var(--rule-strong);
     background: var(--raised);
     padding: var(--space-8);
-    font: 400 var(--type-small)/1 var(--font-sans);
+    font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-xs)
+      var(--font-sans);
     color: var(--ink);
   }
 }
@@ -36,7 +37,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  font: 400 var(--type-small)/1.35 var(--font-sans);
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-sm)
+    var(--font-sans);
   color: var(--ink);
 }
 
@@ -45,18 +47,20 @@
   align-items: baseline;
   gap: var(--space-8);
   padding-top: var(--space-4);
-  border-top: 1px solid var(--ink);
+  border-top: var(--border-width) solid var(--ink);
   padding-top: var(--space-12);
 }
 
 .total {
-  font: 500 var(--type-display)/1 var(--font-sans);
-  letter-spacing: -0.02em;
+  font: var(--font-weight-medium) var(--font-size-xl)/var(--line-height-xs)
+    var(--font-sans);
+  letter-spacing: var(--letter-spacing-tight);
   color: var(--ink);
 }
 
 .companyCount {
-  font: 400 var(--type-aside)/1 var(--font-mono);
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-mono);
   color: var(--muted);
 }
 
@@ -72,7 +76,7 @@
   grid-template-columns: 1fr 10.5rem;
   gap: var(--space-24);
   padding: var(--space-16) 0;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: var(--border-width) solid var(--rule);
 }
 
 .rowClosed {
@@ -86,8 +90,9 @@
 }
 
 .title {
-  font: 500 var(--type-heading)/1.35 var(--font-sans);
-  letter-spacing: -0.015em;
+  font: var(--font-weight-medium) var(--font-size-lg)/var(--line-height-sm)
+    var(--font-sans);
+  letter-spacing: var(--letter-spacing-tight);
   color: var(--ink);
 }
 
@@ -102,7 +107,8 @@
   align-items: center;
   gap: var(--space-8);
   flex-wrap: wrap;
-  font: 400 var(--type-aside)/1 var(--font-mono);
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-mono);
   color: var(--muted);
 }
 
@@ -111,17 +117,19 @@
 }
 
 .closedBadge {
-  font: 500 var(--type-micro)/1 var(--font-mono);
+  font: var(--font-weight-medium) var(--font-size-2xs)/var(--line-height-xs)
+    var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  border: 1px solid var(--rule-strong);
+  letter-spacing: var(--letter-spacing-wide);
+  border: var(--border-width) solid var(--rule-strong);
   color: var(--muted);
   padding: var(--space-4);
 }
 
 .snippet {
   margin: var(--space-2) 0 0;
-  font: 400 var(--type-small)/1.5 var(--font-sans);
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-md)
+    var(--font-sans);
   color: var(--muted);
   max-width: 78ch;
 }
@@ -131,7 +139,8 @@
   flex-direction: column;
   align-items: flex-end;
   gap: var(--space-8);
-  font: 400 var(--type-aside)/1.35 var(--font-mono);
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-sm)
+    var(--font-mono);
   color: var(--muted);
   text-align: right;
 }
@@ -141,7 +150,8 @@
   align-items: center;
   justify-content: space-between;
   padding-top: var(--space-12);
-  font: 400 var(--type-aside)/1 var(--font-mono);
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-mono);
   color: var(--muted);
 }
 
@@ -170,12 +180,13 @@
   gap: var(--space-8);
   padding: var(--space-24) var(--space-20);
   background: var(--raised);
-  border: 1px solid var(--rule-strong);
+  border: var(--border-width) solid var(--rule-strong);
 }
 
 .message {
   margin: 0;
-  font: 500 var(--type-heading)/1.35 var(--font-sans);
+  font: var(--font-weight-medium) var(--font-size-lg)/var(--line-height-sm)
+    var(--font-sans);
   color: var(--ink);
 }
 
@@ -195,20 +206,22 @@
   gap: var(--space-8);
   padding: var(--space-24) var(--space-20);
   background: var(--raised);
-  border: 1px solid var(--rule-strong);
-  border-left: 2px solid oklch(0.55 0.11 25);
+  border: var(--border-width) solid var(--rule-strong);
+  border-left: var(--border-width-thick) solid var(--danger);
 }
 
 .errorLabel {
-  font: 500 var(--type-micro)/1 var(--font-mono);
+  font: var(--font-weight-medium) var(--font-size-2xs)/var(--line-height-xs)
+    var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: oklch(0.5 0.11 25);
+  letter-spacing: var(--letter-spacing-wide);
+  color: var(--danger);
 }
 
 .errorDetail {
   margin: 0;
-  font: 400 var(--type-small)/1.5 var(--font-sans);
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-md)
+    var(--font-sans);
   color: var(--muted);
   max-width: 56ch;
 }
@@ -224,12 +237,14 @@
     color: var(--surface);
     border: none;
     padding: var(--space-8) var(--space-12);
-    font: 500 var(--type-small)/1 var(--font-sans);
+    font: var(--font-weight-medium) var(--font-size-sm)/var(--line-height-xs)
+      var(--font-sans);
     cursor: pointer;
   }
 }
 
 .errorCode {
-  font: 400 var(--type-aside)/1 var(--font-mono);
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-mono);
   color: var(--muted);
 }

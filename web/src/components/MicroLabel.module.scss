@@ -1,6 +1,7 @@
 .label {
-  font: 400 var(--type-micro)/1 var(--font-mono);
+  font: var(--font-weight-normal) var(--font-size-2xs)/var(--line-height-xs)
+    var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--letter-spacing-wide);
   color: var(--faint);
 }
