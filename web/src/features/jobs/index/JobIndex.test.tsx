@@ -294,4 +294,22 @@ describe("JobIndex", () => {
       expect(screen.getByTestId("url")).not.toHaveTextContent("page"),
     );
   });
+
+  it("the sort control writes sort=oldest and back", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    await userEvent.selectOptions(screen.getByRole("combobox"), "oldest");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("sort=oldest"),
+    );
+    expect(listJobs.mock.calls.at(-1)?.[0]).toMatchObject({ sort: "oldest" });
+
+    await userEvent.selectOptions(screen.getByRole("combobox"), "newest");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).not.toHaveTextContent("sort="),
+    );
+    expect(listJobs.mock.calls.at(-1)?.[0]).toMatchObject({ sort: "newest" });
+  });
 });
