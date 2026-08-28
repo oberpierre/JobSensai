@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 def _spa_fallback_handler(web_dist_dir: str):
     """Any unmatched non-/api path is a client-side route, so it gets index.html
-    rather than a 404; an unmatched /api path stays a genuine JSON 404."""
+    rather than a 404. An unmatched /api path stays a genuine JSON 404."""
 
     async def handler(request: Request, exc: StarletteHTTPException):
         path = request.url.path

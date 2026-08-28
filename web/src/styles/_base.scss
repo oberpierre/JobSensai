@@ -11,7 +11,7 @@ body {
   font-family: var(--font-sans);
 }
 
-// The shell fills the viewport width with no page-level max-width; a prose
+// The shell fills the viewport width with no page-level max-width, since a prose
 // column clamps its own measure instead, where reading demands it.
 #root {
   min-height: 100vh;

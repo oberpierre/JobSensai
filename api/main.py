@@ -13,7 +13,7 @@ from api.app import create_app
 
 
 def server_config() -> tuple[str, int]:
-    """The port is the only override; the host is always the wildcard bind a
+    """The port is the only override. The host is always the wildcard bind, since a
     published container port needs to be reachable at all."""
     return "0.0.0.0", int(os.environ.get("API_PORT", "8000"))
 
