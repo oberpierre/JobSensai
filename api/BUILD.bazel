@@ -34,10 +34,24 @@ py_library(
 )
 
 py_library(
+    name = "boards_router",
+    srcs = ["routers/boards.py"],
+    imports = ["."],
+    deps = [
+        ":queries",
+        ":schemas",
+        "@pip//fastapi",
+        "@pip//sqlalchemy",
+        "//scraper:models_lib",
+    ],
+)
+
+py_library(
     name = "app",
     srcs = ["app.py"],
     imports = ["."],
     deps = [
+        ":boards_router",
         ":jobs_router",
         "@pip//fastapi",
         "@pip//starlette",
@@ -91,6 +105,20 @@ py_test(
     name = "jobs_router_test",
     srcs = ["routers/jobs_test.py"],
     main = "routers/jobs_test.py",
+    imports = ["."],
+    deps = [
+        ":app",
+        "//scraper:models_lib",
+        "@pip//fastapi",
+        "@pip//httpx",
+        "@pip//sqlalchemy",
+    ],
+)
+
+py_test(
+    name = "boards_router_test",
+    srcs = ["routers/boards_test.py"],
+    main = "routers/boards_test.py",
     imports = ["."],
     deps = [
         ":app",

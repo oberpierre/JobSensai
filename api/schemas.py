@@ -1,9 +1,12 @@
-"""Pydantic payload models for the jobs HTTP API."""
+"""Pydantic payload models for the jobs and boards HTTP API."""
 
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+BoardType = Literal["html_crawl", "json_api"]
 
 
 def as_utc(value: datetime) -> datetime:
@@ -59,3 +62,43 @@ class FacetsResponse(BaseModel):
     location: list[FacetValue]
     company: list[FacetValue]
     employment_type: list[FacetValue]
+
+
+def _not_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must not be blank")
+    return value
+
+
+class BoardCreate(BaseModel):
+    name: str
+    url: str
+    type: BoardType
+
+    _validate_name = field_validator("name")(_not_blank)
+    _validate_url = field_validator("url")(_not_blank)
+
+
+class BoardUpdate(BaseModel):
+    # No `type`: 0012 fixes it at creation, and the edit form has no control for
+    # it, so there is nothing to validate here.
+    name: str
+    url: str
+
+    _validate_name = field_validator("name")(_not_blank)
+    _validate_url = field_validator("url")(_not_blank)
+
+
+class Board(BaseModel):
+    id: UUID
+    name: str
+    url: str
+    type: BoardType
+    posting_count: int | None
+    health: None
+    created_at: datetime
+    updated_at: datetime
+
+
+class BoardListResponse(BaseModel):
+    items: list[Board]

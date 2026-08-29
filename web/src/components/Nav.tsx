@@ -16,6 +16,11 @@ const TABS: Tab[] = [
     isActive: (path) =>
       path === "/" || path === "/jobs" || path.startsWith("/jobs/"),
   },
+  {
+    label: "Dashboard",
+    to: "/admin",
+    isActive: (path) => path === "/admin" || path.startsWith("/admin/"),
+  },
 ];
 
 export function Nav() {

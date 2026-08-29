@@ -1,4 +1,4 @@
-"""create_app(): the health route, the jobs router and the SPA mount."""
+"""create_app(): the health route, the jobs and boards routers, and the SPA mount."""
 
 import os
 
@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from api.routers.boards import router as boards_router
 from api.routers.jobs import router as jobs_router
 
 
@@ -27,6 +28,7 @@ def _spa_fallback_handler(web_dist_dir: str):
 def create_app() -> FastAPI:
     app = FastAPI()
     app.include_router(jobs_router)
+    app.include_router(boards_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

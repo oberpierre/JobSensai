@@ -49,3 +49,20 @@ export interface FacetsResponse {
   company: FacetValue[];
   employment_type: FacetValue[];
 }
+
+export type BoardType = "html_crawl" | "json_api";
+
+export interface Board {
+  id: string;
+  name: string;
+  url: string;
+  type: BoardType;
+  posting_count: number | null;
+  health: null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BoardListResponse {
+  items: Board[];
+}

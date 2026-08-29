@@ -1,4 +1,5 @@
-"""SQLAlchemy query builders for GET /api/jobs and GET /api/jobs/facets."""
+"""SQLAlchemy query builders for GET /api/jobs, GET /api/jobs/facets and
+/api/boards."""
 
 import uuid
 from collections import Counter
@@ -9,7 +10,7 @@ from typing import Literal
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Query, Session
 
-from scraper.models import JobPosting
+from scraper.models import JobPosting, RawJobPosting
 
 UNSPECIFIED_EMPLOYMENT_TYPE = "__unspecified__"
 
@@ -198,3 +199,33 @@ def facet_counts(
         company=_company_counts(company_query),
         employment_type=_employment_type_counts(employment_type_query),
     )
+
+
+def board_posting_counts(
+    db: Session, board_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int | None]:
+    """`None` for a board with no attributable Bronze rows, the Silver count
+    joined by url otherwise, per 0014's attribution rule."""
+    if not board_ids:
+        return {}
+
+    raw_counts = dict(
+        db.query(RawJobPosting.start_url_id, func.count(RawJobPosting.id))
+        .filter(RawJobPosting.start_url_id.in_(board_ids))
+        .group_by(RawJobPosting.start_url_id)
+        .all()
+    )
+    joined_counts = dict(
+        db.query(RawJobPosting.start_url_id, func.count(func.distinct(JobPosting.id)))
+        .join(JobPosting, JobPosting.url == RawJobPosting.url)
+        .filter(
+            RawJobPosting.start_url_id.in_(board_ids),
+            JobPosting.deleted_at.is_(None),
+        )
+        .group_by(RawJobPosting.start_url_id)
+        .all()
+    )
+    return {
+        board_id: joined_counts.get(board_id, 0) if raw_counts.get(board_id) else None
+        for board_id in board_ids
+    }

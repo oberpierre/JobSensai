@@ -30,9 +30,28 @@ describe("Nav", () => {
         <Nav />
       </MemoryRouter>,
     );
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getAllByRole("link")).toHaveLength(2);
     expect(screen.queryByText("My CV")).not.toBeInTheDocument();
-    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
     expect(screen.queryByText("basic auth")).not.toBeInTheDocument();
+  });
+
+  it("marks Dashboard active on /admin and not on a path merely starting with it", () => {
+    const { unmount } = render(
+      <MemoryRouter initialEntries={["/admin"]}>
+        <Nav />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Dashboard")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    unmount();
+
+    render(
+      <MemoryRouter initialEntries={["/adminsomething"]}>
+        <Nav />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Dashboard")).not.toHaveAttribute("aria-current");
   });
 });
