@@ -189,6 +189,41 @@ class TestUpdateBoard(BoardsRouterTestCase):
         self.assertEqual(response.json()["name"], "Renamed")
         self.assertEqual(response.json()["url"], "https://renamed.example.com")
 
+    def test_changing_the_type_is_409(self):
+        board_id = self._create(type_="html_crawl")
+
+        response = self.client.put(
+            f"/api/boards/{board_id}",
+            json={
+                "name": "Example",
+                "url": "https://example.com",
+                "type": "json_api",
+            },
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()["detail"], "A board's type is fixed at creation"
+        )
+        self.assertEqual(
+            self.client.get("/api/boards").json()["items"][0]["type"], "html_crawl"
+        )
+
+    def test_resending_the_unchanged_type_is_allowed(self):
+        board_id = self._create(type_="html_crawl")
+
+        response = self.client.put(
+            f"/api/boards/{board_id}",
+            json={
+                "name": "Renamed",
+                "url": "https://example.com",
+                "type": "html_crawl",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], "Renamed")
+
     def test_duplicate_name_is_409(self):
         self._create(name="Taken", url="https://taken.example.com")
         board_id = self._create(name="Example", url="https://example.com")

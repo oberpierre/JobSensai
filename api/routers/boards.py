@@ -15,6 +15,8 @@ from scraper.models import StartUrl
 router = APIRouter(prefix="/api/boards", tags=["boards"])
 
 _DUPLICATE_DETAIL = "A board with that name or url already exists"
+# Re-typing an entry would teach an extraction adapter for a format being dropped.
+_TYPE_IS_FIXED_DETAIL = "A board's type is fixed at creation"
 
 
 def _to_board(board: StartUrl, posting_count: int | None) -> Board:
@@ -78,6 +80,8 @@ def update_board(
     board = db.query(StartUrl).filter(StartUrl.id == board_id).one_or_none()
     if board is None:
         raise HTTPException(status_code=404, detail="No board with that id")
+    if payload.type is not None and payload.type != board.type:
+        raise HTTPException(status_code=409, detail=_TYPE_IS_FIXED_DETAIL)
     if _conflicting_board(db, payload.name, payload.url, exclude_id=board_id):
         raise HTTPException(status_code=409, detail=_DUPLICATE_DETAIL)
 

@@ -205,7 +205,7 @@ def board_posting_counts(
     db: Session, board_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, int | None]:
     """`None` for a board with no attributable Bronze rows, the Silver count
-    joined by url otherwise, per 0014's attribution rule."""
+    joined by url otherwise, url being the natural key both tables declare unique."""
     if not board_ids:
         return {}
 

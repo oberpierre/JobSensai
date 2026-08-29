@@ -80,10 +80,12 @@ class BoardCreate(BaseModel):
 
 
 class BoardUpdate(BaseModel):
-    # No `type`: 0012 fixes it at creation, and the edit form has no control for
-    # it, so there is nothing to validate here.
+    # Type is fixed at creation. It stays accepted here so a request trying to
+    # change it can be rejected, rather than silently ignored as an extra field
+    # and read back as a change that happened.
     name: str
     url: str
+    type: BoardType | None = None
 
     _validate_name = field_validator("name")(_not_blank)
     _validate_url = field_validator("url")(_not_blank)
