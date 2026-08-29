@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router";
 import { MicroLabel } from "../../../components/MicroLabel";
 import { useJobsApi } from "../../../api/useJobsApi";
 import { ApiError } from "../../../api/ApiError";
@@ -214,26 +215,28 @@ function ResultsList({
             key={job.id}
             className={job.closed ? styles.rowClosed : styles.row}
           >
-            <div className={styles.rowMain}>
-              <span className={styles.title}>{job.title}</span>
-              <div className={styles.meta}>
-                <span>{job.company_name}</span>
-                <span className={styles.dot}>·</span>
-                <span>
-                  {job.locations.join(" · ") || "Location not specified"}
-                </span>
-                {job.closed && (
-                  <span className={styles.closedBadge}>closed</span>
+            <Link to={`/jobs/${job.id}`} className={styles.rowLink}>
+              <div className={styles.rowMain}>
+                <span className={styles.title}>{job.title}</span>
+                <div className={styles.meta}>
+                  <span>{job.company_name}</span>
+                  <span className={styles.dot}>·</span>
+                  <span>
+                    {job.locations.join(" · ") || "Location not specified"}
+                  </span>
+                  {job.closed && (
+                    <span className={styles.closedBadge}>closed</span>
+                  )}
+                </div>
+                {!job.closed && job.snippet && (
+                  <p className={styles.snippet}>{job.snippet}</p>
                 )}
               </div>
-              {!job.closed && job.snippet && (
-                <p className={styles.snippet}>{job.snippet}</p>
-              )}
-            </div>
-            <div className={styles.rowSeen}>
-              <span>first seen {relativeTime(job.first_seen)}</span>
-              <span>{job.employment_type ?? "type not specified"}</span>
-            </div>
+              <div className={styles.rowSeen}>
+                <span>first seen {relativeTime(job.first_seen)}</span>
+                <span>{job.employment_type ?? "type not specified"}</span>
+              </div>
+            </Link>
           </li>
         ))}
       </ul>

@@ -16,6 +16,21 @@ export interface JobSummary {
   closed: boolean;
 }
 
+export interface JobDetail {
+  id: string;
+  url: string;
+  title: string;
+  company_name: string;
+  employment_type: string | null;
+  locations: string[];
+  categories: string[];
+  metadata: Record<string, unknown>;
+  description: string;
+  first_seen: string;
+  last_seen: string;
+  closed: boolean;
+}
+
 export interface JobListResponse {
   items: JobSummary[];
   total: number;

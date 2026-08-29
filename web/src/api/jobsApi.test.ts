@@ -128,4 +128,48 @@ describe("createHttpJobsApi", () => {
         "&employment_type=__unspecified__",
     );
   });
+
+  it("getJob calls /api/jobs/{id} with credentials same-origin", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: "1",
+        url: "https://example.com/1",
+        title: "Backend Engineer",
+        company_name: "Acme",
+        employment_type: null,
+        locations: [],
+        categories: [],
+        metadata: {},
+        description: "",
+        first_seen: "2026-01-01T00:00:00+00:00",
+        last_seen: "2026-01-01T00:00:00+00:00",
+        closed: false,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createHttpJobsApi().getJob("1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/jobs/1",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+  });
+
+  it("getJob throws an ApiError carrying 404 for an unknown id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({ detail: "No posting with that id" }),
+      }),
+    );
+
+    await expect(createHttpJobsApi().getJob("missing")).rejects.toMatchObject({
+      status: 404,
+      message: "No posting with that id",
+    } satisfies Partial<ApiError>);
+  });
 });

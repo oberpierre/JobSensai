@@ -27,6 +27,21 @@ class JobSummary(BaseModel):
     closed: bool
 
 
+class JobDetail(BaseModel):
+    id: UUID
+    url: str
+    title: str
+    company_name: str
+    employment_type: str | None
+    locations: list[str]
+    categories: list[str]
+    metadata: dict
+    description: str
+    first_seen: datetime
+    last_seen: datetime
+    closed: bool
+
+
 class JobListResponse(BaseModel):
     items: list[JobSummary]
     total: int

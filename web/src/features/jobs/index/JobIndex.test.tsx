@@ -82,6 +82,7 @@ function renderWithProviders(
 ) {
   const fullApi: JobsApi = {
     getFacets: () => Promise.resolve(emptyFacets()),
+    getJob: () => new Promise(() => {}),
     ...api,
   } as JobsApi;
   const queryClient = createQueryClient();
@@ -145,6 +146,13 @@ describe("JobIndex", () => {
     const title = await screen.findByText("Closed Role");
     expect(title.className).toMatch(/title/);
     expect(title.closest("li")?.className).toMatch(/rowClosed/);
+  });
+
+  it("links a row's title to its detail page", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderWithProviders({ listJobs });
+    const title = await screen.findByText("Backend Engineer");
+    expect(title.closest("a")).toHaveAttribute("href", "/jobs/1");
   });
 
   it("writes the search text into the q query parameter", async () => {

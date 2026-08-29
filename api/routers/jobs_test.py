@@ -384,5 +384,51 @@ class TestJobFacets(JobsRouterTestCase):
         self.assertEqual(by_both["location"], by_company["location"])
 
 
+class TestGetJob(JobsRouterTestCase):
+    def setUp(self):
+        super().setUp()
+        self.open_job_id = uuid.uuid4()
+        self.closed_job_id = uuid.uuid4()
+        self._seed(
+            _job(
+                id=self.open_job_id,
+                url="https://example.com/1",
+                title="Backend Engineer",
+                description="Full description body.",
+                metadata_={"experience_level": "Mid", "salary_range": "$100k-$120k"},
+            ),
+            _job(
+                id=self.closed_job_id,
+                url="https://example.com/2",
+                title="Closed Role",
+                deleted_at=datetime(2025, 6, 1),
+            ),
+        )
+
+    def test_returns_the_full_detail_payload(self):
+        response = self.client.get(f"/api/jobs/{self.open_job_id}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["description"], "Full description body.")
+        self.assertNotIn("snippet", body)
+
+    def test_metadata_is_returned_verbatim_key_unknown_to_the_api_included(self):
+        response = self.client.get(f"/api/jobs/{self.open_job_id}")
+        self.assertEqual(
+            response.json()["metadata"],
+            {"experience_level": "Mid", "salary_range": "$100k-$120k"},
+        )
+
+    def test_closed_posting_returns_200(self):
+        response = self.client.get(f"/api/jobs/{self.closed_job_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["closed"])
+
+    def test_unknown_id_is_404_with_named_detail(self):
+        response = self.client.get(f"/api/jobs/{uuid.uuid4()}")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "No posting with that id")
+
+
 if __name__ == "__main__":
     unittest.main()

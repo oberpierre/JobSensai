@@ -1,15 +1,17 @@
-"""GET /api/jobs and GET /api/jobs/facets."""
+"""GET /api/jobs, GET /api/jobs/facets and GET /api/jobs/{job_id}."""
 
 import re
 from typing import Literal
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from api.queries import facet_counts, paged_job_postings
 from api.schemas import (
     FacetsResponse,
     FacetValue,
+    JobDetail,
     JobListResponse,
     JobSummary,
     as_utc,
@@ -47,6 +49,23 @@ def _to_summary(job: JobPosting) -> JobSummary:
         categories=job.categories or [],
         metadata=job.metadata_ or {},
         snippet=_snippet(job.description or ""),
+        first_seen=as_utc(job.created_at),
+        last_seen=as_utc(job.updated_at),
+        closed=job.deleted_at is not None,
+    )
+
+
+def _to_detail(job: JobPosting) -> JobDetail:
+    return JobDetail(
+        id=job.id,
+        url=job.url,
+        title=job.title,
+        company_name=job.company_name,
+        employment_type=job.employment_type,
+        locations=job.locations or [],
+        categories=job.categories or [],
+        metadata=job.metadata_ or {},
+        description=job.description or "",
         first_seen=as_utc(job.created_at),
         last_seen=as_utc(job.updated_at),
         closed=job.deleted_at is not None,
@@ -112,3 +131,15 @@ def job_facets(
             FacetValue(value=v, count=c) for v, c in counts.employment_type
         ],
     )
+
+
+@router.get("/{job_id}", response_model=JobDetail)
+def get_job(
+    job_id: UUID,
+    # FastAPI's own dependency-injection idiom.
+    db: Session = Depends(get_db),  # noqa: B008
+) -> JobDetail:
+    job = db.query(JobPosting).filter(JobPosting.id == job_id).one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail="No posting with that id")
+    return _to_detail(job)

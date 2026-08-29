@@ -1,5 +1,5 @@
 import { ApiError } from "./ApiError";
-import type { FacetsResponse, JobListResponse } from "./types";
+import type { FacetsResponse, JobDetail, JobListResponse } from "./types";
 
 export type SortOrder = "newest" | "oldest";
 
@@ -24,6 +24,7 @@ export interface GetFacetsParams {
 export interface JobsApi {
   listJobs(params: ListJobsParams): Promise<JobListResponse>;
   getFacets(params: GetFacetsParams): Promise<FacetsResponse>;
+  getJob(jobId: string): Promise<JobDetail>;
 }
 
 async function errorDetail(response: Response): Promise<string> {
@@ -89,6 +90,10 @@ export function createHttpJobsApi(): JobsApi {
       for (const value of employmentType ?? [])
         params.append("employment_type", value);
       return get<FacetsResponse>("/api/jobs/facets", params);
+    },
+
+    async getJob(jobId) {
+      return get<JobDetail>(`/api/jobs/${jobId}`, new URLSearchParams());
     },
   };
 }
