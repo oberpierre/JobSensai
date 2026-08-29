@@ -429,6 +429,11 @@ class TestGetJob(JobsRouterTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "No posting with that id")
 
+    def test_malformed_id_is_404_with_the_same_body_as_unknown(self):
+        response = self.client.get("/api/jobs/not-a-uuid")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "No posting with that id")
+
 
 if __name__ == "__main__":
     unittest.main()

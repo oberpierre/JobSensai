@@ -157,6 +157,34 @@ describe("createHttpJobsApi", () => {
     );
   });
 
+  it("getJob percent-encodes an id containing a ?", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: "a?b",
+        url: "https://example.com/1",
+        title: "Backend Engineer",
+        company_name: "Acme",
+        employment_type: null,
+        locations: [],
+        categories: [],
+        metadata: {},
+        description: "",
+        first_seen: "2026-01-01T00:00:00+00:00",
+        last_seen: "2026-01-01T00:00:00+00:00",
+        closed: false,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createHttpJobsApi().getJob("a?b");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/jobs/a%3Fb",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+  });
+
   it("getJob throws an ApiError carrying 404 for an unknown id", async () => {
     vi.stubGlobal(
       "fetch",

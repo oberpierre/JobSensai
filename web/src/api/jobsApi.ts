@@ -93,7 +93,10 @@ export function createHttpJobsApi(): JobsApi {
     },
 
     async getJob(jobId) {
-      return get<JobDetail>(`/api/jobs/${jobId}`, new URLSearchParams());
+      return get<JobDetail>(
+        `/api/jobs/${encodeURIComponent(jobId)}`,
+        new URLSearchParams(),
+      );
     },
   };
 }

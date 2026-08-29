@@ -135,11 +135,14 @@ def job_facets(
 
 @router.get("/{job_id}", response_model=JobDetail)
 def get_job(
-    job_id: UUID,
-    # FastAPI's own dependency-injection idiom.
+    job_id: str,
     db: Session = Depends(get_db),  # noqa: B008
 ) -> JobDetail:
-    job = db.query(JobPosting).filter(JobPosting.id == job_id).one_or_none()
+    try:
+        parsed_id = UUID(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="No posting with that id") from exc
+    job = db.query(JobPosting).filter(JobPosting.id == parsed_id).one_or_none()
     if job is None:
         raise HTTPException(status_code=404, detail="No posting with that id")
     return _to_detail(job)
