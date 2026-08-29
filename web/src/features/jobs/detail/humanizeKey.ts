@@ -6,5 +6,7 @@ export function humanizeKey(key: string): string {
 }
 
 export function metadataValueText(value: unknown): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.join(", ");
+  return JSON.stringify(value);
 }

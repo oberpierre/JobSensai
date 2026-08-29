@@ -25,19 +25,10 @@ const LEVEL_COLORS: Record<string, ReturnType<typeof levelColor>> = {
   "Director+": levelColor(25),
 };
 
-const NEUTRAL_BORDER = "rgba(23, 20, 15, 0.25)";
-
 export function MetadataChip({ value }: { value: string }) {
   const colors = LEVEL_COLORS[value];
   if (colors === undefined) {
-    return (
-      <span
-        className={styles.neutral}
-        style={{ "--chip-border": NEUTRAL_BORDER } as CSSProperties}
-      >
-        {value}
-      </span>
-    );
+    return <span className={styles.neutral}>{value}</span>;
   }
   return (
     <span

@@ -7,8 +7,13 @@ import { useJobsApi } from "../../../api/useJobsApi";
 import { ApiError } from "../../../api/ApiError";
 import type { JobDetail as JobDetailPayload } from "../../../api/types";
 import { MicroLabel } from "../../../components/MicroLabel";
+import { MetadataChip } from "../../../components/MetadataChip";
+import {
+  StateCard,
+  LoadingState,
+  ErrorState,
+} from "../../../components/StateCard";
 import { relativeTime } from "../index/relativeTime";
-import { MetadataChip } from "./MetadataChip";
 import { humanizeKey, metadataValueText } from "./humanizeKey";
 import styles from "./JobDetail.module.scss";
 
@@ -48,6 +53,8 @@ export function JobDetail() {
       {isError && notFound && <NotFoundState />}
       {isError && !notFound && (
         <ErrorState
+          message="Couldn't load this posting"
+          endpoint="GET /api/jobs/:id"
           status={error instanceof ApiError ? error.status : undefined}
           onRetry={() => refetch()}
         />
@@ -66,40 +73,35 @@ function Detail({
   job: JobDetailPayload;
   scrolledPast: boolean;
 }) {
+  // Header and description are separate grid items, not one `article`, so the
+  // metadata panel between them can be a flat DOM sibling that reads before the
+  // description on one column and beside both of them from md up.
   return (
     <div className={styles.layout}>
-      <article className={styles.article}>
-        <header className={styles.header}>
-          <h1 className={styles.title}>{job.title}</h1>
-          <div className={styles.metaLine}>
-            <span className={styles.company}>{job.company_name}</span>
-            <span className={styles.metaDot}>·</span>
-            <span>
-              {job.locations.length > 0
-                ? job.locations.join(" · ")
-                : "Location not specified"}
-            </span>
-          </div>
-          <div className={styles.badges}>
-            {job.employment_type ? (
-              <span className={styles.employmentBadge}>
-                {job.employment_type}
-              </span>
-            ) : (
-              <span className={styles.unspecifiedBadge}>
-                Employment type not specified
-              </span>
-            )}
-            {job.closed && <span className={styles.closedBadge}>Closed</span>}
-          </div>
-        </header>
-
-        <div className={styles.description}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {job.description}
-          </ReactMarkdown>
+      <header className={styles.header}>
+        <h1 className={styles.title}>{job.title}</h1>
+        <div className={styles.metaLine}>
+          <span className={styles.company}>{job.company_name}</span>
+          <span className={styles.metaDot}>·</span>
+          <span>
+            {job.locations.length > 0
+              ? job.locations.join(" · ")
+              : "Location not specified"}
+          </span>
         </div>
-      </article>
+        <div className={styles.badges}>
+          {job.employment_type ? (
+            <span className={styles.employmentBadge}>
+              {job.employment_type}
+            </span>
+          ) : (
+            <span className={styles.unspecifiedBadge}>
+              Employment type not specified
+            </span>
+          )}
+          {job.closed && <span className={styles.closedBadge}>Closed</span>}
+        </div>
+      </header>
 
       <aside className={styles.sidebar}>
         <SourceCard job={job} />
@@ -117,6 +119,12 @@ function Detail({
 
         <AdditionalDetails metadata={job.metadata} />
       </aside>
+
+      <div className={styles.description}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {job.description}
+        </ReactMarkdown>
+      </div>
 
       <MobileActionBar job={job} />
       {scrolledPast && <BackToTop />}
@@ -197,44 +205,11 @@ function BackToTop() {
   );
 }
 
-function LoadingState() {
-  return (
-    <div className={styles.stateCard}>
-      <MicroLabel>loading</MicroLabel>
-      <div className={styles.skeletonRow} />
-      <div className={styles.skeletonRow} />
-    </div>
-  );
-}
-
 function NotFoundState() {
   return (
-    <div className={styles.stateCard}>
+    <StateCard>
       <MicroLabel>not found</MicroLabel>
       <p className={styles.message}>No posting with that id.</p>
-    </div>
-  );
-}
-
-function ErrorState({
-  status,
-  onRetry,
-}: {
-  status?: number;
-  onRetry: () => void;
-}) {
-  return (
-    <div className={styles.errorCard}>
-      <span className={styles.errorLabel}>error</span>
-      <p className={styles.message}>Couldn&apos;t load this posting</p>
-      <div className={styles.errorActions}>
-        <button type="button" onClick={onRetry}>
-          Retry
-        </button>
-        <span className={styles.errorCode}>
-          GET /api/jobs/:id → {status ?? "error"}
-        </span>
-      </div>
-    </div>
+    </StateCard>
   );
 }

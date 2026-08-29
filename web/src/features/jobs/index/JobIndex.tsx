@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { MicroLabel } from "../../../components/MicroLabel";
+import {
+  StateCard,
+  LoadingState,
+  ErrorState,
+} from "../../../components/StateCard";
 import { useJobsApi } from "../../../api/useJobsApi";
 import { ApiError } from "../../../api/ApiError";
 import type { SortOrder } from "../../../api/jobsApi";
@@ -144,6 +149,9 @@ export function JobIndex() {
           {isPending && <LoadingState />}
           {isError && (
             <ErrorState
+              message="Couldn't load postings"
+              endpoint="GET /api/jobs"
+              detail="The API didn't respond. Postings already in the database are unaffected."
               status={error instanceof ApiError ? error.status : undefined}
               onRetry={() => refetch()}
             />
@@ -265,48 +273,11 @@ function ResultsList({
   );
 }
 
-function LoadingState() {
-  return (
-    <div className={styles.stateCard}>
-      <MicroLabel>loading</MicroLabel>
-      <div className={styles.skeletonRow} />
-      <div className={styles.skeletonRow} />
-    </div>
-  );
-}
-
 function EmptyState() {
   return (
-    <div className={styles.stateCard}>
+    <StateCard>
       <MicroLabel>no postings</MicroLabel>
       <p className={styles.message}>Nothing matches these filters.</p>
-    </div>
-  );
-}
-
-function ErrorState({
-  status,
-  onRetry,
-}: {
-  status?: number;
-  onRetry: () => void;
-}) {
-  return (
-    <div className={styles.errorCard}>
-      <span className={styles.errorLabel}>error</span>
-      <p className={styles.message}>Couldn&apos;t load postings</p>
-      <p className={styles.errorDetail}>
-        The API didn&apos;t respond. Postings already in the database are
-        unaffected.
-      </p>
-      <div className={styles.errorActions}>
-        <button type="button" onClick={onRetry}>
-          Retry
-        </button>
-        <span className={styles.errorCode}>
-          GET /api/jobs → {status ?? "error"}
-        </span>
-      </div>
-    </div>
+    </StateCard>
   );
 }

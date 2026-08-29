@@ -8,8 +8,10 @@
   --ink: #17140f;
   --accent: #8a4b12;
   --accent-hover: #5e3208;
-  --rule-strong: rgba(23, 20, 15, 0.18);
-  --rule: rgba(23, 20, 15, 0.12);
+  // Ordered like the font sizes: the name says how strong, the role says what for.
+  --rule-xs: rgba(23, 20, 15, 0.12); // row separators
+  --rule-sm: rgba(23, 20, 15, 0.18); // panel and table borders
+  --rule-md: rgba(23, 20, 15, 0.25); // dashed and neutral unspecified borders
   --muted: rgba(23, 20, 15, 0.6);
   --faint: rgba(23, 20, 15, 0.45);
   --ghost: rgba(23, 20, 15, 0.35);
