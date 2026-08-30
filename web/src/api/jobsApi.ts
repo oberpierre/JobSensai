@@ -1,4 +1,4 @@
-import { ApiError } from "./ApiError";
+import { httpJson } from "./httpClient";
 import type { FacetsResponse, JobDetail, JobListResponse } from "./types";
 
 export type SortOrder = "newest" | "oldest";
@@ -27,37 +27,11 @@ export interface JobsApi {
   getJob(jobId: string): Promise<JobDetail>;
 }
 
-async function errorDetail(response: Response): Promise<string> {
-  try {
-    const body: unknown = await response.json();
-    if (
-      body !== null &&
-      typeof body === "object" &&
-      "detail" in body &&
-      typeof (body as { detail: unknown }).detail === "string"
-    ) {
-      return (body as { detail: string }).detail;
-    }
-  } catch {
-    // The body wasn't JSON, so fall through to the status text below.
-  }
-  return response.statusText;
-}
-
-async function get<T>(path: string, params: URLSearchParams): Promise<T> {
+function get<T>(path: string, params: URLSearchParams): Promise<T> {
   const query = params.toString();
-  const response = await fetch(`${path}${query ? `?${query}` : ""}`, {
-    credentials: "same-origin",
-  });
-  if (!response.ok) {
-    throw new ApiError(response.status, await errorDetail(response));
-  }
-  return (await response.json()) as T;
+  return httpJson<T>(`${path}${query ? `?${query}` : ""}`);
 }
 
-// The only place calling fetch, and the only place that knows the wire path: the
-// relative "/api/..." Vite proxies in development and one origin serves in
-// production, so no base URL and no environment branch is needed here.
 export function createHttpJobsApi(): JobsApi {
   return {
     async listJobs({
