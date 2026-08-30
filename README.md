@@ -99,6 +99,36 @@ bazel run //scraper:main
 bazel run //scraper:worker
 ```
 
+## Running it locally
+
+The API and the built web frontend ship in one image, `jobsensai-web`, containing
+`//api:server` with the `//web:dist` build mounted as its SPA. Build and load it into
+the local Docker daemon:
+
+```bash
+bazel build //oci:web_image
+bazel run //oci:web_load
+```
+
+Then run it against the Postgres started by
+`docker-compose -f .build/docker-compose.yml up -d`:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e POSTGRES_HOST=host.docker.internal \
+  -e POSTGRES_PORT=20001 \
+  jobsensai-web:latest
+```
+
+Open `http://localhost:8000`: the API answers under `/api`, and every other path
+serves the SPA. The image carries no `.env`, so any credential that is not the
+default in `.env.example` (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) has
+to be passed as its own `-e` flag.
+
+This devcontainer and Apple Silicon are both arm64, while the image is built for
+linux/amd64, so build and run it there only to inspect the image, not to serve
+traffic.
+
 ## Code Quality
 
 We enforce code quality using **Ruff** for both formatting and linting, integrated via Bazel with [aspect_rules_lint](https://github.com/aspect-build/rules_lint). This approach provides incremental, cacheable builds and hermetic test environments.
