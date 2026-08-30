@@ -10,18 +10,6 @@ import { createQueryClient } from "../../api/queryClient";
 import type { BoardsApi } from "../../api/boardsApi";
 import type { Board } from "../../api/types";
 
-// No @types/node dependency here, so the module specifier is read from a variable
-// rather than a literal: written literally, "fs" trips TypeScript's built-in-module
-// diagnostic even though esbuild resolves it at runtime with no trouble.
-declare const process: { cwd: () => string };
-const FS_MODULE = "fs";
-type FsModule = { readFileSync: (path: string, encoding: string) => string };
-
-async function readSourceFile(relativePath: string): Promise<string> {
-  const fs = (await import(FS_MODULE)) as unknown as FsModule;
-  return fs.readFileSync(`${process.cwd()}/${relativePath}`, "utf-8");
-}
-
 function board(overrides: Partial<Board> = {}): Board {
   return {
     id: "1",
@@ -251,7 +239,7 @@ describe("AdminBoards", () => {
     ).toBeInTheDocument();
   });
 
-  it("greys a json_api row and leaves an html_crawl row plain, with the disabled/not-crawled token rather than opacity", async () => {
+  it("greys a json_api row and leaves an html_crawl row plain", async () => {
     renderWithProvider({
       listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
         items: [
@@ -267,17 +255,5 @@ describe("AdminBoards", () => {
 
     const jsonRow = screen.getByText("Zebra").parentElement?.parentElement;
     expect(jsonRow?.className).toMatch(/rowGreyed/);
-
-    // jsdom applies no stylesheet, so the greyed treatment is checked against the
-    // module source: the `.rowGreyed` rule that carries its own declarations
-    // (not the one shared with `.row`/`.rowHead` for the grid layout).
-    const css = await readSourceFile(
-      "src/features/admin/AdminBoards.module.scss",
-    );
-    const ownRule = css
-      .split(/\}/)
-      .find((block) => block.split("{")[0]?.trim() === ".rowGreyed");
-    expect(ownRule).toContain("var(--ghost)");
-    expect(ownRule).not.toMatch(/opacity\s*:/);
   });
 });

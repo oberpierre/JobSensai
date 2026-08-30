@@ -32,6 +32,11 @@ PX_RE = re.compile(r"\d+(?:\.\d+)?px")
 # including the "font" shorthand this codebase writes exclusively.
 FONT_PROPS = {"font", "font-size", "font-weight", "line-height", "letter-spacing"}
 
+# A dimmed element takes the colour token named for that treatment. `opacity`
+# fades borders and anything non-textual with it, and its value sits on no scale
+# this design system defines.
+DIMMING_PROPS = {"opacity"}
+
 
 def _strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
@@ -51,6 +56,11 @@ def find_violations(path: Path) -> list[str]:
             violations.append(f"{path}: `{prop}: {value};` writes a colour literal")
         if prop in FONT_PROPS and re.search(r"\d", bare):
             violations.append(f"{path}: `{prop}: {value};` writes a literal {prop}")
+        if prop in DIMMING_PROPS:
+            violations.append(
+                f"{path}: `{prop}: {value};` dims with {prop} rather than taking"
+                " the colour token named for a disabled or not-crawled treatment"
+            )
         if path.name not in FILES_EXEMPT_FROM_PX_CHECK:
             for px in PX_RE.finditer(bare):
                 if px.group(0) != "1px":
