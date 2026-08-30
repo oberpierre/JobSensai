@@ -60,6 +60,7 @@ export function AdminBoards() {
   const deleteMutation = useMutation({
     mutationFn: (boardId: string) => api.deleteBoard(boardId),
     onSuccess: () => invalidate(),
+    onError: (mutationError) => setFormError(errorMessage(mutationError)),
   });
 
   function startAdding() {
@@ -97,6 +98,10 @@ export function AdminBoards() {
           + Add board
         </button>
       </div>
+
+      {formError && !adding && !editingId && (
+        <p className={styles.formError}>{formError}</p>
+      )}
 
       {isPending && <LoadingState />}
       {isError && (

@@ -10,6 +10,18 @@ import { createQueryClient } from "../../api/queryClient";
 import type { BoardsApi } from "../../api/boardsApi";
 import type { Board } from "../../api/types";
 
+// No @types/node dependency here, so the module specifier is read from a variable
+// rather than a literal: written literally, "fs" trips TypeScript's built-in-module
+// diagnostic even though esbuild resolves it at runtime with no trouble.
+declare const process: { cwd: () => string };
+const FS_MODULE = "fs";
+type FsModule = { readFileSync: (path: string, encoding: string) => string };
+
+async function readSourceFile(relativePath: string): Promise<string> {
+  const fs = (await import(FS_MODULE)) as unknown as FsModule;
+  return fs.readFileSync(`${process.cwd()}/${relativePath}`, "utf-8");
+}
+
 function board(overrides: Partial<Board> = {}): Board {
   return {
     id: "1",
@@ -218,5 +230,54 @@ describe("AdminBoards", () => {
     await user.click(await screen.findByText("Remove"));
 
     await waitFor(() => expect(deleteBoard).toHaveBeenCalledWith("1"));
+  });
+
+  it("shows the API's message when a delete fails", async () => {
+    const deleteBoard = vi
+      .fn<BoardsApi["deleteBoard"]>()
+      .mockRejectedValue(new ApiError(404, "No board with that id"));
+    renderWithProvider({
+      listBoards: vi
+        .fn<BoardsApi["listBoards"]>()
+        .mockResolvedValue({ items: [board()] }),
+      deleteBoard,
+    });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("Remove"));
+
+    expect(
+      await screen.findByText("No board with that id"),
+    ).toBeInTheDocument();
+  });
+
+  it("greys a json_api row and leaves an html_crawl row plain, with the disabled/not-crawled token rather than opacity", async () => {
+    renderWithProvider({
+      listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
+        items: [
+          board({ id: "1", name: "Alpha", type: "html_crawl" }),
+          board({ id: "2", name: "Zebra", type: "json_api" }),
+        ],
+      }),
+    });
+
+    const htmlRow = (await screen.findByText("Alpha")).parentElement
+      ?.parentElement;
+    expect(htmlRow?.className).not.toMatch(/rowGreyed/);
+
+    const jsonRow = screen.getByText("Zebra").parentElement?.parentElement;
+    expect(jsonRow?.className).toMatch(/rowGreyed/);
+
+    // jsdom applies no stylesheet, so the greyed treatment is checked against the
+    // module source: the `.rowGreyed` rule that carries its own declarations
+    // (not the one shared with `.row`/`.rowHead` for the grid layout).
+    const css = await readSourceFile(
+      "src/features/admin/AdminBoards.module.scss",
+    );
+    const ownRule = css
+      .split(/\}/)
+      .find((block) => block.split("{")[0]?.trim() === ".rowGreyed");
+    expect(ownRule).toContain("var(--ghost)");
+    expect(ownRule).not.toMatch(/opacity\s*:/);
   });
 });

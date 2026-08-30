@@ -96,6 +96,26 @@ class TestListBoards(BoardsRouterTestCase):
         response = self.client.get("/api/boards")
         self.assertIsNone(response.json()["items"][0]["posting_count"])
 
+    def test_a_board_with_raw_rows_but_no_live_postings_has_a_zero_count(self):
+        board_id = uuid.uuid4()
+        self._seed(
+            StartUrl(
+                id=board_id,
+                name="Alpha",
+                url="https://a.example.com",
+                type="html_crawl",
+            ),
+            RawJobPosting(
+                id=uuid.uuid4(),
+                url="https://a.example.com/job",
+                html_content="<html></html>",
+                start_url_id=board_id,
+            ),
+        )
+
+        response = self.client.get("/api/boards")
+        self.assertEqual(response.json()["items"][0]["posting_count"], 0)
+
     def test_a_board_with_attributed_postings_has_the_joined_count(self):
         board_id = uuid.uuid4()
         self._seed(
