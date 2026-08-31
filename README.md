@@ -101,27 +101,22 @@ bazel run //scraper:worker
 
 ## Running it locally
 
-The API and the built web frontend ship in one image, `jobsensai-web`, containing
-`//api:server` with the `//web:dist` build mounted as its SPA. Build and load it into
-the local Docker daemon:
+The API and the built web frontend ship in one image, `jobsensai-web`, containing `//api:server` with the `//web:dist` build mounted as its SPA. Build and load it into the local Docker daemon:
 
 ```bash
 bazel build //oci:web_image
 bazel run //oci:web_load
 ```
 
-The API only queries tables and never creates them. `init_db` lives in
-`scraper/worker.py` and `scraper/silver_worker.py`, so pointed at a Postgres that has
-never run either, it answers `500` with `relation "start_urls" does not exist`. Run
-the worker once against the same instance first, and stop it once it logs "Worker
-started" so the tables exist before the container below is asked to query them:
+The API only queries tables and never creates them. `init_db` lives in `scraper/worker.py` and `scraper/silver_worker.py`, so pointed at a Postgres that has never run either, it answers `500` with `relation "start_urls" does not exist`. Run the worker once against that Postgres first and stop it once it logs "Worker started", which it does after `init_db` and therefore after the tables exist:
 
 ```bash
-POSTGRES_HOST=localhost POSTGRES_PORT=20001 bazel run //scraper:worker
+bazel run //scraper:worker
 ```
 
-Then run the image against the Postgres started by
-`docker-compose -f .build/docker-compose.yml up -d`:
+That reads `.env` for its host, so it reaches whichever Postgres the setup above configured. Manual-setup readers need `docker-compose -f .build/docker-compose.yml up -d` running first, whereas the devcontainer already composes it.
+
+Then run the image against that same Postgres:
 
 ```bash
 docker run --rm -p 8000:8000 \
@@ -130,14 +125,9 @@ docker run --rm -p 8000:8000 \
   jobsensai-web:latest
 ```
 
-Open `http://localhost:8000`: the API answers under `/api`, and every other path
-serves the SPA. The image carries no `.env`, so any credential that is not the
-default in `.env.example` (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) has
-to be passed as its own `-e` flag.
+Open `http://localhost:8000`: the API answers under `/api`, and every other path serves the SPA. The image carries no `.env`, so any credential that is not the default in `.env.example` (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) has to be passed as its own `-e` flag.
 
-This devcontainer and Apple Silicon are both arm64, while the image is built for
-linux/amd64, so build and run it there only to inspect the image, not to serve
-traffic.
+This devcontainer and Apple Silicon are both arm64, while the image is built for linux/amd64, so build and run it there only to inspect the image, not to serve traffic.
 
 ## Code Quality
 
