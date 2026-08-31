@@ -202,3 +202,13 @@ oci_load(
     image = ":web_image",
     repo_tags = ["jobsensai-web:latest"],
 )
+
+oci_push(
+    name = "web_push",
+    image = ":web_image",
+    repository = "ghcr.io/oberpierre/jobsensai-web",
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
