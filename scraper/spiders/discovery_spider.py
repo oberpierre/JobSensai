@@ -79,8 +79,9 @@ class DiscoverySpider(BaseJobSpider):
     def load_start_urls(cls, session) -> list[tuple[uuid.UUID | None, str]]:
         """Return (start_url_id, url) pairs to crawl, newest configuration first.
 
-        Reads `html_crawl` rows ordered by name. When the table holds none, falls back
-        to the class's own `fallback_start_urls` literal, each paired with a None id.
+        Reads `html_crawl` rows that are `active`, ordered by name. When the table
+        holds no rows at all, falls back to the class's own `fallback_start_urls`
+        literal, each paired with a None id.
         """
         total_count = session.query(StartUrl).count()
         if total_count == 0:
@@ -92,14 +93,14 @@ class DiscoverySpider(BaseJobSpider):
             return [(None, url) for url in cls.fallback_start_urls]
         rows = (
             session.query(StartUrl)
-            .filter(StartUrl.type == START_URL_TYPE_HTML_CRAWL)
+            .filter(StartUrl.type == START_URL_TYPE_HTML_CRAWL, StartUrl.active)
             .order_by(StartUrl.name)
             .all()
         )
         if not rows:
             logger.warning(
-                "%d configured start_urls row(s) skipped: none is of type %r,"
-                " so this crawl has nothing to do.",
+                "%d configured start_urls row(s) skipped: none is both type %r"
+                " and active, so this crawl has nothing to do.",
                 total_count,
                 START_URL_TYPE_HTML_CRAWL,
             )

@@ -64,5 +64,14 @@ class TestStartUrlDeletion(unittest.TestCase):
         self.assertTrue(column.nullable)
 
 
+class TestStartUrlActive(unittest.TestCase):
+    def test_active_column_is_not_null_and_defaults_true(self):
+        column = StartUrl.__table__.columns["active"]
+
+        self.assertFalse(column.nullable)
+        self.assertTrue(column.default.arg)
+        self.assertEqual(str(column.server_default.arg), "true")
+
+
 if __name__ == "__main__":
     unittest.main()

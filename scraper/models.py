@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
@@ -20,6 +20,7 @@ class StartUrl(Base):
     name = Column(Text, unique=True, nullable=False)
     url = Column(Text, unique=True, nullable=False, index=True)
     type = Column(Text, nullable=False, default=START_URL_TYPE_HTML_CRAWL)
+    active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False

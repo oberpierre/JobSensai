@@ -86,6 +86,56 @@ class TestLoadStartUrls(unittest.TestCase):
         )
         self.assertTrue(any("falling back" in message for message in logs.output))
 
+    def test_returns_only_active_html_crawl_rows(self):
+        self.session.add_all(
+            [
+                StartUrl(
+                    name="active-one",
+                    url="https://active.example.com",
+                    type=START_URL_TYPE_HTML_CRAWL,
+                    active=True,
+                ),
+                StartUrl(
+                    name="inactive-one",
+                    url="https://inactive.example.com",
+                    type=START_URL_TYPE_HTML_CRAWL,
+                    active=False,
+                ),
+            ]
+        )
+        self.session.commit()
+
+        pairs = _FixtureSpider.load_start_urls(self.session)
+
+        self.assertEqual([url for _id, url in pairs], ["https://active.example.com"])
+
+    def test_warns_once_when_every_row_is_inactive(self):
+        self.session.add_all(
+            [
+                StartUrl(
+                    name="alpha",
+                    url="https://alpha.example.com",
+                    type=START_URL_TYPE_HTML_CRAWL,
+                    active=False,
+                ),
+                StartUrl(
+                    name="beta",
+                    url="https://beta.example.com",
+                    type=START_URL_TYPE_HTML_CRAWL,
+                    active=False,
+                ),
+            ]
+        )
+        self.session.commit()
+
+        with self.assertLogs(
+            "scraper.spiders.discovery_spider", level="WARNING"
+        ) as logs:
+            pairs = _FixtureSpider.load_start_urls(self.session)
+
+        self.assertEqual(pairs, [])
+        self.assertEqual(len(logs.output), 1)
+
     def test_does_not_fall_back_when_table_holds_only_json_api_rows(self):
         self.session.add(
             StartUrl(
