@@ -36,7 +36,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # The push step runs three sequential, non-transactional `bazel run`
+  # The push step runs four sequential, non-transactional `bazel run`
   # invocations, one per image. GitHub Actions cancels by signalling the
   # running process immediately, not at a step or job boundary, so a
   # cancellation landing between two of those pushes would leave `latest`

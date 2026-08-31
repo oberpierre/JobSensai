@@ -1,7 +1,7 @@
 app_name: jobsensai
 app_namespace: jobsensai
 
-# Credential for pulling the three private images. All three keys are required
+# Credential for pulling the four private images. All three keys are required
 # together, or the deploy rejects the file before anything is applied.
 registry:
   host: ghcr.io
