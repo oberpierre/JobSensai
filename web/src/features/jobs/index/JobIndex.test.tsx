@@ -148,11 +148,11 @@ describe("JobIndex", () => {
     expect(title.closest("li")?.className).toMatch(/rowClosed/);
   });
 
-  it("links a row's title to its detail page", async () => {
+  it("links a row's title to its detail page with the canonical trailing slash", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
     renderWithProviders({ listJobs });
     const title = await screen.findByText("Backend Engineer");
-    expect(title.closest("a")).toHaveAttribute("href", "/jobs/1");
+    expect(title.closest("a")).toHaveAttribute("href", "/jobs/1/");
   });
 
   it("writes the search text into the q query parameter", async () => {

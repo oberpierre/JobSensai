@@ -3,7 +3,7 @@
 import os
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -12,15 +12,22 @@ from api.routers.jobs import router as jobs_router
 
 
 def _spa_fallback_handler(web_dist_dir: str):
-    """Any unmatched path is a client-side route and gets index.html, except under
-    /api, which stays a genuine JSON 404, and under /assets, Vite's hashed-filename
-    build output, where a miss means a stale client asking for a file this build
-    never shipped rather than a route to resolve."""
+    """An unmatched path falls into one of four cases, in order. /api or under it
+    stays a genuine JSON 404. Under /assets, Vite's hashed-filename build output, a
+    miss is also a JSON 404, since it means a stale client asking for a file this
+    build never shipped rather than a route to resolve. A route path missing its
+    trailing slash redirects to the canonical form that carries one. Anything else
+    is index.html, which the redirect target above always reaches directly."""
 
     async def handler(request: Request, exc: StarletteHTTPException):
         path = request.url.path
         if path == "/api" or path.startswith("/api/") or path.startswith("/assets/"):
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        if not path.endswith("/"):
+            location = f"{path}/"
+            if request.url.query:
+                location = f"{location}?{request.url.query}"
+            return RedirectResponse(location, status_code=307)
         index_path = os.path.join(web_dist_dir, "index.html")
         return FileResponse(index_path)
 

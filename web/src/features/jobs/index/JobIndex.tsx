@@ -223,7 +223,7 @@ function ResultsList({
             key={job.id}
             className={job.closed ? styles.rowClosed : styles.row}
           >
-            <Link to={`/jobs/${job.id}`} className={styles.rowLink}>
+            <Link to={`/jobs/${job.id}/`} className={styles.rowLink}>
               <div className={styles.rowMain}>
                 <span className={styles.title}>{job.title}</span>
                 <div className={styles.meta}>

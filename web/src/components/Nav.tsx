@@ -18,7 +18,7 @@ const TABS: Tab[] = [
   },
   {
     label: "Dashboard",
-    to: "/admin",
+    to: "/admin/",
     isActive: (path) => path === "/admin" || path.startsWith("/admin/"),
   },
 ];

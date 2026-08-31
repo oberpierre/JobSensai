@@ -54,4 +54,17 @@ describe("Nav", () => {
     );
     expect(screen.getByText("Dashboard")).not.toHaveAttribute("aria-current");
   });
+
+  it("emits the canonical trailing-slash Dashboard link and stays active there", () => {
+    render(
+      <MemoryRouter initialEntries={["/admin/"]}>
+        <Nav />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Dashboard")).toHaveAttribute("href", "/admin/");
+    expect(screen.getByText("Dashboard")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
 });

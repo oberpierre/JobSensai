@@ -80,9 +80,25 @@ class TestSpaMount(unittest.TestCase):
     def test_missing_file_under_assets_is_a_404(self):
         response = self.client.get("/assets/index-deadbeef.js")
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.headers["content-type"], "application/json")
 
     def test_a_path_merely_starting_with_assets_falls_through_to_index(self):
-        response = self.client.get("/assetsfoo")
+        response = self.client.get("/assetsfoo/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("spa", response.text)
+
+    def test_slashless_route_redirects_to_its_trailing_slash_form(self):
+        response = self.client.get("/admin", follow_redirects=False)
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "/admin/")
+
+    def test_redirect_preserves_the_query_string(self):
+        response = self.client.get("/admin?q=x", follow_redirects=False)
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "/admin/?q=x")
+
+    def test_trailing_slash_route_serves_index_and_does_not_redirect_again(self):
+        response = self.client.get("/admin/", follow_redirects=False)
         self.assertEqual(response.status_code, 200)
         self.assertIn("spa", response.text)
 
