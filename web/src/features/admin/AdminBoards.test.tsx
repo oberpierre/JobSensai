@@ -16,6 +16,7 @@ function board(overrides: Partial<Board> = {}): Board {
     name: "Google · all roles",
     url: "https://www.google.com/careers",
     type: "html_crawl",
+    active: true,
     posting_count: 12,
     health: null,
     created_at: new Date().toISOString(),
@@ -126,6 +127,7 @@ describe("AdminBoards", () => {
       expect(createBoard).toHaveBeenCalledWith({
         name: "New board",
         url: "https://new.example.com",
+        active: true,
         type: "html_crawl",
       }),
     );
@@ -171,6 +173,7 @@ describe("AdminBoards", () => {
       expect(updateBoard).toHaveBeenCalledWith("1", {
         name: "Renamed",
         url: "https://www.google.com/careers",
+        active: true,
       }),
     );
   });
@@ -255,5 +258,44 @@ describe("AdminBoards", () => {
 
     const jsonRow = screen.getByText("Zebra").parentElement?.parentElement;
     expect(jsonRow?.className).toMatch(/rowGreyed/);
+  });
+
+  it("renders the toggle on for an active row and off for an inactive one", async () => {
+    renderWithProvider({
+      listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
+        items: [
+          board({ id: "1", name: "Alpha", active: true }),
+          board({ id: "2", name: "Zebra", active: false }),
+        ],
+      }),
+    });
+
+    await screen.findByText("Alpha");
+    const switches = screen.getAllByRole("switch");
+    expect(switches[0]).toHaveAttribute("aria-checked", "true");
+    expect(switches[1]).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("toggling a row's switch PUTs its existing name and url with active flipped", async () => {
+    const updateBoard = vi
+      .fn<BoardsApi["updateBoard"]>()
+      .mockResolvedValue(board({ active: false }));
+    renderWithProvider({
+      listBoards: vi
+        .fn<BoardsApi["listBoards"]>()
+        .mockResolvedValue({ items: [board({ active: true })] }),
+      updateBoard,
+    });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("switch"));
+
+    await waitFor(() =>
+      expect(updateBoard).toHaveBeenCalledWith("1", {
+        name: "Google · all roles",
+        url: "https://www.google.com/careers",
+        active: false,
+      }),
+    );
   });
 });

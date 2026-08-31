@@ -8,6 +8,7 @@ function board(overrides: Record<string, unknown> = {}) {
     name: "Example",
     url: "https://example.com",
     type: "html_crawl",
+    active: true,
     posting_count: null,
     health: null,
     created_at: "2026-01-01T00:00:00+00:00",
@@ -48,6 +49,7 @@ describe("createHttpBoardsApi", () => {
       name: "Example",
       url: "https://example.com",
       type: "html_crawl",
+      active: true,
     });
 
     const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -57,10 +59,11 @@ describe("createHttpBoardsApi", () => {
       name: "Example",
       url: "https://example.com",
       type: "html_crawl",
+      active: true,
     });
   });
 
-  it("updates a board by putting name and url only, with the id percent-encoded", async () => {
+  it("updates a board by putting name, url and active, with the id percent-encoded", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => board({ name: "Renamed" }),
@@ -70,6 +73,7 @@ describe("createHttpBoardsApi", () => {
     await createHttpBoardsApi().updateBoard("a b", {
       name: "Renamed",
       url: "https://renamed.example.com",
+      active: false,
     });
 
     const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -78,6 +82,7 @@ describe("createHttpBoardsApi", () => {
     expect(JSON.parse(init.body as string)).toEqual({
       name: "Renamed",
       url: "https://renamed.example.com",
+      active: false,
     });
   });
 
@@ -110,6 +115,7 @@ describe("createHttpBoardsApi", () => {
         name: "Example",
         url: "https://example.com",
         type: "html_crawl",
+        active: true,
       }),
     ).rejects.toMatchObject({
       status: 409,

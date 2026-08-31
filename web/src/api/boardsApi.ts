@@ -5,11 +5,13 @@ export interface CreateBoardParams {
   name: string;
   url: string;
   type: BoardType;
+  active: boolean;
 }
 
 export interface UpdateBoardParams {
   name: string;
   url: string;
+  active: boolean;
 }
 
 export interface BoardsApi {

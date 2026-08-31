@@ -36,8 +36,12 @@ export function AdminBoards() {
     queryClient.invalidateQueries({ queryKey: BOARDS_QUERY_KEY });
 
   const createMutation = useMutation({
-    mutationFn: (params: { name: string; url: string; type: BoardType }) =>
-      api.createBoard(params),
+    mutationFn: (params: {
+      name: string;
+      url: string;
+      type: BoardType;
+      active: boolean;
+    }) => api.createBoard(params),
     onSuccess: async () => {
       setAdding(false);
       setFormError(null);
@@ -47,8 +51,17 @@ export function AdminBoards() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (args: { boardId: string; name: string; url: string }) =>
-      api.updateBoard(args.boardId, { name: args.name, url: args.url }),
+    mutationFn: (args: {
+      boardId: string;
+      name: string;
+      url: string;
+      active: boolean;
+    }) =>
+      api.updateBoard(args.boardId, {
+        name: args.name,
+        url: args.url,
+        active: args.active,
+      }),
     onSuccess: async () => {
       setEditingId(null);
       setFormError(null);
@@ -59,6 +72,19 @@ export function AdminBoards() {
 
   const deleteMutation = useMutation({
     mutationFn: (boardId: string) => api.deleteBoard(boardId),
+    onSuccess: () => invalidate(),
+    onError: (mutationError) => setFormError(errorMessage(mutationError)),
+  });
+
+  // The row toggle sends its own PUT, distinct from the edit form's mutation, so
+  // switching a board off needs no detour through "Edit".
+  const toggleActiveMutation = useMutation({
+    mutationFn: (board: Board) =>
+      api.updateBoard(board.id, {
+        name: board.name,
+        url: board.url,
+        active: !board.active,
+      }),
     onSuccess: () => invalidate(),
     onError: (mutationError) => setFormError(errorMessage(mutationError)),
   });
@@ -119,6 +145,7 @@ export function AdminBoards() {
             <span>Name / URL</span>
             <span>Type</span>
             <span>Postings</span>
+            <span>Active</span>
             <span />
           </div>
 
@@ -136,6 +163,7 @@ export function AdminBoards() {
                 mode="edit"
                 initialName={board.name}
                 initialUrl={board.url}
+                initialActive={board.active}
                 submitting={updateMutation.isPending}
                 error={formError}
                 onCancel={cancelForm}
@@ -149,6 +177,11 @@ export function AdminBoards() {
                 board={board}
                 onEdit={() => startEditing(board.id)}
                 onRemove={() => deleteMutation.mutate(board.id)}
+                onToggleActive={() => toggleActiveMutation.mutate(board)}
+                toggling={
+                  toggleActiveMutation.isPending &&
+                  toggleActiveMutation.variables?.id === board.id
+                }
               />
             ),
           )}
@@ -173,14 +206,41 @@ export function AdminBoards() {
   );
 }
 
+function ActiveToggle({
+  active,
+  onToggle,
+  disabled,
+}: {
+  active: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={active}
+      className={active ? styles.toggleOn : styles.toggleOff}
+      onClick={onToggle}
+      disabled={disabled}
+    >
+      <span className={active ? styles.toggleKnobOn : styles.toggleKnobOff} />
+    </button>
+  );
+}
+
 function BoardRow({
   board,
   onEdit,
   onRemove,
+  onToggleActive,
+  toggling,
 }: {
   board: Board;
   onEdit: () => void;
   onRemove: () => void;
+  onToggleActive: () => void;
+  toggling: boolean;
 }) {
   const isJsonApi = board.type === "json_api";
   return (
@@ -195,6 +255,11 @@ function BoardRow({
       <span className={styles.count}>
         {board.posting_count === null ? "—" : board.posting_count}
       </span>
+      <ActiveToggle
+        active={board.active}
+        onToggle={onToggleActive}
+        disabled={toggling}
+      />
       <span className={styles.actions}>
         <button type="button" className={styles.editAction} onClick={onEdit}>
           Edit
@@ -215,6 +280,7 @@ function BoardForm({
   mode,
   initialName = "",
   initialUrl = "",
+  initialActive = true,
   submitting,
   error,
   onCancel,
@@ -223,21 +289,32 @@ function BoardForm({
   mode: "create" | "edit";
   initialName?: string;
   initialUrl?: string;
+  initialActive?: boolean;
   submitting: boolean;
   error: string | null;
   onCancel: () => void;
-  onSubmit: (values: { name: string; url: string; type?: BoardType }) => void;
+  onSubmit: (values: {
+    name: string;
+    url: string;
+    active: boolean;
+    type?: BoardType;
+  }) => void;
 }) {
   const [name, setName] = useState(initialName);
   const [url, setUrl] = useState(initialUrl);
   const [type, setType] = useState<BoardType>("html_crawl");
+  const [active, setActive] = useState(initialActive);
 
   return (
     <form
       className={styles.form}
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit(mode === "create" ? { name, url, type } : { name, url });
+        onSubmit(
+          mode === "create"
+            ? { name, url, active, type }
+            : { name, url, active },
+        );
       }}
     >
       <MicroLabel>{mode === "create" ? "New board" : "Edit board"}</MicroLabel>
@@ -262,6 +339,14 @@ function BoardForm({
             placeholder="https://…"
           />
         </label>
+      </div>
+
+      <div className={styles.field}>
+        <span className={styles.fieldLabel}>Active</span>
+        <div className={styles.activeField}>
+          <ActiveToggle active={active} onToggle={() => setActive((v) => !v)} />
+          <span className={styles.activeNote}>crawls on next run</span>
+        </div>
       </div>
 
       {mode === "create" && (

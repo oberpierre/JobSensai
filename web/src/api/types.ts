@@ -57,6 +57,7 @@ export interface Board {
   name: string;
   url: string;
   type: BoardType;
+  active: boolean;
   posting_count: number | null;
   health: null;
   created_at: string;

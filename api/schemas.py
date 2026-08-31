@@ -74,6 +74,7 @@ class BoardCreate(BaseModel):
     name: str
     url: str
     type: BoardType
+    active: bool = True
 
     _validate_name = field_validator("name")(_not_blank)
     _validate_url = field_validator("url")(_not_blank)
@@ -85,6 +86,7 @@ class BoardUpdate(BaseModel):
     # and read back as a change that happened.
     name: str
     url: str
+    active: bool
     type: BoardType | None = None
 
     _validate_name = field_validator("name")(_not_blank)
@@ -96,6 +98,7 @@ class Board(BaseModel):
     name: str
     url: str
     type: BoardType
+    active: bool
     posting_count: int | None
     health: None
     created_at: datetime

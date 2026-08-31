@@ -25,6 +25,7 @@ def _to_board(board: StartUrl, posting_count: int | None) -> Board:
         name=board.name,
         url=board.url,
         type=board.type,
+        active=board.active,
         posting_count=posting_count,
         health=None,
         created_at=as_utc(board.created_at),
@@ -60,7 +61,9 @@ def create_board(
     if _conflicting_board(db, payload.name, payload.url, exclude_id=None):
         raise HTTPException(status_code=409, detail=_DUPLICATE_DETAIL)
 
-    board = StartUrl(name=payload.name, url=payload.url, type=payload.type)
+    board = StartUrl(
+        name=payload.name, url=payload.url, type=payload.type, active=payload.active
+    )
     db.add(board)
     try:
         db.commit()
@@ -87,6 +90,7 @@ def update_board(
 
     board.name = payload.name
     board.url = payload.url
+    board.active = payload.active
     try:
         db.commit()
     except IntegrityError as exc:

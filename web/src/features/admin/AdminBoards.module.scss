@@ -61,7 +61,7 @@
 .row,
 .rowGreyed {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 8.125rem 6rem 6.5rem;
+  grid-template-columns: minmax(0, 1fr) 8.125rem 6rem 3.625rem 6.5rem;
   gap: var(--space-12);
   align-items: center;
   padding: var(--space-12);
@@ -205,6 +205,64 @@
   background: var(--ink);
   color: var(--surface);
   font-weight: var(--font-weight-medium);
+}
+
+// A 34x20 track with 2px padding around a 14x14 knob, per the admin mockup. On
+// takes --ink/--surface, matching a primary button. Off takes the muted family
+// instead of the mockup's rgba literals, since a stylesheet may not write one.
+.toggleOn,
+.toggleOff {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  width: 2.125rem;
+  height: var(--space-20);
+  padding: var(--space-2);
+  box-sizing: border-box;
+  border: var(--border-width) solid;
+  cursor: pointer;
+}
+
+.toggleOn {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.toggleOff {
+  background: var(--rule-sm);
+  border-color: var(--ghost);
+}
+
+.toggleKnobOn,
+.toggleKnobOff {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: var(--border-width) solid;
+}
+
+// The knob sits right when on, left when off: an auto left margin pushes it
+// across the flex track rather than a second layout system tracking position.
+.toggleKnobOn {
+  background: var(--surface);
+  border-color: var(--ink);
+  margin-left: auto;
+}
+
+.toggleKnobOff {
+  background: var(--raised);
+  border-color: var(--ghost);
+}
+
+.activeField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.activeNote {
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-xs)
+    var(--font-sans);
+  color: var(--muted);
 }
 
 .formActions {

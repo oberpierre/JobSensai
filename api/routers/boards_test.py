@@ -197,17 +197,49 @@ class TestCreateBoard(BoardsRouterTestCase):
         self.assertIsNone(response.json()["posting_count"])
         self.assertIsNone(response.json()["health"])
 
+    def test_created_board_defaults_active_true(self):
+        response = self.client.post(
+            "/api/boards",
+            json={
+                "name": "Example",
+                "url": "https://example.com",
+                "type": "html_crawl",
+            },
+        )
+        self.assertTrue(response.json()["active"])
+
 
 class TestUpdateBoard(BoardsRouterTestCase):
     def test_renames_and_re_urls_a_board(self):
         board_id = self._create()
         response = self.client.put(
             f"/api/boards/{board_id}",
-            json={"name": "Renamed", "url": "https://renamed.example.com"},
+            json={
+                "name": "Renamed",
+                "url": "https://renamed.example.com",
+                "active": True,
+            },
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], "Renamed")
         self.assertEqual(response.json()["url"], "https://renamed.example.com")
+
+    def test_deactivating_persists_and_reads_back(self):
+        board_id = self._create()
+
+        response = self.client.put(
+            f"/api/boards/{board_id}",
+            json={
+                "name": "Example",
+                "url": "https://example.com",
+                "active": False,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["active"])
+
+        listed = self.client.get("/api/boards").json()["items"][0]
+        self.assertFalse(listed["active"])
 
     def test_changing_the_type_is_409(self):
         board_id = self._create(type_="html_crawl")
@@ -217,6 +249,7 @@ class TestUpdateBoard(BoardsRouterTestCase):
             json={
                 "name": "Example",
                 "url": "https://example.com",
+                "active": True,
                 "type": "json_api",
             },
         )
@@ -237,6 +270,7 @@ class TestUpdateBoard(BoardsRouterTestCase):
             json={
                 "name": "Renamed",
                 "url": "https://example.com",
+                "active": True,
                 "type": "html_crawl",
             },
         )
@@ -250,7 +284,7 @@ class TestUpdateBoard(BoardsRouterTestCase):
 
         response = self.client.put(
             f"/api/boards/{board_id}",
-            json={"name": "Taken", "url": "https://example.com"},
+            json={"name": "Taken", "url": "https://example.com", "active": True},
         )
         self.assertEqual(response.status_code, 409)
 
@@ -260,14 +294,18 @@ class TestUpdateBoard(BoardsRouterTestCase):
 
         response = self.client.put(
             f"/api/boards/{board_id}",
-            json={"name": "Example", "url": "https://taken.example.com"},
+            json={
+                "name": "Example",
+                "url": "https://taken.example.com",
+                "active": True,
+            },
         )
         self.assertEqual(response.status_code, 409)
 
     def test_unknown_id_is_404(self):
         response = self.client.put(
             f"/api/boards/{uuid.uuid4()}",
-            json={"name": "X", "url": "https://x.example.com"},
+            json={"name": "X", "url": "https://x.example.com", "active": True},
         )
         self.assertEqual(response.status_code, 404)
 
