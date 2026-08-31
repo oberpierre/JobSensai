@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MicroLabel } from "../../components/MicroLabel";
+import { ActiveToggle } from "../../components/ActiveToggle";
 import {
   StateCard,
   LoadingState,
@@ -203,29 +204,6 @@ export function AdminBoards() {
         </div>
       )}
     </div>
-  );
-}
-
-function ActiveToggle({
-  active,
-  onToggle,
-  disabled,
-}: {
-  active: boolean;
-  onToggle: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={active}
-      className={active ? styles.toggleOn : styles.toggleOff}
-      onClick={onToggle}
-      disabled={disabled}
-    >
-      <span className={active ? styles.toggleKnobOn : styles.toggleKnobOff} />
-    </button>
   );
 }
 

@@ -1,0 +1,42 @@
+.on,
+.off {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  width: 2.125rem;
+  height: var(--space-20);
+  padding: var(--space-2);
+  box-sizing: border-box;
+  border: var(--border-width) solid;
+  cursor: pointer;
+}
+
+.on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.off {
+  background: var(--rule-sm);
+  border-color: var(--ghost);
+}
+
+.knobOn,
+.knobOff {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: var(--border-width) solid;
+}
+
+// The knob sits right when on, left when off: an auto left margin pushes it
+// across the flex track rather than a second layout system tracking position.
+.knobOn {
+  background: var(--surface);
+  border-color: var(--ink);
+  margin-left: auto;
+}
+
+.knobOff {
+  background: var(--raised);
+  border-color: var(--ghost);
+}
