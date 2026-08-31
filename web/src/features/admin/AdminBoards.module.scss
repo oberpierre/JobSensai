@@ -207,9 +207,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-// A 34x20 track with 2px padding around a 14x14 knob, per the admin mockup. On
-// takes --ink/--surface, matching a primary button. Off takes the muted family
-// instead of the mockup's rgba literals, since a stylesheet may not write one.
 .activeField {
   display: flex;
   align-items: center;

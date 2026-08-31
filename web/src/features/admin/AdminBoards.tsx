@@ -236,6 +236,7 @@ function BoardRow({
       <ActiveToggle
         active={board.active}
         onToggle={onToggleActive}
+        label={`Active: ${board.name}`}
         disabled={toggling}
       />
       <span className={styles.actions}>
@@ -322,7 +323,11 @@ function BoardForm({
       <div className={styles.field}>
         <span className={styles.fieldLabel}>Active</span>
         <div className={styles.activeField}>
-          <ActiveToggle active={active} onToggle={() => setActive((v) => !v)} />
+          <ActiveToggle
+            active={active}
+            onToggle={() => setActive((v) => !v)}
+            label="Active"
+          />
           <span className={styles.activeNote}>crawls on next run</span>
         </div>
       </div>

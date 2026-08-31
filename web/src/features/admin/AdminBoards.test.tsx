@@ -276,6 +276,28 @@ describe("AdminBoards", () => {
     expect(switches[1]).toHaveAttribute("aria-checked", "false");
   });
 
+  it("names each row's switch for its board, since the control has no text", async () => {
+    renderWithProvider({
+      listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
+        items: [
+          board({ id: "1", name: "Alpha", active: true }),
+          board({ id: "2", name: "Zebra", active: false }),
+        ],
+      }),
+    });
+
+    await screen.findByText("Alpha");
+
+    expect(screen.getByRole("switch", { name: /Alpha/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("switch", { name: /Zebra/ })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
   it("toggling a row's switch PUTs its existing name and url with active flipped", async () => {
     const updateBoard = vi
       .fn<BoardsApi["updateBoard"]>()

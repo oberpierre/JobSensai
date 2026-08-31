@@ -135,6 +135,9 @@ class TestLoadStartUrls(unittest.TestCase):
 
         self.assertEqual(pairs, [])
         self.assertEqual(len(logs.output), 1)
+        # The one warning has to name inactivity, or a later rewrite can drop that
+        # cause and leave an operator reading a line about the wrong one.
+        self.assertIn("active", logs.output[0])
 
     def test_does_not_fall_back_when_table_holds_only_json_api_rows(self):
         self.session.add(
