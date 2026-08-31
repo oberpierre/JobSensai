@@ -36,9 +36,16 @@ export function FacetGroup({
     return null;
   }
 
-  const listed = expanded ? values : values.slice(0, INITIALLY_SHOWN);
+  // A ticked value keeps its rank rather than jumping to the top, so a click
+  // on a visible row never reorders the list under the pointer. The collapsed
+  // slice is therefore every value above the fold plus every value selected,
+  // in the order the response gave, and `hidden` counts what that slice omits.
+  const collapsed = values.filter(
+    (facet, index) => index < INITIALLY_SHOWN || selected.includes(facet.value),
+  );
+  const listed = expanded ? values : collapsed;
   const shown = [...orphaned, ...listed];
-  const hidden = values.length - INITIALLY_SHOWN;
+  const hidden = values.length - collapsed.length;
 
   return (
     <div className={styles.group}>

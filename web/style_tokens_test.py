@@ -4,10 +4,15 @@ property cannot appear and a Sass variable stands in for one instead.
 """
 
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
 SRC_ROOT = Path(__file__).parent / "src"
+
+# The count under src/ as of writing. A bare non-zero check is satisfied by one
+# surviving file, so the floor is pinned to what the tree actually holds instead.
+MINIMUM_STYLESHEETS_IN_TREE = 15
 
 # _tokens.scss is where every literal is declared by name in the first place.
 # _layout.scss's container widths are px by a documented decision, distinct from
@@ -79,12 +84,32 @@ def find_violations(path: Path) -> list[str]:
     return violations
 
 
+def check_stylesheets(root: Path) -> list[str]:
+    """Returns the violations under root. Raises if root holds too few stylesheets
+    to check, catching a glob or path that stopped matching before it goes green
+    on nothing."""
+    stylesheets = sorted(root.rglob("*.scss"))
+    if len(stylesheets) < MINIMUM_STYLESHEETS_IN_TREE:
+        raise AssertionError(
+            f"found {len(stylesheets)} stylesheet(s) under {root}, fewer than the "
+            f"{MINIMUM_STYLESHEETS_IN_TREE} the tree holds"
+        )
+    violations = []
+    for path in stylesheets:
+        violations.extend(find_violations(path))
+    return violations
+
+
 class TestStylesheetsUseTokens(unittest.TestCase):
     def test_no_scss_file_writes_a_literal_a_token_exists_for(self):
-        violations = []
-        for path in sorted(SRC_ROOT.rglob("*.scss")):
-            violations.extend(find_violations(path))
-        self.assertEqual(violations, [])
+        self.assertEqual(check_stylesheets(SRC_ROOT), [])
+
+    def test_a_root_with_no_stylesheets_fails_rather_than_passing_silently(self):
+        with (
+            tempfile.TemporaryDirectory() as empty_dir,
+            self.assertRaises(AssertionError),
+        ):
+            check_stylesheets(Path(empty_dir))
 
 
 if __name__ == "__main__":

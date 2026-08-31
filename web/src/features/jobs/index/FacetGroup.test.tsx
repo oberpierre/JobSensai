@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { FacetGroup } from "./FacetGroup";
 import type { FacetValue } from "../../../api/types";
@@ -87,5 +88,87 @@ describe("FacetGroup", () => {
       />,
     );
     expect(screen.getByText("Nowhere")).toBeInTheDocument();
+  });
+
+  it("renders a checked checkbox for a below-fold selection while collapsed, keeping the top four in order", () => {
+    render(
+      <FacetGroup
+        label="Location"
+        values={values(25)}
+        selected={["Location 5"]}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    const rows = screen
+      .getAllByText(/^Location \d+$/)
+      .map((value) => value.textContent);
+    expect(rows).toEqual([
+      "Location 1",
+      "Location 2",
+      "Location 3",
+      "Location 4",
+      "Location 5",
+    ]);
+    const orphanRow = screen.getByText("Location 5").closest("label");
+    expect(orphanRow?.querySelector("input")).toBeChecked();
+  });
+
+  it("leaves every row in the same position when ticking a value already visible", async () => {
+    // Owns its own selected state, the way FacetSidebar does, so the click below
+    // drives a real re-render rather than a mock that leaves the DOM untouched.
+    function Controlled() {
+      const [selected, setSelected] = useState(["Location 10"]);
+      return (
+        <FacetGroup
+          label="Location"
+          values={values(25)}
+          selected={selected}
+          onToggle={(value) =>
+            setSelected((current) =>
+              current.includes(value)
+                ? current.filter((v) => v !== value)
+                : [...current, value],
+            )
+          }
+        />
+      );
+    }
+    render(<Controlled />);
+
+    const expectedOrder = [
+      "Location 1",
+      "Location 2",
+      "Location 3",
+      "Location 4",
+      "Location 10",
+    ];
+    const rowsBefore = screen
+      .getAllByText(/^Location \d+$/)
+      .map((value) => value.textContent);
+    expect(rowsBefore).toEqual(expectedOrder);
+
+    await userEvent.click(screen.getByText("Location 2"));
+
+    const rowsAfter = screen
+      .getAllByText(/^Location \d+$/)
+      .map((value) => value.textContent);
+    expect(rowsAfter).toEqual(expectedOrder);
+  });
+
+  it("excludes a below-fold selection from the expander's count and keeps the control while expanded", async () => {
+    render(
+      <FacetGroup
+        label="Location"
+        values={values(25)}
+        selected={["Location 10"]}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("+ 20 more")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("+ 20 more"));
+    expect(screen.getByText("- show fewer")).toBeInTheDocument();
   });
 });

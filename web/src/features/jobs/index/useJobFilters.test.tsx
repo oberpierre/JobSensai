@@ -63,4 +63,16 @@ describe("useJobFilters", () => {
       new URLSearchParams(result.current.location.search).has("sort"),
     ).toBe(false);
   });
+
+  it("reads a non-numeric page as page 1 rather than sending NaN to the route", () => {
+    const { result } = useHarness(["/?page=abc"]);
+
+    expect(result.current.jobFilters.filters.page).toBe(1);
+  });
+
+  it("reads a negative page as page 1 rather than a value the route's ge=1 rejects", () => {
+    const { result } = useHarness(["/?page=-2"]);
+
+    expect(result.current.jobFilters.filters.page).toBe(1);
+  });
 });

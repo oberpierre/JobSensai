@@ -13,6 +13,14 @@ export interface JobFilters {
   employmentTypes: string[];
 }
 
+// The API route rejects anything below 1, so a malformed `page` param (non-numeric,
+// fractional, zero or negative) reads as page 1 rather than reaching the route and
+// surfacing as an error card for what is really just a bad URL.
+function parsePage(raw: string | null): number {
+  const page = Number(raw ?? "1");
+  return Number.isInteger(page) && page >= 1 ? page : 1;
+}
+
 // Centralises every filter the index reads and writes against the URL query string,
 // which is what keeps a filtered view linkable and lets the search box, the facet
 // sidebar and the mobile sheet agree on one source of truth.
@@ -21,7 +29,7 @@ export function useJobFilters() {
 
   const filters: JobFilters = {
     q: searchParams.get("q") ?? "",
-    page: Number(searchParams.get("page") ?? "1"),
+    page: parsePage(searchParams.get("page")),
     includeClosed: searchParams.get("include_closed") === "true",
     sort: searchParams.get("sort") === "oldest" ? "oldest" : "newest",
     locations: searchParams.getAll("location"),
