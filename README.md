@@ -110,7 +110,17 @@ bazel build //oci:web_image
 bazel run //oci:web_load
 ```
 
-Then run it against the Postgres started by
+The API only queries tables and never creates them. `init_db` lives in
+`scraper/worker.py` and `scraper/silver_worker.py`, so pointed at a Postgres that has
+never run either, it answers `500` with `relation "start_urls" does not exist`. Run
+the worker once against the same instance first, and stop it once it logs "Worker
+started" so the tables exist before the container below is asked to query them:
+
+```bash
+POSTGRES_HOST=localhost POSTGRES_PORT=20001 bazel run //scraper:worker
+```
+
+Then run the image against the Postgres started by
 `docker-compose -f .build/docker-compose.yml up -d`:
 
 ```bash

@@ -12,12 +12,14 @@ from api.routers.jobs import router as jobs_router
 
 
 def _spa_fallback_handler(web_dist_dir: str):
-    """Any unmatched non-/api path is a client-side route, so it gets index.html
-    rather than a 404. An unmatched /api path stays a genuine JSON 404."""
+    """Any unmatched path is a client-side route and gets index.html, except under
+    /api, which stays a genuine JSON 404, and under /assets, Vite's hashed-filename
+    build output, where a miss means a stale client asking for a file this build
+    never shipped rather than a route to resolve."""
 
     async def handler(request: Request, exc: StarletteHTTPException):
         path = request.url.path
-        if path == "/api" or path.startswith("/api/"):
+        if path == "/api" or path.startswith("/api/") or path.startswith("/assets/"):
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         index_path = os.path.join(web_dist_dir, "index.html")
         return FileResponse(index_path)

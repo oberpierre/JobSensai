@@ -77,6 +77,15 @@ class TestSpaMount(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("spa", response.text)
 
+    def test_missing_file_under_assets_is_a_404(self):
+        response = self.client.get("/assets/index-deadbeef.js")
+        self.assertEqual(response.status_code, 404)
+
+    def test_a_path_merely_starting_with_assets_falls_through_to_index(self):
+        response = self.client.get("/assetsfoo")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("spa", response.text)
+
 
 if __name__ == "__main__":
     unittest.main()
