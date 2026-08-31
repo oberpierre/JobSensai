@@ -10,10 +10,6 @@ from pathlib import Path
 
 SRC_ROOT = Path(__file__).parent / "src"
 
-# The count under src/ as of writing. A bare non-zero check is satisfied by one
-# surviving file, so the floor is pinned to what the tree actually holds instead.
-MINIMUM_STYLESHEETS_IN_TREE = 15
-
 # _tokens.scss is where every literal is declared by name in the first place.
 # _layout.scss's container widths are px by a documented decision, distinct from
 # every other pixel value a component might write.
@@ -85,17 +81,9 @@ def find_violations(path: Path) -> list[str]:
 
 
 def check_stylesheets(root: Path) -> list[str]:
-    """Returns the violations under root. Raises if root holds too few stylesheets
-    to check, catching a glob or path that stopped matching before it goes green
-    on nothing."""
-    stylesheets = sorted(root.rglob("*.scss"))
-    if len(stylesheets) < MINIMUM_STYLESHEETS_IN_TREE:
-        raise AssertionError(
-            f"found {len(stylesheets)} stylesheet(s) under {root}, fewer than the "
-            f"{MINIMUM_STYLESHEETS_IN_TREE} the tree holds"
-        )
+    """Returns the violations under root."""
     violations = []
-    for path in stylesheets:
+    for path in sorted(root.rglob("*.scss")):
         violations.extend(find_violations(path))
     return violations
 
@@ -104,12 +92,27 @@ class TestStylesheetsUseTokens(unittest.TestCase):
     def test_no_scss_file_writes_a_literal_a_token_exists_for(self):
         self.assertEqual(check_stylesheets(SRC_ROOT), [])
 
-    def test_a_root_with_no_stylesheets_fails_rather_than_passing_silently(self):
-        with (
-            tempfile.TemporaryDirectory() as empty_dir,
-            self.assertRaises(AssertionError),
-        ):
-            check_stylesheets(Path(empty_dir))
+    def test_a_stylesheet_holding_a_literal_the_rules_catch_is_flagged(self):
+        # Proves the rules still match, independent of the tree: a rule that
+        # stops matching (see COLOR_RE) would leave this coming back empty too.
+        with tempfile.TemporaryDirectory() as tmp:
+            control = Path(tmp) / "control.module.scss"
+            content = ".foo {\n  color: #ffffff;\n}\n"
+            control.write_text(content)
+            self.assertNotEqual(find_violations(control), [])
+
+    def test_scan_reaches_the_layout_anchors_a_narrowed_glob_would_miss(self):
+        names = {str(p.relative_to(SRC_ROOT)) for p in SRC_ROOT.rglob("*.scss")}
+        self.assertIn("styles/_tokens.scss", names)
+        self.assertTrue(
+            any(
+                n.startswith("components/") and n.endswith(".module.scss")
+                for n in names
+            )
+        )
+        self.assertTrue(
+            any(n.startswith("features/") and n.endswith(".module.scss") for n in names)
+        )
 
 
 if __name__ == "__main__":

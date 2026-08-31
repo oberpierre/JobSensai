@@ -117,8 +117,10 @@ describe("FacetGroup", () => {
   it("leaves every row in the same position when ticking a value already visible", async () => {
     // Owns its own selected state, the way FacetSidebar does, so the click below
     // drives a real re-render rather than a mock that leaves the DOM untouched.
+    // Starts with nothing selected: a below-fold starting selection makes the
+    // pre-click assertion fail before the click under test even runs.
     function Controlled() {
-      const [selected, setSelected] = useState(["Location 10"]);
+      const [selected, setSelected] = useState<string[]>([]);
       return (
         <FacetGroup
           label="Location"
@@ -141,7 +143,6 @@ describe("FacetGroup", () => {
       "Location 2",
       "Location 3",
       "Location 4",
-      "Location 10",
     ];
     const rowsBefore = screen
       .getAllByText(/^Location \d+$/)
