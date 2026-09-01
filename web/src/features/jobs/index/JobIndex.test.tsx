@@ -5,7 +5,7 @@ import { useLocation, useNavigate } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { JobIndex } from "./JobIndex";
 import { ApiError } from "../../../api/ApiError";
-import { renderWithProviders as renderWithSharedProviders } from "../../../../test/TestProviders";
+import { renderWithProviders } from "../../../../test/TestProviders";
 import type { JobsApi } from "../../../api/jobsApi";
 import type {
   FacetsResponse,
@@ -76,7 +76,7 @@ function GoBack() {
 // differs from the shared helper's, which is why this wraps rather than calls it
 // directly: pushing it into the shared helper would change what the other three
 // files get, silently.
-function renderWithProviders(
+function renderJobIndexWithProviders(
   api: Partial<JobsApi>,
   initialEntries = ["/"],
   initialIndex?: number,
@@ -85,7 +85,7 @@ function renderWithProviders(
     getFacets: () => Promise.resolve(emptyFacets()),
     ...api,
   };
-  return renderWithSharedProviders(
+  return renderWithProviders(
     <>
       <GoBack />
       <ShowUrl />
@@ -98,13 +98,13 @@ function renderWithProviders(
 describe("JobIndex", () => {
   it("renders the loading state before the response resolves", () => {
     const api: Partial<JobsApi> = { listJobs: () => new Promise(() => {}) };
-    renderWithProviders(api);
+    renderJobIndexWithProviders(api);
     expect(screen.getByText("loading")).toBeInTheDocument();
   });
 
   it("renders the empty state when nothing matches", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([]));
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     expect(
       await screen.findByText("Nothing matches these filters."),
     ).toBeInTheDocument();
@@ -114,7 +114,7 @@ describe("JobIndex", () => {
     const listJobs = mockListJobs().mockRejectedValue(
       new ApiError(503, "Service unavailable"),
     );
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     expect(
       await screen.findByText("Couldn't load postings"),
     ).toBeInTheDocument();
@@ -125,7 +125,7 @@ describe("JobIndex", () => {
     const listJobs = mockListJobs()
       .mockRejectedValueOnce(new ApiError(503, "Service unavailable"))
       .mockResolvedValueOnce(listResponse([job()]));
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     await screen.findByText("Couldn't load postings");
 
     await userEvent.click(screen.getByText("Retry"));
@@ -138,7 +138,7 @@ describe("JobIndex", () => {
     const listJobs = mockListJobs().mockResolvedValue(
       listResponse([job({ title: "Closed Role", closed: true })]),
     );
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     const title = await screen.findByText("Closed Role");
     expect(title.className).toMatch(/title/);
     expect(title.closest("li")?.className).toMatch(/rowClosed/);
@@ -146,14 +146,14 @@ describe("JobIndex", () => {
 
   it("links a row's title to its detail page with the canonical trailing slash", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     const title = await screen.findByText("Backend Engineer");
     expect(title.closest("a")).toHaveAttribute("href", "/jobs/1/");
   });
 
   it("writes the search text into the q query parameter", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     await screen.findByText("Backend Engineer");
 
     await userEvent.type(
@@ -171,7 +171,7 @@ describe("JobIndex", () => {
     const listJobs = mockListJobs().mockResolvedValue(
       listResponse([job()], { total: 1 }),
     );
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     expect(await screen.findByText("1 posting")).toBeInTheDocument();
   });
 
@@ -182,7 +182,7 @@ describe("JobIndex", () => {
       }
       return listResponse([job()], { total: 5, page: 1 });
     });
-    renderWithProviders({ listJobs }, ["/?page=2"]);
+    renderJobIndexWithProviders({ listJobs }, ["/?page=2"]);
 
     expect(await screen.findByText("5 postings")).toBeInTheDocument();
     expect(
@@ -199,7 +199,7 @@ describe("JobIndex", () => {
 
   it("restores includeClosed from the URL on reload", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
-    renderWithProviders({ listJobs }, ["/?include_closed=true"]);
+    renderJobIndexWithProviders({ listJobs }, ["/?include_closed=true"]);
     await screen.findByText("Backend Engineer");
 
     expect(screen.getByLabelText("Include closed postings")).toBeChecked();
@@ -219,7 +219,7 @@ describe("JobIndex", () => {
         page: 1,
       });
     });
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     await screen.findByText("Backend Engineer");
 
     await userEvent.click(screen.getByText("next →"));
@@ -231,7 +231,7 @@ describe("JobIndex", () => {
 
   it("keeps the search input in step with q after a back navigation", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
-    renderWithProviders({ listJobs }, ["/?q=foo", "/?q=bar"], 1);
+    renderJobIndexWithProviders({ listJobs }, ["/?q=foo", "/?q=bar"], 1);
     await screen.findByText("Backend Engineer");
 
     expect(screen.getByPlaceholderText("Title or company")).toHaveValue("bar");
@@ -247,7 +247,7 @@ describe("JobIndex", () => {
 
   it("keeps the unfiltered list reachable by back after a first search", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     await screen.findByText("Backend Engineer");
 
     await userEvent.type(screen.getByRole("textbox"), "AI");
@@ -264,7 +264,7 @@ describe("JobIndex", () => {
 
   it("does not add a history entry while a search is being refined", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     await screen.findByText("Backend Engineer");
 
     const box = screen.getByRole("textbox");
@@ -290,7 +290,7 @@ describe("JobIndex", () => {
     const listJobs = mockListJobs().mockResolvedValue(
       listResponse([job()], { total: 40, page: 2 }),
     );
-    renderWithProviders({ listJobs }, ["/?page=2"]);
+    renderJobIndexWithProviders({ listJobs }, ["/?page=2"]);
     await screen.findByText("Backend Engineer");
 
     await userEvent.click(screen.getByText("← prev"));
@@ -304,7 +304,7 @@ describe("JobIndex", () => {
     const getFacets = vi
       .fn<JobsApi["getFacets"]>()
       .mockResolvedValue(emptyFacets());
-    renderWithProviders({ listJobs, getFacets }, ["/?company=Acme"]);
+    renderJobIndexWithProviders({ listJobs, getFacets }, ["/?company=Acme"]);
     await screen.findByText("Backend Engineer");
 
     await waitFor(() => {
@@ -316,7 +316,7 @@ describe("JobIndex", () => {
 
   it("the sort control writes sort=oldest and back", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
-    renderWithProviders({ listJobs });
+    renderJobIndexWithProviders({ listJobs });
     await screen.findByText("Backend Engineer");
 
     await userEvent.selectOptions(screen.getByRole("combobox"), "oldest");

@@ -27,7 +27,7 @@ function detail(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload {
   };
 }
 
-function renderDetail(api: Partial<JobsApi>, id = "1") {
+function renderJobDetailWithProviders(api: Partial<JobsApi>, id = "1") {
   return renderWithProviders(
     <Routes>
       <Route path="/jobs/:id" element={<JobDetail />} />
@@ -38,13 +38,13 @@ function renderDetail(api: Partial<JobsApi>, id = "1") {
 
 describe("JobDetail", () => {
   it("renders the loading state before the response resolves", () => {
-    renderDetail({ getJob: () => new Promise(() => {}) });
+    renderJobDetailWithProviders({ getJob: () => new Promise(() => {}) });
     expect(screen.getByText("loading")).toBeInTheDocument();
   });
 
   it("renders title, company and description once loaded", async () => {
     const getJob = vi.fn<JobsApi["getJob"]>().mockResolvedValue(detail());
-    renderDetail({ getJob });
+    renderJobDetailWithProviders({ getJob });
     expect(await screen.findByText("Backend Engineer")).toBeInTheDocument();
     expect(screen.getByText("Acme")).toBeInTheDocument();
     expect(screen.getByText("Full description body.")).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe("JobDetail", () => {
     const getJob = vi
       .fn<JobsApi["getJob"]>()
       .mockResolvedValue(detail({ metadata: { salary_range: "$100k-$120k" } }));
-    renderDetail({ getJob });
+    renderJobDetailWithProviders({ getJob });
     expect(await screen.findByText("Salary range")).toBeInTheDocument();
     expect(screen.getByText("$100k-$120k")).toBeInTheDocument();
   });
@@ -64,7 +64,7 @@ describe("JobDetail", () => {
     const getJob = vi
       .fn<JobsApi["getJob"]>()
       .mockResolvedValue(detail({ metadata: { experience_level: "Mid" } }));
-    renderDetail({ getJob });
+    renderJobDetailWithProviders({ getJob });
     const chip = await screen.findByText("Mid");
     expect(chip.className).toMatch(/chip/);
   });
@@ -73,7 +73,7 @@ describe("JobDetail", () => {
     const getJob = vi
       .fn<JobsApi["getJob"]>()
       .mockRejectedValue(new ApiError(404, "No posting with that id"));
-    renderDetail({ getJob });
+    renderJobDetailWithProviders({ getJob });
     expect(await screen.findByText("not found")).toBeInTheDocument();
     expect(screen.getByText("No posting with that id.")).toBeInTheDocument();
   });
@@ -83,7 +83,7 @@ describe("JobDetail", () => {
       .fn<JobsApi["getJob"]>()
       .mockRejectedValueOnce(new ApiError(503, "Service unavailable"))
       .mockResolvedValueOnce(detail());
-    renderDetail({ getJob });
+    renderJobDetailWithProviders({ getJob });
     await screen.findByText("Couldn't load this posting");
     expect(screen.getByText("GET /api/jobs/:id → 503")).toBeInTheDocument();
 
@@ -95,7 +95,7 @@ describe("JobDetail", () => {
     const getJob = vi
       .fn<JobsApi["getJob"]>()
       .mockResolvedValue(detail({ closed: true }));
-    renderDetail({ getJob });
+    renderJobDetailWithProviders({ getJob });
     const links = await screen.findAllByText("Original posting (likely dead)");
     expect(links.length).toBeGreaterThan(0);
     expect(screen.getByText("Closed")).toBeInTheDocument();

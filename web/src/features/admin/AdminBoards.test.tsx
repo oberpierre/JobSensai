@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { AdminBoards } from "./AdminBoards";
 import { ApiError } from "../../api/ApiError";
@@ -23,25 +24,37 @@ function board(overrides: Partial<Board> = {}): Board {
   };
 }
 
-function renderWithProvider(api: Partial<BoardsApi>) {
+function renderAdminBoardsWithProviders(api: Partial<BoardsApi>) {
   return renderWithProviders(<AdminBoards />, { boardsApi: api });
+}
+
+// Renders alongside AdminBoards so the test can read the same client the
+// component's own useQueryClient() call would see, without reaching into
+// TestProviders internals.
+function QueryClientProbe({
+  onClient,
+}: {
+  onClient: (client: QueryClient) => void;
+}) {
+  onClient(useQueryClient());
+  return null;
 }
 
 describe("AdminBoards", () => {
   it("renders the loading state before the response resolves", () => {
-    renderWithProvider({ listBoards: () => new Promise(() => {}) });
+    renderAdminBoardsWithProviders({ listBoards: () => new Promise(() => {}) });
     expect(screen.getByText("loading")).toBeInTheDocument();
   });
 
   it("renders the error state on a failed request", async () => {
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: () => Promise.reject(new Error("boom")),
     });
     expect(await screen.findByText("Couldn't load boards")).toBeInTheDocument();
   });
 
   it("renders boards ordered as the API returns them, with their type", async () => {
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
         items: [
           board({ id: "1", name: "Alpha", type: "html_crawl" }),
@@ -57,7 +70,7 @@ describe("AdminBoards", () => {
   });
 
   it("renders a null posting_count as an em dash", async () => {
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi
         .fn<BoardsApi["listBoards"]>()
         .mockResolvedValue({ items: [board({ posting_count: null })] }),
@@ -68,7 +81,7 @@ describe("AdminBoards", () => {
   });
 
   it("renders a numeric posting_count as-is", async () => {
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi
         .fn<BoardsApi["listBoards"]>()
         .mockResolvedValue({ items: [board({ posting_count: 381 })] }),
@@ -78,7 +91,7 @@ describe("AdminBoards", () => {
   });
 
   it("renders the empty state when there are no boards", async () => {
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi
         .fn<BoardsApi["listBoards"]>()
         .mockResolvedValue({ items: [] }),
@@ -95,7 +108,7 @@ describe("AdminBoards", () => {
     const createBoard = vi
       .fn<BoardsApi["createBoard"]>()
       .mockResolvedValue(board());
-    renderWithProvider({ listBoards, createBoard });
+    renderAdminBoardsWithProviders({ listBoards, createBoard });
 
     await screen.findByText("Nothing here yet.");
     const user = userEvent.setup();
@@ -118,7 +131,7 @@ describe("AdminBoards", () => {
   });
 
   it("the edit form carries no type control", async () => {
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi
         .fn<BoardsApi["listBoards"]>()
         .mockResolvedValue({ items: [board()] }),
@@ -139,7 +152,7 @@ describe("AdminBoards", () => {
     const updateBoard = vi
       .fn<BoardsApi["updateBoard"]>()
       .mockResolvedValue(board({ name: "Renamed" }));
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi
         .fn<BoardsApi["listBoards"]>()
         .mockResolvedValue({ items: [board()] }),
@@ -168,7 +181,7 @@ describe("AdminBoards", () => {
       .mockRejectedValue(
         new ApiError(409, "A board with that name or url already exists"),
       );
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi
         .fn<BoardsApi["listBoards"]>()
         .mockResolvedValue({ items: [] }),
@@ -194,7 +207,7 @@ describe("AdminBoards", () => {
     const deleteBoard = vi
       .fn<BoardsApi["deleteBoard"]>()
       .mockResolvedValue(undefined);
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi
         .fn<BoardsApi["listBoards"]>()
         .mockResolvedValue({ items: [board()] }),
@@ -211,7 +224,7 @@ describe("AdminBoards", () => {
     const deleteBoard = vi
       .fn<BoardsApi["deleteBoard"]>()
       .mockRejectedValue(new ApiError(404, "No board with that id"));
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi
         .fn<BoardsApi["listBoards"]>()
         .mockResolvedValue({ items: [board()] }),
@@ -227,7 +240,7 @@ describe("AdminBoards", () => {
   });
 
   it("greys a json_api row and leaves an html_crawl row plain", async () => {
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
         items: [
           board({ id: "1", name: "Alpha", type: "html_crawl" }),
@@ -245,7 +258,7 @@ describe("AdminBoards", () => {
   });
 
   it("renders the toggle on for an active row and off for an inactive one", async () => {
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
         items: [
           board({ id: "1", name: "Alpha", active: true }),
@@ -261,7 +274,7 @@ describe("AdminBoards", () => {
   });
 
   it("names each row's switch for its board, since the control has no text", async () => {
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
         items: [
           board({ id: "1", name: "Alpha", active: true }),
@@ -286,7 +299,7 @@ describe("AdminBoards", () => {
     const updateBoard = vi
       .fn<BoardsApi["updateBoard"]>()
       .mockResolvedValue(board({ active: false }));
-    renderWithProvider({
+    renderAdminBoardsWithProviders({
       listBoards: vi
         .fn<BoardsApi["listBoards"]>()
         .mockResolvedValue({ items: [board({ active: true })] }),
@@ -305,18 +318,31 @@ describe("AdminBoards", () => {
     );
   });
 
-  // renderWithProviders passes TestProviders through RTL's `wrapper` option, so a
-  // rerender re-enters it too. QueryClientProvider is the one ancestor here that
-  // throws outright when a render finds itself without it.
-  it("keeps its query client across a rerender", async () => {
-    const { rerender } = renderWithProvider({
-      listBoards: vi
-        .fn<BoardsApi["listBoards"]>()
-        .mockResolvedValue({ items: [] }),
+  // AdminBoards.tsx reads useQueryClient() itself to invalidate BOARDS_QUERY_KEY
+  // after a save. If that call returns a different object than the one the
+  // mounted useQuery observer is pinned to, the invalidation lands on a client
+  // nothing observes and the list silently never refreshes.
+  it("keeps the same query client instance across a rerender", async () => {
+    const listBoards = vi
+      .fn<BoardsApi["listBoards"]>()
+      .mockResolvedValue({ items: [] });
+    const seenClients: QueryClient[] = [];
+    // A fresh element per call, since reusing one React element reference
+    // across render and rerender lets React bail out of revisiting it.
+    const probe = () => (
+      <>
+        <QueryClientProbe onClient={(client) => seenClients.push(client)} />
+        <AdminBoards />
+      </>
+    );
+    const { rerender } = renderWithProviders(probe(), {
+      boardsApi: { listBoards },
     });
     await screen.findByText("Nothing here yet.");
 
-    expect(() => rerender(<AdminBoards />)).not.toThrow();
-    expect(await screen.findByText("Nothing here yet.")).toBeInTheDocument();
+    rerender(probe());
+    await screen.findByText("Nothing here yet.");
+
+    expect(seenClients[1]).toBe(seenClients[0]);
   });
 });

@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import { render, type RenderOptions } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
@@ -31,8 +31,10 @@ export interface TestProvidersProps {
   initialIndex?: number;
 }
 
-// Always all four providers, since one nothing consumes costs a test nothing
-// whereas a missing one throws confusingly from whichever hook reaches for it.
+// Always all four providers: JobsApiProvider and BoardsApiProvider default to the
+// real HTTP client rather than throwing, so a missing one would let an unstubbed
+// call reach the network instead of failing loudly. Only QueryClientProvider throws
+// when a hook reaches for a client it doesn't have.
 export function TestProviders({
   children,
   jobsApi,
@@ -42,7 +44,10 @@ export function TestProviders({
 }: TestProvidersProps) {
   const fullJobsApi: JobsApi = { ...PENDING_JOBS_API, ...jobsApi };
   const fullBoardsApi: BoardsApi = { ...PENDING_BOARDS_API, ...boardsApi };
-  const queryClient = createQueryClient();
+  // useState's lazy initializer runs once per mount, so a rerender of this
+  // wrapper reuses the same client instead of handing every consumer a fresh,
+  // empty cache.
+  const [queryClient] = useState(createQueryClient);
   return (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
