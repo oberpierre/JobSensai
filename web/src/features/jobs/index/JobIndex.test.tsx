@@ -1,13 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { JobIndex } from "./JobIndex";
-import { JobsApiProvider } from "../../../api/JobsApiProvider";
 import { ApiError } from "../../../api/ApiError";
-import { createQueryClient } from "../../../api/queryClient";
+import { renderWithProviders as renderWithSharedProviders } from "../../../../test/TestProviders";
 import type { JobsApi } from "../../../api/jobsApi";
 import type {
   FacetsResponse,
@@ -74,28 +72,26 @@ function GoBack() {
 }
 
 // Every test here exercises listJobs, so a caller that only cares about the list
-// gets a fixed empty-facets stub rather than restating one per test.
+// gets a fixed empty-facets stub rather than restating one per test. That default
+// differs from the shared helper's, which is why this wraps rather than calls it
+// directly: pushing it into the shared helper would change what the other three
+// files get, silently.
 function renderWithProviders(
   api: Partial<JobsApi>,
   initialEntries = ["/"],
   initialIndex?: number,
 ) {
-  const fullApi: JobsApi = {
+  const fullApi: Partial<JobsApi> = {
     getFacets: () => Promise.resolve(emptyFacets()),
-    getJob: () => new Promise(() => {}),
     ...api,
-  } as JobsApi;
-  const queryClient = createQueryClient();
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
-        <JobsApiProvider api={fullApi}>
-          <GoBack />
-          <ShowUrl />
-          <JobIndex />
-        </JobsApiProvider>
-      </MemoryRouter>
-    </QueryClientProvider>,
+  };
+  return renderWithSharedProviders(
+    <>
+      <GoBack />
+      <ShowUrl />
+      <JobIndex />
+    </>,
+    { jobsApi: fullApi, initialEntries, initialIndex },
   );
 }
 

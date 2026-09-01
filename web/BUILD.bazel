@@ -21,6 +21,10 @@ SRCS = glob(["src/**"]) + [
     ":node_modules",
 ]
 
+# test/ holds the shared render harness, kept out of SRCS so the production
+# build's sandbox never has it and bundling it is impossible, not just unlikely.
+TEST_SRCS = SRCS + glob(["test/**"])
+
 vite_bin.vite_binary(
     name = "vite",
     chdir = package_name(),
@@ -50,21 +54,21 @@ vitest_bin.vitest_test(
     name = "vitest_test",
     args = ["run"],
     chdir = package_name(),
-    data = SRCS,
+    data = TEST_SRCS,
 )
 
 tsc_bin.tsc_test(
     name = "typecheck_test",
     args = ["--noEmit"],
     chdir = package_name(),
-    data = SRCS,
+    data = TEST_SRCS,
 )
 
 eslint_bin.eslint_test(
     name = "eslint_test",
     args = ["."],
     chdir = package_name(),
-    data = SRCS,
+    data = TEST_SRCS,
 )
 
 # Fails a stylesheet under src/ that writes a literal a design token already

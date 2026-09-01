@@ -1,12 +1,10 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { AdminBoards } from "./AdminBoards";
-import { BoardsApiProvider } from "../../api/BoardsApiProvider";
 import { ApiError } from "../../api/ApiError";
-import { createQueryClient } from "../../api/queryClient";
+import { renderWithProviders } from "../../../test/TestProviders";
 import type { BoardsApi } from "../../api/boardsApi";
 import type { Board } from "../../api/types";
 
@@ -26,21 +24,7 @@ function board(overrides: Partial<Board> = {}): Board {
 }
 
 function renderWithProvider(api: Partial<BoardsApi>) {
-  const fullApi: BoardsApi = {
-    listBoards: () => new Promise(() => {}),
-    createBoard: () => new Promise(() => {}),
-    updateBoard: () => new Promise(() => {}),
-    deleteBoard: () => new Promise(() => {}),
-    ...api,
-  } as BoardsApi;
-  const queryClient = createQueryClient();
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <BoardsApiProvider api={fullApi}>
-        <AdminBoards />
-      </BoardsApiProvider>
-    </QueryClientProvider>,
-  );
+  return renderWithProviders(<AdminBoards />, { boardsApi: api });
 }
 
 describe("AdminBoards", () => {
@@ -319,5 +303,20 @@ describe("AdminBoards", () => {
         active: false,
       }),
     );
+  });
+
+  // renderWithProviders passes TestProviders through RTL's `wrapper` option, so a
+  // rerender re-enters it too. QueryClientProvider is the one ancestor here that
+  // throws outright when a render finds itself without it.
+  it("keeps its query client across a rerender", async () => {
+    const { rerender } = renderWithProvider({
+      listBoards: vi
+        .fn<BoardsApi["listBoards"]>()
+        .mockResolvedValue({ items: [] }),
+    });
+    await screen.findByText("Nothing here yet.");
+
+    expect(() => rerender(<AdminBoards />)).not.toThrow();
+    expect(await screen.findByText("Nothing here yet.")).toBeInTheDocument();
   });
 });
