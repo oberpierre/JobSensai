@@ -10,8 +10,14 @@ load("@npm//web:vitest/package_json.bzl", vitest_bin = "bin")
 
 npm_link_all_packages(name = "node_modules")
 
-# Globbed so adding a component never edits this file.
-SRCS = glob(["src/**"]) + [
+# Globbed so adding a component never edits this file. Colocated *.test.ts(x)
+# are excluded so the production build's sandbox never has them and bundling
+# one is impossible, not just unlikely. Each exclude needs its own "**/",
+# because a glob exclude does not inherit the include's "**".
+SRCS = glob(
+    ["src/**"],
+    exclude = ["src/**/*.test.ts", "src/**/*.test.tsx"],
+) + [
     "eslint.config.js",
     "index.html",
     "package.json",
@@ -21,9 +27,9 @@ SRCS = glob(["src/**"]) + [
     ":node_modules",
 ]
 
-# test/ holds the shared render harness, kept out of SRCS so the production
-# build's sandbox never has it and bundling it is impossible, not just unlikely.
-TEST_SRCS = SRCS + glob(["test/**"])
+# test/ holds the shared render harness, and the colocated *.test.ts(x) SRCS
+# excludes above are added back here so the test targets keep seeing them.
+TEST_SRCS = SRCS + glob(["src/**/*.test.ts", "src/**/*.test.tsx", "test/**"])
 
 vite_bin.vite_binary(
     name = "vite",
