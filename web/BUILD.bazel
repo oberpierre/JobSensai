@@ -10,13 +10,25 @@ load("@npm//web:vitest/package_json.bzl", vitest_bin = "bin")
 
 npm_link_all_packages(name = "node_modules")
 
-# Globbed so adding a component never edits this file. Colocated *.test.ts(x)
+# One list, used on both sides below, so a pattern added to only one of them
+# can't happen: SRCS excludes it from the production build, TEST_SRCS adds it
+# back for the test targets. Each pattern needs its own "src/**/", because a
+# glob exclude does not inherit another pattern's "**".
+TEST_PATTERNS = [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/**/__tests__/**",
+    "src/**/__mocks__/**",
+]
+
+# Globbed so adding a component never edits this file. Colocated test files
 # are excluded so the production build's sandbox never has them and bundling
-# one is impossible, not just unlikely. Each exclude needs its own "**/",
-# because a glob exclude does not inherit the include's "**".
+# one is impossible, not just unlikely.
 SRCS = glob(
     ["src/**"],
-    exclude = ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    exclude = TEST_PATTERNS,
 ) + [
     "eslint.config.js",
     "index.html",
@@ -27,9 +39,10 @@ SRCS = glob(
     ":node_modules",
 ]
 
-# test/ holds the shared render harness, and the colocated *.test.ts(x) SRCS
-# excludes above are added back here so the test targets keep seeing them.
-TEST_SRCS = SRCS + glob(["src/**/*.test.ts", "src/**/*.test.tsx", "test/**"])
+# test/ holds the shared render harness, and TEST_PATTERNS restores the
+# colocated test files SRCS excluded above so the test targets keep seeing them.
+# allow_empty: not every pattern (e.g. *.spec.tsx) has a match today.
+TEST_SRCS = SRCS + glob(TEST_PATTERNS + ["test/**"], allow_empty = True)
 
 vite_bin.vite_binary(
     name = "vite",
