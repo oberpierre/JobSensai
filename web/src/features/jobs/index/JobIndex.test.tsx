@@ -73,10 +73,11 @@ function GoBack() {
 
 // A history entry's key is fresh on every push or replace, even a replace whose
 // URL is unchanged, so the log distinguishes "redirected once" from "redirected
-// twice to the same place" in a way the URL alone cannot.
+// twice to the same place" in a way the URL alone cannot. Kept distinct, since a
+// render with no navigation repeats the current key rather than minting a new one.
 function NavigationKeys({ keys }: { keys: string[] }) {
   const location = useLocation();
-  keys.push(location.key);
+  if (keys.at(-1) !== location.key) keys.push(location.key);
   return null;
 }
 
@@ -184,7 +185,11 @@ describe("JobIndex", () => {
     expect(await screen.findByText("1 posting")).toBeInTheDocument();
   });
 
-  it("renders the total rather than a false empty state on page two", async () => {
+  // With a total of 5 against the default page size of 25, page 2 is past the end, so the
+  // past-the-end redirect lands the render on page 1 before either assertion runs. The
+  // false-empty-state branch this once guarded is reachable today only through a request
+  // race between the offset query and a concurrent delete, not through a rendered page 2.
+  it("lands a stale link to a page past the end on the total rather than the empty state", async () => {
     const listJobs = mockListJobs().mockImplementation(async ({ page }) => {
       if (page === 2) {
         return listResponse([], { total: 5, page: 2 });
