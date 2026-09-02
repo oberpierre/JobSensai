@@ -2,13 +2,18 @@ import unittest
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
-from api.queries import UNSPECIFIED_EMPLOYMENT_TYPE, facet_counts, paged_job_postings
+from api.queries import (
+    UNSPECIFIED_EMPLOYMENT_TYPE,
+    _location_matching_ids,
+    facet_counts,
+    paged_job_postings,
+)
 from scraper.models import Base, JobPosting
 
 
@@ -41,10 +46,26 @@ def _job(**overrides) -> JobPosting:
 
 class QueriesTestCase(unittest.TestCase):
     def setUp(self):
-        engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
-        self.session = sessionmaker(bind=engine)()
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.session = sessionmaker(bind=self.engine)()
         self.addCleanup(self.session.close)
+
+    def _statements_emitted_by(self, call):
+        """Every SQL string the engine actually sent while `call` ran. Asserting
+        against a query the test builds itself proves what SQLAlchemy does with a
+        narrowed select, not what the code under test asks for."""
+        seen = []
+
+        def record(conn, cursor, statement, params, context, executemany):
+            seen.append(statement)
+
+        event.listen(self.engine, "before_cursor_execute", record)
+        try:
+            call()
+        finally:
+            event.remove(self.engine, "before_cursor_execute", record)
+        return seen
 
     def _page(self, **kwargs):
         kwargs.setdefault("q", None)
@@ -170,6 +191,33 @@ class TestFacetFiltering(QueriesTestCase):
         page = self._page(companies=["Acme"])
         self.assertEqual(page.total, 2)
         self.assertEqual(page.company_count, 1)
+
+
+class TestLocationMatchingIdsHydratesNarrowly(QueriesTestCase):
+    def setUp(self):
+        super().setUp()
+        self.matching_id = uuid.uuid4()
+        self.non_matching_id = uuid.uuid4()
+        self.session.add_all(
+            [
+                _job(id=self.matching_id, title="Matches", locations=["Zurich"]),
+                _job(id=self.non_matching_id, title="No match", locations=["Geneva"]),
+            ]
+        )
+        self.session.commit()
+
+    def test_matching_ids_unchanged_by_the_narrower_select(self):
+        query = self.session.query(JobPosting)
+        ids = _location_matching_ids(query, ["Zurich"])
+        self.assertEqual(ids, {self.matching_id})
+
+    def test_the_scan_never_asks_the_database_for_description(self):
+        statements = self._statements_emitted_by(
+            lambda: _location_matching_ids(self.session.query(JobPosting), ["Zurich"])
+        )
+        self.assertTrue(statements, "the call emitted no SQL at all")
+        for statement in statements:
+            self.assertNotIn("description", statement)
 
 
 class TestOrdering(QueriesTestCase):

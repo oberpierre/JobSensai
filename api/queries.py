@@ -87,7 +87,8 @@ def _location_matching_ids(query: Query, locations: list[str]) -> set[uuid.UUID]
     if not locations:
         return None
     wanted = set(locations)
-    return {job.id for job in query.all() if wanted & set(job.locations or [])}
+    rows = query.with_entities(JobPosting.id, JobPosting.locations).all()
+    return {job_id for job_id, locs in rows if wanted & set(locs or [])}
 
 
 def _apply_location_filter(query: Query, locations: list[str]) -> Query:
