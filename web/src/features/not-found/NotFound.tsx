@@ -18,7 +18,7 @@ export function NotFound() {
       <MicroLabel tone="accent">404 · not found</MicroLabel>
       <h1 className={styles.title}>Nothing lives at this address</h1>
       <p className={styles.message}>
-        Check the link, or start again from the index.
+        No page matches this address. Every posting is reachable from the index.
       </p>
       {from && (
         <div className={styles.from}>
