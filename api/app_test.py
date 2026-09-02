@@ -11,6 +11,11 @@ from api.app import create_app
 
 class TestHealth(unittest.TestCase):
     def setUp(self):
+        # patch.dict snapshots and restores, whereas a bare pop leaves the variable
+        # gone for every test that runs after this one in the same process.
+        env = patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
         os.environ.pop("WEB_DIST_DIR", None)
         self.client = TestClient(create_app())
 
