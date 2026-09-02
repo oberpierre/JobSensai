@@ -15,7 +15,7 @@ export function NotFound() {
 
   return (
     <div className={styles.page}>
-      <MicroLabel>404 · not found</MicroLabel>
+      <MicroLabel tone="accent">404 · not found</MicroLabel>
       <h1 className={styles.title}>Nothing lives at this address</h1>
       <p className={styles.message}>
         Check the link, or start again from the index.

@@ -5,3 +5,9 @@
   letter-spacing: var(--letter-spacing-wide);
   color: var(--faint);
 }
+
+// Two classes rather than one, so this wins on specificity instead of on the
+// order the two rules happen to be written in.
+.label.accent {
+  color: var(--accent);
+}
