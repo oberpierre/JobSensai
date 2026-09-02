@@ -57,6 +57,8 @@ export function useJobFilters() {
     return next.toString();
   }
 
+  // Not the functional updater the other five setters use: pageSearch also has to run at
+  // render time inside <Navigate>'s to prop, where no updater API is available.
   function setPage(page: number) {
     setSearchParams(pageSearch(page));
   }
