@@ -13,10 +13,10 @@ on:
   pull_request:
     branches:
       - main
-    # Anchored so the push trigger below reuses this exact list. The two must stay
-    # identical: one filter deciding whether a pull request builds and a different
-    # one deciding whether main deploys would let a path reach the cluster untested.
-    paths: &release_paths
+    # A push to main no longer deploys, so the most a filtered-out commit skips
+    # is republishing four images nothing will reference until a tag does. A
+    # tag push has no diff to filter against, so it stays unfiltered below.
+    paths:
       - "scraper/**"
       - "adapters/**"
       - "api/**"
@@ -32,10 +32,17 @@ on:
   push:
     branches:
       - main
-    paths: *release_paths
+    tags:
+      - "v*"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.ref_type }}
+  # Three queues result: one per pull request, one shared by pushes to main, one
+  # shared by tag pushes. The third is the point: GitHub keeps at most one pending
+  # run per group and discards the earlier one, so a single queue would let a push
+  # to main discard a queued release and leave a tag that never shipped and never
+  # said why. Two tags still serialise against each other, keeping two deploys apart.
+  #
   # The push step runs four sequential, non-transactional `bazel run`
   # invocations, one per image. GitHub Actions cancels by signalling the
   # running process immediately, not at a step or job boundary, so a
@@ -133,9 +140,10 @@ jobs:
         if: github.event_name == 'push'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      # This step only runs on a push to main, so github.sha is always the
-      # commit being released rather than a synthetic merge commit, and
-      # every run of this step tags both sha-<short> and latest.
+      # This step runs on every push event, which includes a tag push: github.sha
+      # is always the commit being released rather than a synthetic merge commit.
+      # latest moves only on a push to main. A tag push publishes the tag itself
+      # instead, alongside sha-<short> either way.
       - name: Push images
         id: push
         if: github.event_name == 'push'
@@ -144,20 +152,25 @@ jobs:
         run: |
           SHORT_SHA="${COMMIT_SHA:0:7}"
           SHA_TAG="sha-$SHORT_SHA"
-          TAGS=(--tag "$SHA_TAG" --tag latest)
+          TAGS=(--tag "$SHA_TAG")
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAGS+=(--tag "$GITHUB_REF_NAME")
+          else
+            TAGS+=(--tag latest)
+          fi
           bazel run //oci:crawler_push -- "${TAGS[@]}"
           bazel run //oci:bronze_worker_push -- "${TAGS[@]}"
           bazel run //oci:silver_worker_push -- "${TAGS[@]}"
           bazel run //oci:web_push -- "${TAGS[@]}"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
-  # needs: alone is not a push-only gate: on a pull_request the push step above
-  # is skipped but the job it lives in still succeeds, so short_sha would be
-  # empty. This job's own if: is what keeps a pull request from ever
-  # reaching the deploy secrets.
+  # needs: alone is not a tag-only gate: build-smoke-push succeeds on a pull_request
+  # and on a push to main just as it does on a tag push, so needs: would be
+  # satisfied every time. This job's own if: is what keeps anything but a tag push
+  # from ever reaching the deploy secrets.
   deploy:
     needs: build-smoke-push
-    if: github.event_name == 'push'
+    if: github.ref_type == 'tag'
     uses: oberpierre/tools/.github/workflows/deploy-to-k8s.yml@v1
     with:
       playbook: k8s_deploy_workloads.yml
@@ -186,3 +199,25 @@ jobs:
           "app_host": ${{ toJSON(secrets.JOBSENSAI_HOST) }},
           "app_basic_auth": ${{ toJSON(secrets.JOBSENSAI_BASIC_AUTH) }}
         }
+
+  # needs: deploy is deliberate, not incidental: the release is created only after
+  # the deploy job succeeds, which makes a release a record of something that
+  # shipped rather than of something that was tagged.
+  release:
+    needs: [build-smoke-push, deploy]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # -R names the repository explicitly, which is what removes the need for a
+      # checkout: gh release create needs no working tree, only the tag name.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          PRERELEASE=()
+          case "$TAG" in *-*) PRERELEASE=(--prerelease) ;; esac
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --title "$TAG" \
+            --generate-notes "${PRERELEASE[@]}"
