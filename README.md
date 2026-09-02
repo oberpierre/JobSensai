@@ -129,6 +129,23 @@ Open `http://localhost:8000`: the API answers under `/api`, and every other path
 
 This devcontainer and Apple Silicon are both arm64, while the image is built for linux/amd64, so build and run it there only to inspect the image, not to serve traffic.
 
+## Releasing
+
+Pushing a tag matching `v*` is what deploys. Merging to `main` builds, tests and publishes the four images but does not deploy them, so nothing reaches the cluster until someone tags. The tag may sit on any branch, so a branch can be released before it merges.
+
+One release run, in order: builds and tests everything, smoke-tests the four images, publishes them as `sha-<short>` and as the tag itself, deploys, then opens the GitHub release whose notes GitHub generates from the pull requests merged since the previous release.
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+A tag whose name contains a hyphen, such as `v1.2.0-rc.1`, is published as a prerelease.
+
+A failed deploy leaves the tag and the images in place with no release. Re-running the workflow from the Actions tab is the repair.
+
+Force-pushing a published tag onto a different commit deploys again, from that commit. The run recomputes every image reference from the commit the tag now names, so the cluster rolls and the version image tag is overwritten in the registry. Cut a new tag instead, so what shipped when stays readable.
+
 ## Code Quality
 
 We enforce code quality using **Ruff** for both formatting and linting, integrated via Bazel with [aspect_rules_lint](https://github.com/aspect-build/rules_lint). This approach provides incremental, cacheable builds and hermetic test environments.
