@@ -48,12 +48,17 @@ export function useJobFilters() {
     }, options);
   }
 
+  // The first page is the absence of the parameter, so one state has one URL.
+  // Shared by setPage and the past-the-end redirect, so neither can restate the rule.
+  function pageSearch(page: number): string {
+    const next = new URLSearchParams(searchParams);
+    if (page > 1) next.set("page", String(page));
+    else next.delete("page");
+    return next.toString();
+  }
+
   function setPage(page: number) {
-    update((next) => {
-      // The first page is the absence of the parameter, so one state has one URL.
-      if (page > 1) next.set("page", String(page));
-      else next.delete("page");
-    });
+    setSearchParams(pageSearch(page));
   }
 
   function setQ(value: string, options?: { replace?: boolean }) {
@@ -112,6 +117,7 @@ export function useJobFilters() {
   return {
     filters,
     setPage,
+    pageSearch,
     setQ,
     setIncludeClosed,
     setSort,

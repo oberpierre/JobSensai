@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { Link, Navigate, useLocation } from "react-router";
 import { MicroLabel } from "../../../components/MicroLabel";
 import {
   StateCard,
@@ -19,14 +19,22 @@ import styles from "./JobIndex.module.scss";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
+// total and page_size are already computed over the filtered set, so the last page
+// with results is derivable from this response without a second request.
+function lastPage(data: JobListResponse): number {
+  return Math.max(1, Math.ceil(data.total / data.page_size));
+}
+
 // Lists postings from the API, filtered by search, the facet sidebar, the closed
 // toggle and sort, and paged, with every filter held in the URL so a view is
 // linkable and survives a reload.
 export function JobIndex() {
   const api = useJobsApi();
+  const location = useLocation();
   const {
     filters,
     setPage,
+    pageSearch,
     setQ,
     setIncludeClosed,
     setSort,
@@ -108,6 +116,21 @@ export function JobIndex() {
     debounceTimer.current = setTimeout(() => {
       setQ(value, { replace: !startsOrClearsASearch });
     }, SEARCH_DEBOUNCE_MS);
+  }
+
+  // Checked against data.page, which the redirect itself corrects, rather than
+  // data.items.length, which a legitimately empty last page would still fail and
+  // loop on.
+  if (!isPending && !isError && data && data.page > lastPage(data)) {
+    return (
+      <Navigate
+        to={{
+          pathname: location.pathname,
+          search: pageSearch(lastPage(data)),
+        }}
+        replace
+      />
+    );
   }
 
   const facetProps = {

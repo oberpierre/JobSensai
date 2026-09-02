@@ -71,6 +71,15 @@ function GoBack() {
   );
 }
 
+// A history entry's key is fresh on every push or replace, even a replace whose
+// URL is unchanged, so the log distinguishes "redirected once" from "redirected
+// twice to the same place" in a way the URL alone cannot.
+function NavigationKeys({ keys }: { keys: string[] }) {
+  const location = useLocation();
+  keys.push(location.key);
+  return null;
+}
+
 // Every test here exercises listJobs, so a caller that only cares about the list
 // gets a fixed empty-facets stub rather than restating one per test. That default
 // differs from the shared helper's, which is why this wraps rather than calls it
@@ -330,5 +339,85 @@ describe("JobIndex", () => {
       expect(screen.getByTestId("url")).not.toHaveTextContent("sort="),
     );
     expect(listJobs.mock.calls.at(-1)?.[0]).toMatchObject({ sort: "newest" });
+  });
+
+  it("redirects a page past the end to the last page with results", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([job()], { total: 30, page, page_size: 25 }),
+    );
+    renderJobIndexWithProviders({ listJobs }, ["/?page=99"]);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("page=2"),
+    );
+    expect(screen.getByTestId("url")).not.toHaveTextContent("page=99");
+  });
+
+  it("keeps the other parameters and the path when redirecting", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([job()], { total: 30, page, page_size: 25 }),
+    );
+    renderJobIndexWithProviders({ listJobs }, ["/?q=eng&company=Acme&page=99"]);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent(
+        "/?q=eng&company=Acme&page=2",
+      ),
+    );
+  });
+
+  it("replaces rather than pushes, so back from the redirect skips the over-run URL", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([job()], { total: 30, page, page_size: 25 }),
+    );
+    renderJobIndexWithProviders({ listJobs }, ["/external", "/?page=99"], 1);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("page=2"),
+    );
+
+    await userEvent.click(screen.getByText("go back"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("/external"),
+    );
+  });
+
+  it("redirects a zero-total over-run page to page 1 and shows the empty state", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([], { total: 0, page, page_size: 25 }),
+    );
+    renderJobIndexWithProviders({ listJobs }, ["/?page=5&q=zzz"]);
+
+    expect(
+      await screen.findByText("Nothing matches these filters."),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("url")).toHaveTextContent("/?q=zzz");
+    expect(screen.getByTestId("url")).not.toHaveTextContent("page=");
+  });
+
+  it("redirects once from a last page that itself has no items, rather than looping", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([], { total: 30, page, page_size: 25 }),
+    );
+    const keys: string[] = [];
+    renderWithProviders(
+      <>
+        <NavigationKeys keys={keys} />
+        <ShowUrl />
+        <JobIndex />
+      </>,
+      {
+        jobsApi: { listJobs, getFacets: () => Promise.resolve(emptyFacets()) },
+        initialEntries: ["/?page=99"],
+      },
+    );
+
+    await waitFor(() => expect(listJobs).toHaveBeenCalledTimes(2));
+    expect(listJobs.mock.calls.map((call) => call[0]?.page)).toEqual([99, 2]);
+    expect(screen.getByTestId("url")).toHaveTextContent("page=2");
+    // The initial entry plus exactly one redirect: a second redirect back onto
+    // the same page would still show "page=2" here but push a third key.
+    expect(keys).toHaveLength(2);
   });
 });
