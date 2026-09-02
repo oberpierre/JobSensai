@@ -269,36 +269,122 @@ describe("AdminBoards", () => {
     );
   });
 
-  it("clears a failed row action once an unrelated action succeeds", async () => {
-    const deleteBoard = vi
-      .fn<BoardsApi["deleteBoard"]>()
-      .mockRejectedValueOnce(new ApiError(500, "boom"));
-    const createBoard = vi
-      .fn<BoardsApi["createBoard"]>()
-      .mockResolvedValue(board({ id: "2", name: "New board" }));
-    renderAdminBoardsWithProviders({
-      listBoards: vi
-        .fn<BoardsApi["listBoards"]>()
-        .mockResolvedValue({ items: [board()] }),
-      deleteBoard,
-      createBoard,
+  // Each case fails a row action, then drives exactly the one site that is meant to
+  // clear it, isolated from the other four so that removing any single clear call
+  // fails only its own case. The create/update cases open their form and fail an
+  // unrelated row first, since failing the row before opening the form would let
+  // startAdding/startEditing's own clear satisfy the assertion instead.
+  describe("clears rowError from each of the five sites that reset it", () => {
+    const twoBoardsListBoards = () =>
+      vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
+        items: [
+          board({ id: "1", name: "Alpha" }),
+          board({ id: "2", name: "Zebra" }),
+        ],
+      });
+
+    const cases: {
+      name: string;
+      buildApi: () => Partial<BoardsApi>;
+      run: (user: ReturnType<typeof userEvent.setup>) => Promise<void>;
+    }[] = [
+      {
+        name: "startAdding, clicking + Add board after a row action failed",
+        buildApi: () => ({
+          listBoards: twoBoardsListBoards(),
+          deleteBoard: vi
+            .fn<BoardsApi["deleteBoard"]>()
+            .mockRejectedValue(new ApiError(500, "boom")),
+        }),
+        run: async (user) => {
+          await user.click(screen.getAllByText("Remove")[0]);
+          await screen.findByText("Remove failed: boom");
+          await user.click(screen.getByText("+ Add board"));
+        },
+      },
+      {
+        name: "startEditing, clicking Edit after a row action failed",
+        buildApi: () => ({
+          listBoards: twoBoardsListBoards(),
+          deleteBoard: vi
+            .fn<BoardsApi["deleteBoard"]>()
+            .mockRejectedValue(new ApiError(500, "boom")),
+        }),
+        run: async (user) => {
+          await user.click(screen.getAllByText("Remove")[0]);
+          await screen.findByText("Remove failed: boom");
+          await user.click(screen.getAllByText("Edit")[0]);
+        },
+      },
+      {
+        name: "cancelForm, cancelling the create form a row action failed under",
+        buildApi: () => ({
+          listBoards: twoBoardsListBoards(),
+          deleteBoard: vi
+            .fn<BoardsApi["deleteBoard"]>()
+            .mockRejectedValue(new ApiError(500, "boom")),
+        }),
+        run: async (user) => {
+          await user.click(screen.getByText("+ Add board"));
+          await user.click(screen.getAllByText("Remove")[0]);
+          await screen.findByText("Remove failed: boom");
+          await user.click(screen.getByText("Cancel"));
+        },
+      },
+      {
+        name: "createMutation.onSuccess, saving the create form a row toggle failed under",
+        buildApi: () => ({
+          listBoards: twoBoardsListBoards(),
+          updateBoard: vi
+            .fn<BoardsApi["updateBoard"]>()
+            .mockRejectedValue(new ApiError(500, "boom")),
+          createBoard: vi
+            .fn<BoardsApi["createBoard"]>()
+            .mockResolvedValue(board({ id: "3", name: "New" })),
+        }),
+        run: async (user) => {
+          await user.click(screen.getByText("+ Add board"));
+          await user.click(screen.getAllByRole("switch")[0]);
+          await screen.findByText("Toggling active failed: boom");
+          await user.type(screen.getByPlaceholderText(/e.g. Google/), "New");
+          await user.type(
+            screen.getByPlaceholderText("https://…"),
+            "https://new.example.com",
+          );
+          await user.click(screen.getByText("Save"));
+        },
+      },
+      {
+        name: "updateMutation.onSuccess, saving the edit form a different row's delete failed under",
+        buildApi: () => ({
+          listBoards: twoBoardsListBoards(),
+          deleteBoard: vi
+            .fn<BoardsApi["deleteBoard"]>()
+            .mockRejectedValue(new ApiError(500, "boom")),
+          updateBoard: vi
+            .fn<BoardsApi["updateBoard"]>()
+            .mockResolvedValue(board({ id: "1", name: "Alpha" })),
+        }),
+        run: async (user) => {
+          await user.click(screen.getAllByText("Edit")[0]);
+          await user.click(screen.getByText("Remove"));
+          await screen.findByText("Remove failed: boom");
+          await user.click(screen.getByText("Save"));
+        },
+      },
+    ];
+
+    it.each(cases)("$name", async ({ buildApi, run }) => {
+      renderAdminBoardsWithProviders(buildApi());
+      await screen.findByText("Alpha");
+      const user = userEvent.setup();
+
+      await run(user);
+
+      await waitFor(() =>
+        expect(screen.queryByText(/failed/)).not.toBeInTheDocument(),
+      );
     });
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByText("Remove"));
-    await screen.findByText("Remove failed: boom");
-
-    await user.click(screen.getByText("+ Add board"));
-    await user.type(screen.getByPlaceholderText(/e.g. Google/), "New board");
-    await user.type(
-      screen.getByPlaceholderText("https://…"),
-      "https://new.example.com",
-    );
-    await user.click(screen.getByText("Save"));
-
-    await waitFor(() =>
-      expect(screen.queryByText("Remove failed: boom")).not.toBeInTheDocument(),
-    );
   });
 
   it("greys a json_api row and leaves an html_crawl row plain", async () => {

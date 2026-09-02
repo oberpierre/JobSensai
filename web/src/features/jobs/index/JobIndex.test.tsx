@@ -185,11 +185,27 @@ describe("JobIndex", () => {
     expect(await screen.findByText("1 posting")).toBeInTheDocument();
   });
 
+  // Zero items with a nonzero total is what a legitimately empty last page looks like,
+  // and is exactly what the render gate must key on data.total rather than
+  // data.items.length to tell apart from no results at all.
+  it("renders the total rather than the empty state for a page with items.length 0 but a nonzero total", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(
+      listResponse([], { total: 5, page: 1 }),
+    );
+    renderJobIndexWithProviders({ listJobs });
+
+    expect(await screen.findByText("5 postings")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Nothing matches these filters."),
+    ).not.toBeInTheDocument();
+  });
+
   // With a total of 5 against the default page size of 25, page 2 is past the end, so the
-  // past-the-end redirect lands the render on page 1 before either assertion runs. The
-  // false-empty-state branch this once guarded is reachable today only through a request
-  // race between the offset query and a concurrent delete, not through a rendered page 2.
-  it("lands a stale link to a page past the end on the total rather than the empty state", async () => {
+  // past-the-end redirect lands the render on page 1 before either assertion runs. The gate
+  // that used to misread this as an empty page is keyed on data.total, which the render-gate
+  // test above pins directly. A request race between the offset query and a delete instead
+  // produces a backwards showing-range in ResultsList, not this branch.
+  it("lands a stale link to a page past the end on page 1, with the page parameter dropped", async () => {
     const listJobs = mockListJobs().mockImplementation(async ({ page }) => {
       if (page === 2) {
         return listResponse([], { total: 5, page: 2 });
@@ -199,6 +215,7 @@ describe("JobIndex", () => {
     renderJobIndexWithProviders({ listJobs }, ["/?page=2"]);
 
     expect(await screen.findByText("5 postings")).toBeInTheDocument();
+    expect(screen.getByTestId("url")).not.toHaveTextContent("page=");
     expect(
       screen.queryByText("Nothing matches these filters."),
     ).not.toBeInTheDocument();
@@ -326,6 +343,29 @@ describe("JobIndex", () => {
         expect.objectContaining({ company: ["Acme"] }),
       );
     });
+  });
+
+  // Total 40 against the default page size of 25 puts lastPage at 2, so page 2 renders
+  // with no redirect and the facet click below is the only thing that can move the URL
+  // off it.
+  it("resets the page when a facet is toggled from a genuine page 2", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([job()], { total: 40, page, page_size: 25 }),
+    );
+    const getFacets = vi.fn<JobsApi["getFacets"]>().mockResolvedValue({
+      location: [{ value: "Berlin", count: 1 }],
+      company: [],
+      employment_type: [],
+    });
+    renderJobIndexWithProviders({ listJobs, getFacets }, ["/?page=2"]);
+    await screen.findByText("Backend Engineer");
+    expect(screen.getByTestId("url")).toHaveTextContent("page=2");
+
+    await userEvent.click(await screen.findByText("Berlin"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).not.toHaveTextContent("page="),
+    );
   });
 
   it("the sort control writes sort=oldest and back", async () => {

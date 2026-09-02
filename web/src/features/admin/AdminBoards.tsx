@@ -143,9 +143,6 @@ export function AdminBoards() {
         </button>
       </div>
 
-      {formError && !adding && !editingId && (
-        <p className={styles.formError}>{formError}</p>
-      )}
       {rowError && <p className={styles.formError}>{rowError}</p>}
 
       {isPending && <LoadingState />}
