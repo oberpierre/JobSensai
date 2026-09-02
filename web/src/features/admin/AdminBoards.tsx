@@ -32,6 +32,10 @@ export function AdminBoards() {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // Kept apart from formError, whose paragraph is gated on no form being open: a row
+  // action can fail while a form sits open, and its message must not read as the
+  // open form's own.
+  const [rowError, setRowError] = useState<string | null>(null);
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: BOARDS_QUERY_KEY });
@@ -73,8 +77,11 @@ export function AdminBoards() {
 
   const deleteMutation = useMutation({
     mutationFn: (boardId: string) => api.deleteBoard(boardId),
-    onSuccess: () => invalidate(),
-    onError: (mutationError) => setFormError(errorMessage(mutationError)),
+    onSuccess: async () => {
+      setRowError(null);
+      await invalidate();
+    },
+    onError: (mutationError) => setRowError(errorMessage(mutationError)),
   });
 
   // The row toggle sends its own PUT, distinct from the edit form's mutation, so
@@ -86,8 +93,11 @@ export function AdminBoards() {
         url: board.url,
         active: !board.active,
       }),
-    onSuccess: () => invalidate(),
-    onError: (mutationError) => setFormError(errorMessage(mutationError)),
+    onSuccess: async () => {
+      setRowError(null);
+      await invalidate();
+    },
+    onError: (mutationError) => setRowError(errorMessage(mutationError)),
   });
 
   function startAdding() {
@@ -129,6 +139,7 @@ export function AdminBoards() {
       {formError && !adding && !editingId && (
         <p className={styles.formError}>{formError}</p>
       )}
+      {rowError && <p className={styles.formError}>{rowError}</p>}
 
       {isPending && <LoadingState />}
       {isError && (

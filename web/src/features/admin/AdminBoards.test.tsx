@@ -239,6 +239,36 @@ describe("AdminBoards", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a failed row action outside an open edit form, and clears it on the next success", async () => {
+    const deleteBoard = vi
+      .fn<BoardsApi["deleteBoard"]>()
+      .mockRejectedValueOnce(new ApiError(500, "boom"))
+      .mockResolvedValueOnce(undefined);
+    renderAdminBoardsWithProviders({
+      listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
+        items: [
+          board({ id: "1", name: "Alpha" }),
+          board({ id: "2", name: "Zebra" }),
+        ],
+      }),
+      deleteBoard,
+    });
+
+    const user = userEvent.setup();
+    await screen.findByText("Alpha");
+    await user.click(screen.getAllByText("Edit")[0]);
+
+    await user.click(await screen.findByText("Remove"));
+
+    const rowError = await screen.findByText("boom");
+    expect(rowError.closest("form")).toBeNull();
+
+    await user.click(screen.getByText("Remove"));
+    await waitFor(() =>
+      expect(screen.queryByText("boom")).not.toBeInTheDocument(),
+    );
+  });
+
   it("greys a json_api row and leaves an html_crawl row plain", async () => {
     renderAdminBoardsWithProviders({
       listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
