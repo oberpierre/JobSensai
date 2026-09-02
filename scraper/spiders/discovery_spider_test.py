@@ -26,16 +26,6 @@ def _render_as_text_on_sqlite(element, compiler, **kw):
     return "TEXT"
 
 
-class _FixtureSpider(DiscoverySpider):
-    """Overrides the real board's start URLs so the fallback path is exercised."""
-
-    name = "fixture"
-    fallback_start_urls = [
-        "https://example.com/literal-a",
-        "https://example.com/literal-b",
-    ]
-
-
 class TestLoadStartUrls(unittest.TestCase):
     def setUp(self):
         engine = create_engine("sqlite:///:memory:")
@@ -64,27 +54,12 @@ class TestLoadStartUrls(unittest.TestCase):
         )
         self.session.commit()
 
-        pairs = _FixtureSpider.load_start_urls(self.session)
+        pairs = DiscoverySpider.load_start_urls(self.session)
 
         self.assertEqual(
             [url for _id, url in pairs],
             ["https://alpha.example.com", "https://zeta.example.com"],
         )
-
-    def test_falls_back_to_class_literal_when_table_empty(self):
-        with self.assertLogs(
-            "scraper.spiders.discovery_spider", level="WARNING"
-        ) as logs:
-            pairs = _FixtureSpider.load_start_urls(self.session)
-
-        self.assertEqual(
-            pairs,
-            [
-                (None, "https://example.com/literal-a"),
-                (None, "https://example.com/literal-b"),
-            ],
-        )
-        self.assertTrue(any("falling back" in message for message in logs.output))
 
     def test_returns_only_active_html_crawl_rows(self):
         self.session.add_all(
@@ -105,7 +80,7 @@ class TestLoadStartUrls(unittest.TestCase):
         )
         self.session.commit()
 
-        pairs = _FixtureSpider.load_start_urls(self.session)
+        pairs = DiscoverySpider.load_start_urls(self.session)
 
         self.assertEqual([url for _id, url in pairs], ["https://active.example.com"])
 
@@ -131,7 +106,7 @@ class TestLoadStartUrls(unittest.TestCase):
         with self.assertLogs(
             "scraper.spiders.discovery_spider", level="WARNING"
         ) as logs:
-            pairs = _FixtureSpider.load_start_urls(self.session)
+            pairs = DiscoverySpider.load_start_urls(self.session)
 
         self.assertEqual(pairs, [])
         self.assertEqual(len(logs.output), 1)
@@ -139,7 +114,16 @@ class TestLoadStartUrls(unittest.TestCase):
         # cause and leave an operator reading a line about the wrong one.
         self.assertIn("active", logs.output[0])
 
-    def test_does_not_fall_back_when_table_holds_only_json_api_rows(self):
+    def test_empty_table_yields_no_pairs_and_logs(self):
+        with self.assertLogs(
+            "scraper.spiders.discovery_spider", level="WARNING"
+        ) as logs:
+            pairs = DiscoverySpider.load_start_urls(self.session)
+
+        self.assertEqual(pairs, [])
+        self.assertTrue(any("skipped" in message for message in logs.output))
+
+    def test_table_holding_only_json_api_rows_warns_and_yields_nothing(self):
         self.session.add(
             StartUrl(
                 name="only-api",
@@ -152,7 +136,7 @@ class TestLoadStartUrls(unittest.TestCase):
         with self.assertLogs(
             "scraper.spiders.discovery_spider", level="WARNING"
         ) as logs:
-            pairs = _FixtureSpider.load_start_urls(self.session)
+            pairs = DiscoverySpider.load_start_urls(self.session)
 
         self.assertEqual(pairs, [])
         self.assertTrue(any("skipped" in message for message in logs.output))
@@ -168,7 +152,7 @@ class TestLoadStartUrls(unittest.TestCase):
         self.session.commit()
 
         with self.assertNoLogs("scraper.spiders.discovery_spider", level="WARNING"):
-            pairs = _FixtureSpider.load_start_urls(self.session)
+            pairs = DiscoverySpider.load_start_urls(self.session)
 
         self.assertEqual(len(pairs), 1)
 
