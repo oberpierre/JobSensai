@@ -235,7 +235,7 @@ describe("AdminBoards", () => {
     await user.click(await screen.findByText("Remove"));
 
     expect(
-      await screen.findByText("No board with that id"),
+      await screen.findByText("Remove failed: No board with that id"),
     ).toBeInTheDocument();
   });
 
@@ -260,12 +260,44 @@ describe("AdminBoards", () => {
 
     await user.click(await screen.findByText("Remove"));
 
-    const rowError = await screen.findByText("boom");
+    const rowError = await screen.findByText("Remove failed: boom");
     expect(rowError.closest("form")).toBeNull();
 
     await user.click(screen.getByText("Remove"));
     await waitFor(() =>
-      expect(screen.queryByText("boom")).not.toBeInTheDocument(),
+      expect(screen.queryByText("Remove failed: boom")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("clears a failed row action once an unrelated action succeeds", async () => {
+    const deleteBoard = vi
+      .fn<BoardsApi["deleteBoard"]>()
+      .mockRejectedValueOnce(new ApiError(500, "boom"));
+    const createBoard = vi
+      .fn<BoardsApi["createBoard"]>()
+      .mockResolvedValue(board({ id: "2", name: "New board" }));
+    renderAdminBoardsWithProviders({
+      listBoards: vi
+        .fn<BoardsApi["listBoards"]>()
+        .mockResolvedValue({ items: [board()] }),
+      deleteBoard,
+      createBoard,
+    });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("Remove"));
+    await screen.findByText("Remove failed: boom");
+
+    await user.click(screen.getByText("+ Add board"));
+    await user.type(screen.getByPlaceholderText(/e.g. Google/), "New board");
+    await user.type(
+      screen.getByPlaceholderText("https://…"),
+      "https://new.example.com",
+    );
+    await user.click(screen.getByText("Save"));
+
+    await waitFor(() =>
+      expect(screen.queryByText("Remove failed: boom")).not.toBeInTheDocument(),
     );
   });
 

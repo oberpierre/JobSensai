@@ -50,6 +50,7 @@ export function AdminBoards() {
     onSuccess: async () => {
       setAdding(false);
       setFormError(null);
+      setRowError(null);
       await invalidate();
     },
     onError: (mutationError) => setFormError(errorMessage(mutationError)),
@@ -70,6 +71,7 @@ export function AdminBoards() {
     onSuccess: async () => {
       setEditingId(null);
       setFormError(null);
+      setRowError(null);
       await invalidate();
     },
     onError: (mutationError) => setFormError(errorMessage(mutationError)),
@@ -81,7 +83,8 @@ export function AdminBoards() {
       setRowError(null);
       await invalidate();
     },
-    onError: (mutationError) => setRowError(errorMessage(mutationError)),
+    onError: (mutationError) =>
+      setRowError(`Remove failed: ${errorMessage(mutationError)}`),
   });
 
   // The row toggle sends its own PUT, distinct from the edit form's mutation, so
@@ -97,18 +100,21 @@ export function AdminBoards() {
       setRowError(null);
       await invalidate();
     },
-    onError: (mutationError) => setRowError(errorMessage(mutationError)),
+    onError: (mutationError) =>
+      setRowError(`Toggling active failed: ${errorMessage(mutationError)}`),
   });
 
   function startAdding() {
     setEditingId(null);
     setFormError(null);
+    setRowError(null);
     setAdding(true);
   }
 
   function startEditing(boardId: string) {
     setAdding(false);
     setFormError(null);
+    setRowError(null);
     setEditingId(boardId);
   }
 
@@ -116,6 +122,7 @@ export function AdminBoards() {
     setAdding(false);
     setEditingId(null);
     setFormError(null);
+    setRowError(null);
   }
 
   return (
