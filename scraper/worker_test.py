@@ -5,8 +5,22 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from scraper.models import RawJobPosting, ScraperRun
+from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import sessionmaker
+
+from scraper.models import Base, RawJobPosting, ScraperRun
 from scraper.worker import JobWorker, WorkerConfig
+
+
+# sqlite has no JSONB/UUID types, and Base.metadata.create_all() would fail
+# against it otherwise. Rendering them as TEXT is safe here because the
+# mapping under test is our own column assignment, not either type's DDL.
+@compiles(JSONB, "sqlite")
+@compiles(UUID, "sqlite")
+def _render_as_text_on_sqlite(element, compiler, **kw):
+    return "TEXT"
 
 
 class TestJobWorker(unittest.TestCase):
@@ -93,6 +107,164 @@ class TestJobWorker(unittest.TestCase):
         self.worker.redis.lpush.assert_called_once_with(
             "silver_generation_tasks", json.dumps({"url": item_url})
         )
+
+    def test_process_message_item_insert_persists_start_url_id(self):
+        run_id = str(uuid.uuid4())
+        start_url_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        message = json.dumps(
+            {
+                "type": "ITEM",
+                "run_id": run_id,
+                "item": {
+                    "url": item_url,
+                    "html_content": "<html></html>",
+                    "metadata": {"spider": "test_spider"},
+                    "start_url_id": str(start_url_id),
+                },
+            }
+        )
+
+        mock_run = ScraperRun(id=uuid.UUID(run_id), spider_name="test_spider")
+        self.mock_session.get.return_value = mock_run
+        self.mock_session.execute.return_value.scalar_one_or_none.return_value = None
+
+        self.worker.process_message(message)
+
+        added_items = [args[0] for args, _ in self.mock_session.add.call_args_list]
+        job_item = next((i for i in added_items if isinstance(i, RawJobPosting)), None)
+        self.assertIsNotNone(job_item)
+        self.assertEqual(job_item.start_url_id, start_url_id)
+
+    def test_process_message_item_update_persists_start_url_id(self):
+        run_id = str(uuid.uuid4())
+        start_url_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        message = json.dumps(
+            {
+                "type": "ITEM",
+                "run_id": run_id,
+                "item": {
+                    "url": item_url,
+                    "html_content": "<html></html>",
+                    "metadata": {"spider": "test_spider"},
+                    "start_url_id": str(start_url_id),
+                },
+            }
+        )
+
+        mock_run = ScraperRun(id=uuid.UUID(run_id), spider_name="test_spider")
+        self.mock_session.get.return_value = mock_run
+
+        existing_posting = RawJobPosting(
+            url=item_url, html_content="<html>old</html>", start_url_id=None
+        )
+        self.mock_session.execute.return_value.scalar_one_or_none.return_value = (
+            existing_posting
+        )
+
+        self.worker.process_message(message)
+
+        self.assertEqual(existing_posting.start_url_id, start_url_id)
+
+    def test_process_message_item_update_keeps_the_first_attribution(self):
+        # A posting reachable from two start URLs must not flip attribution
+        # depending on which one the crawl reaches it from last.
+        run_id = str(uuid.uuid4())
+        first_start_url_id = uuid.uuid4()
+        second_start_url_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        message = json.dumps(
+            {
+                "type": "ITEM",
+                "run_id": run_id,
+                "item": {
+                    "url": item_url,
+                    "html_content": "<html></html>",
+                    "metadata": {"spider": "test_spider"},
+                    "start_url_id": str(second_start_url_id),
+                },
+            }
+        )
+
+        mock_run = ScraperRun(id=uuid.UUID(run_id), spider_name="test_spider")
+        self.mock_session.get.return_value = mock_run
+
+        existing_posting = RawJobPosting(
+            url=item_url,
+            html_content="<html>old</html>",
+            start_url_id=first_start_url_id,
+        )
+        self.mock_session.execute.return_value.scalar_one_or_none.return_value = (
+            existing_posting
+        )
+
+        self.worker.process_message(message)
+
+        self.assertEqual(existing_posting.start_url_id, first_start_url_id)
+
+    def test_process_message_item_omitting_start_url_id_leaves_it_unchanged(self):
+        # A rolling deploy drains items enqueued by a crawler that predates
+        # this field, so absence must not blank out an existing attribution.
+        run_id = str(uuid.uuid4())
+        previously_attributed = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        message = json.dumps(
+            {
+                "type": "ITEM",
+                "run_id": run_id,
+                "item": {
+                    "url": item_url,
+                    "html_content": "<html></html>",
+                    "metadata": {"spider": "test_spider"},
+                },
+            }
+        )
+
+        mock_run = ScraperRun(id=uuid.UUID(run_id), spider_name="test_spider")
+        self.mock_session.get.return_value = mock_run
+
+        existing_posting = RawJobPosting(
+            url=item_url,
+            html_content="<html>old</html>",
+            start_url_id=previously_attributed,
+        )
+        self.mock_session.execute.return_value.scalar_one_or_none.return_value = (
+            existing_posting
+        )
+
+        self.worker.process_message(message)
+
+        self.assertEqual(existing_posting.start_url_id, previously_attributed)
+
+    def test_process_message_item_degrades_a_non_string_start_url_id(self):
+        # uuid.UUID() raises AttributeError (not ValueError) for a non-string
+        # input, so the posting must still persist with start_url_id NULL.
+        run_id = str(uuid.uuid4())
+        item_url = "http://example.com/job/1"
+        message = json.dumps(
+            {
+                "type": "ITEM",
+                "run_id": run_id,
+                "item": {
+                    "url": item_url,
+                    "html_content": "<html></html>",
+                    "metadata": {"spider": "test_spider"},
+                    "start_url_id": 12345,
+                },
+            }
+        )
+
+        mock_run = ScraperRun(id=uuid.UUID(run_id), spider_name="test_spider")
+        self.mock_session.get.return_value = mock_run
+        self.mock_session.execute.return_value.scalar_one_or_none.return_value = None
+
+        self.worker.process_message(message)
+
+        added_items = [args[0] for args, _ in self.mock_session.add.call_args_list]
+        job_item = next((i for i in added_items if isinstance(i, RawJobPosting)), None)
+        self.assertIsNotNone(job_item)
+        self.assertIsNone(job_item.start_url_id)
 
     def test_tombstoning_logic(self):
         # Current run
@@ -185,6 +357,54 @@ class TestJobWorker(unittest.TestCase):
             JobWorker(self.config).setup()
         self.assertIsNone(mock_redis.call_args.kwargs["username"])
         self.assertIsNone(mock_redis.call_args.kwargs["password"])
+
+
+class TestHandleItemPersistsThroughARealEngine(unittest.TestCase):
+    """Runs _handle_item against a real SQLite engine rather than a mocked
+    session, to prove start_url_id is genuinely mapped to a column of that
+    name and survives a write and a read back through SQLAlchemy. A mock
+    can't catch a mismatch like RawJobPosting.metadata_'s column name.
+    """
+
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.session_factory = sessionmaker(bind=engine)
+        self.worker = JobWorker(WorkerConfig())
+        self.worker.redis = MagicMock()
+
+    def test_start_url_id_is_persisted_and_readable_back_by_query(self):
+        run_id = uuid.uuid4()
+        start_url_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        data = {
+            "run_id": str(run_id),
+            "item": {
+                "url": item_url,
+                "html_content": "<html></html>",
+                "metadata": {"spider": "test_spider"},
+                "start_url_id": str(start_url_id),
+            },
+        }
+
+        write_session = self.session_factory()
+        try:
+            self.worker._handle_item(write_session, data)
+        finally:
+            write_session.close()
+
+        # A fresh session forces a real SELECT instead of returning the
+        # object already held in the write session's identity map.
+        read_session = self.session_factory()
+        try:
+            persisted = (
+                read_session.query(RawJobPosting)
+                .filter(RawJobPosting.url == item_url)
+                .one()
+            )
+            self.assertEqual(persisted.start_url_id, start_url_id)
+        finally:
+            read_session.close()
 
 
 if __name__ == "__main__":

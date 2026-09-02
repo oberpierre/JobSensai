@@ -157,3 +157,58 @@ oci_push(
         "@platforms//cpu:x86_64",
     ],
 )
+
+# --- Web: //api:server, serving the API and the built SPA from one image ---
+
+platform_transition_filegroup(
+    name = "web_binary",
+    srcs = ["//api:server"],
+    target_platform = ":linux_x86_64",
+)
+
+pkg_tar(
+    name = "web_tar",
+    srcs = [":web_binary"],
+    include_runfiles = True,
+    package_dir = "/app",
+)
+
+# Built HTML/CSS/JS, so unlike web_binary above it carries no platform
+# transition: there is no compiled wheel or interpreter in it to cross-build,
+# and aspect_rules_js resolves its own toolchain for the host regardless.
+pkg_tar(
+    name = "web_dist_tar",
+    srcs = ["//web:dist"],
+    package_dir = "/app/web",
+)
+
+oci_image(
+    name = "web_image",
+    base = "@distroless_python3_linux_amd64",
+    tars = [
+        ":web_tar",
+        ":web_dist_tar",
+    ],
+    entrypoint = ["/usr/bin/python3", "/app/server"],
+    # web_dist_tar nests //web:dist's contents under its own basename inside
+    # package_dir, verified by extracting web_dist_tar.tar.
+    env = {"WEB_DIST_DIR": "/app/web/dist"},
+    user = "65532",
+    workdir = "/app",
+)
+
+oci_load(
+    name = "web_load",
+    image = ":web_image",
+    repo_tags = ["jobsensai-web:latest"],
+)
+
+oci_push(
+    name = "web_push",
+    image = ":web_image",
+    repository = "ghcr.io/oberpierre/jobsensai-web",
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)

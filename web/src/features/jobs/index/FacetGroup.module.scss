@@ -1,0 +1,41 @@
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-sm)
+    var(--font-sans);
+  color: var(--ink);
+}
+
+.optionValue {
+  flex: 1;
+}
+
+.optionCount {
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-mono);
+  color: var(--faint);
+}
+
+.more {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  padding: 0;
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-sans);
+  color: var(--accent);
+  cursor: pointer;
+}

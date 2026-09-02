@@ -16,3 +16,8 @@ redis==7.1.0
 
 # Environment
 python-dotenv==1.2.1
+
+# API
+fastapi==0.121.1
+httpx==0.28.1
+uvicorn==0.38.0

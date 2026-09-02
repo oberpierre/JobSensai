@@ -19,6 +19,8 @@ on:
     paths: &release_paths
       - "scraper/**"
       - "adapters/**"
+      - "api/**"
+      - "web/**"
       - "oci/**"
       - "deploy/**"
       - "MODULE.bazel"
@@ -34,7 +36,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # The push step runs three sequential, non-transactional `bazel run`
+  # The push step runs four sequential, non-transactional `bazel run`
   # invocations, one per image. GitHub Actions cancels by signalling the
   # running process immediately, not at a step or job boundary, so a
   # cancellation landing between two of those pushes would leave `latest`
@@ -75,6 +77,7 @@ jobs:
           bazel run //oci:crawler_load
           bazel run //oci:bronze_worker_load
           bazel run //oci:silver_worker_load
+          bazel run //oci:web_load
 
       # No entrypoint override: this is the one image whose entrypoint mechanism
       # is worth exercising, since /app/main depends on the base having
@@ -112,6 +115,20 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "Initializing database" || { echo "silver worker image did not reach application code"; exit 1; }
 
+      # Unlike the other three, this image keeps serving rather than exiting, and
+      # api/app.py opens no database connection at import, so the smoke test starts
+      # it detached and asks both routes directly instead of reading a log line.
+      - name: Smoke test web image
+        run: |
+          docker run -d --rm --name jobsensai-web-smoke -p 8000:8000 jobsensai-web:latest
+          trap 'docker logs jobsensai-web-smoke; docker stop jobsensai-web-smoke' EXIT
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:8000/api/health && break
+            sleep 0.5
+          done
+          curl -sf http://localhost:8000/api/health | grep -q '"status":"ok"' || { echo "web image did not answer /api/health"; exit 1; }
+          curl -sf http://localhost:8000/ | grep -qi "<!doctype html" || { echo "web image did not serve the SPA"; exit 1; }
+
       - name: Log in to GHCR
         if: github.event_name == 'push'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -131,6 +148,7 @@ jobs:
           bazel run //oci:crawler_push -- "${TAGS[@]}"
           bazel run //oci:bronze_worker_push -- "${TAGS[@]}"
           bazel run //oci:silver_worker_push -- "${TAGS[@]}"
+          bazel run //oci:web_push -- "${TAGS[@]}"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
   # needs: alone is not a push-only gate: on a pull_request the push step above
@@ -163,5 +181,8 @@ jobs:
           "app_llm_redis_password": ${{ toJSON(secrets.JOBSENSAI_LLM_REDIS_PASSWORD) }},
           "bronze_worker_image": "ghcr.io/oberpierre/jobsensai-bronze-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
           "silver_worker_image": "ghcr.io/oberpierre/jobsensai-silver-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
-          "crawler_image": "ghcr.io/oberpierre/jobsensai-crawler:sha-${{ needs.build-smoke-push.outputs.short_sha }}"
+          "crawler_image": "ghcr.io/oberpierre/jobsensai-crawler:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
+          "web_image": "ghcr.io/oberpierre/jobsensai-web:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
+          "app_host": ${{ toJSON(secrets.JOBSENSAI_HOST) }},
+          "app_basic_auth": ${{ toJSON(secrets.JOBSENSAI_BASIC_AUTH) }}
         }

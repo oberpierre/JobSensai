@@ -1,0 +1,38 @@
+@use "../styles/layout";
+
+.nav {
+  display: flex;
+  align-items: center;
+  height: 3rem;
+  border-bottom: var(--border-width) solid var(--ink);
+}
+
+.tabs {
+  @include layout.container;
+
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-16);
+}
+
+.wordmark {
+  font: var(--font-weight-semibold) var(--font-size-md)/var(--line-height-xs)
+    var(--font-mono);
+  letter-spacing: var(--letter-spacing-tight);
+  color: var(--ink);
+}
+
+.tab {
+  font: var(--font-weight-medium) var(--font-size-sm)/var(--line-height-xs)
+    var(--font-sans);
+  color: var(--muted);
+  text-decoration: none;
+  padding-bottom: var(--space-2);
+  border-bottom: var(--border-width-thick) solid transparent;
+}
+
+.tabActive {
+  composes: tab;
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}

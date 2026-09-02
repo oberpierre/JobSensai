@@ -1,0 +1,5 @@
+# Allowlist: prettier formats web/ only. A blocklist naming files elsewhere
+# would need a new entry every time this repo grows another JSON or YAML
+# file, and nobody notices until prettier rewrites it in someone else's PR.
+/*
+!/web/

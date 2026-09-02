@@ -1,0 +1,262 @@
+@use "../../styles/layout";
+
+.page {
+  @include layout.container;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  padding-block: var(--space-20) var(--space-40);
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-20);
+}
+
+.headings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.title {
+  margin: 0;
+  font: var(--font-weight-medium) var(--font-size-xl)/var(--line-height-xs)
+    var(--font-sans);
+  letter-spacing: var(--letter-spacing-tight);
+  color: var(--ink);
+}
+
+.subtitle {
+  margin: 0;
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-md)
+    var(--font-sans);
+  color: var(--muted);
+}
+
+.addButton {
+  display: inline-flex;
+  align-items: center;
+  height: var(--space-32);
+  border: none;
+  background: var(--ink);
+  color: var(--surface);
+  padding: var(--space-8) var(--space-12);
+  font: var(--font-weight-medium) var(--font-size-sm)/var(--line-height-xs)
+    var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.table {
+  display: flex;
+  flex-direction: column;
+  border: var(--border-width) solid var(--rule-sm);
+}
+
+.rowHead,
+.row,
+.rowGreyed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8.125rem 6rem 3.625rem 6.5rem;
+  gap: var(--space-12);
+  align-items: center;
+  padding: var(--space-12);
+}
+
+.rowHead {
+  background: var(--band);
+  border-bottom: var(--border-width) solid var(--rule-sm);
+  font: var(--font-weight-normal) var(--font-size-2xs)/var(--line-height-xs)
+    var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+  color: var(--faint);
+}
+
+.row,
+.rowGreyed {
+  border-bottom: var(--border-width) solid var(--rule-xs);
+}
+
+.rowGreyed {
+  color: var(--ghost);
+}
+
+.nameCell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.name {
+  font: var(--font-weight-medium) var(--font-size-sm)/var(--line-height-sm)
+    var(--font-sans);
+  color: var(--ink);
+}
+
+.url {
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-sm)
+    var(--font-mono);
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.type {
+  font: var(--font-weight-medium) var(--font-size-sm)/var(--line-height-xs)
+    var(--font-sans);
+  color: var(--ink);
+}
+
+.count {
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-mono);
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-12);
+  justify-content: flex-end;
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-sans);
+
+  button {
+    border: none;
+    background: none;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+  }
+}
+
+.editAction {
+  color: var(--accent);
+}
+
+.removeAction {
+  color: var(--muted);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--space-12);
+  background: var(--band);
+  border-bottom: var(--border-width) solid var(--rule-xs);
+}
+
+.formFields {
+  display: grid;
+  grid-template-columns: minmax(0, 11.875rem) minmax(0, 1fr);
+  gap: var(--space-12);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+
+  input {
+    border: var(--border-width) solid var(--rule-sm);
+    background: var(--raised);
+    padding: var(--space-8);
+    font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-xs)
+      var(--font-sans);
+    color: var(--ink);
+  }
+}
+
+.fieldLabel {
+  font: var(--font-weight-normal) var(--font-size-2xs)/var(--line-height-xs)
+    var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+  color: var(--faint);
+}
+
+.typeToggle {
+  display: flex;
+  border: var(--border-width) solid var(--rule-sm);
+}
+
+.typeOption,
+.typeOptionActive {
+  flex: 1;
+  text-align: center;
+  border: none;
+  padding: var(--space-8);
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-xs)
+    var(--font-sans);
+  cursor: pointer;
+}
+
+.typeOption {
+  background: none;
+  color: var(--muted);
+}
+
+.typeOptionActive {
+  background: var(--ink);
+  color: var(--surface);
+  font-weight: var(--font-weight-medium);
+}
+
+.activeField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.activeNote {
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-xs)
+    var(--font-sans);
+  color: var(--muted);
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+
+.saveButton {
+  background: var(--ink);
+  color: var(--surface);
+  border: none;
+  padding: var(--space-8) var(--space-16);
+  font: var(--font-weight-medium) var(--font-size-sm)/var(--line-height-xs)
+    var(--font-sans);
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-xs)
+    var(--font-sans);
+  cursor: pointer;
+}
+
+.formError {
+  margin: 0;
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-sm)
+    var(--font-sans);
+  color: var(--danger);
+}
+
+// The loading and error card shell lives in ../../components/StateCard, shared
+// with the jobs screens. This module keeps only the empty state's own copy.
+.message {
+  margin: 0;
+  font: var(--font-weight-medium) var(--font-size-lg)/var(--line-height-sm)
+    var(--font-sans);
+  color: var(--ink);
+}

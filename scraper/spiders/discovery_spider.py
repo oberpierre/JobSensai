@@ -11,6 +11,7 @@ Actual implementation will require:
 import json
 import logging
 import os
+import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -20,19 +21,22 @@ import scrapy
 from scrapy.crawler import Crawler
 
 from adapters.registry import AdapterRegistry
+from scraper.database import SessionLocal
 from scraper.items import RawJobItem
+from scraper.models import START_URL_TYPE_HTML_CRAWL, StartUrl
 from scraper.spiders.base_spider import BaseJobSpider
 
 logger = logging.getLogger(__name__)
 
 
-class GoogleSpider(BaseJobSpider):
-    """Spider for scraping Google job postings."""
+class DiscoverySpider(BaseJobSpider):
+    """Generic spider: resolves a discovery adapter by URL netloc and enqueues
+    a learning task when none is registered yet.
+    """
 
     name = "google"
 
-    # TODO: Configure these based on search criteria
-    start_urls = [
+    fallback_start_urls = [
         "https://www.google.com/about/careers/applications/jobs/results/?location=Switzerland&location=Singapore&sort_by=date",
         # https://www.google.com/about/careers/applications/jobs/results/120830781164528326-program-manager-talent-outreach-talent-engagement?location=Switzerland&location=Singapore&sort_by=date
         # Greenhouse is read through its JSON board API instead, so crawling this HTML
@@ -71,10 +75,55 @@ class GoogleSpider(BaseJobSpider):
 
         return spider
 
+    @classmethod
+    def load_start_urls(cls, session) -> list[tuple[uuid.UUID | None, str]]:
+        """Return (start_url_id, url) pairs to crawl, newest configuration first.
+
+        Reads `html_crawl` rows that are `active`, ordered by name. When the table
+        holds no rows at all, falls back to the class's own `fallback_start_urls`
+        literal, each paired with a None id.
+        """
+        total_count = session.query(StartUrl).count()
+        if total_count == 0:
+            logger.warning(
+                "start_urls table is empty: falling back to %d built-in URL(s),"
+                " so this crawl is not driven by the table.",
+                len(cls.fallback_start_urls),
+            )
+            return [(None, url) for url in cls.fallback_start_urls]
+        rows = (
+            session.query(StartUrl)
+            .filter(StartUrl.type == START_URL_TYPE_HTML_CRAWL, StartUrl.active)
+            .order_by(StartUrl.name)
+            .all()
+        )
+        if not rows:
+            logger.warning(
+                "%d configured start_urls row(s) skipped: none is both type %r"
+                " and active, so this crawl has nothing to do.",
+                total_count,
+                START_URL_TYPE_HTML_CRAWL,
+            )
+        return [(row.id, row.url) for row in rows]
+
+    def start_requests(self) -> Iterator[scrapy.Request]:
+        """Yield one request per configured start URL, tagged with its row id."""
+        session = SessionLocal()
+        try:
+            pairs = self.load_start_urls(session)
+        finally:
+            session.close()
+
+        for start_url_id, url in pairs:
+            yield scrapy.Request(
+                url, callback=self.parse, meta={"start_url_id": start_url_id}
+            )
+
     def parse(self, response: scrapy.http.Response) -> Iterator[scrapy.Request]:
         """Extract job links from search results page."""
         logger.info(f"Parsing search page: {response.url}")
 
+        start_url_id: uuid.UUID | None = response.meta.get("start_url_id")
         adapter = self.registry.get_discovery_adapter(response.url)
 
         # If no adapter, log fallback and STOP spidering for this domain/url path
@@ -90,13 +139,19 @@ class GoogleSpider(BaseJobSpider):
             # 1. Job Links
             job_links = adapter.get_job_links(response.text, response.url)
             for link in job_links:
-                yield response.follow(link, callback=self.parse_job)
+                yield response.follow(
+                    link,
+                    callback=self.parse_job,
+                    meta={"start_url_id": start_url_id},
+                )
 
             # 2. Next Page
             next_links = adapter.get_next_page_links(response.text, response.url)
             if next_links:  # might be None or []
                 for link in next_links:
-                    yield response.follow(link, callback=self.parse)
+                    yield response.follow(
+                        link, callback=self.parse, meta={"start_url_id": start_url_id}
+                    )
         except Exception as e:
             logger.error(f"Adapter logic failed on index page {response.url}: {e}")
             self._trigger_discovery_learning(response)
@@ -105,10 +160,10 @@ class GoogleSpider(BaseJobSpider):
         """Push listing HTML to discovery_learning_tasks queue.
 
         Payload schema (consumed by LLM worker):
-          domain    – netloc extracted from the URL (required for deduplication lock)
-          url       – full URL for context
-          html      – raw page HTML
-          timestamp – ISO-8601 string
+          domain    - netloc extracted from the URL (required for deduplication lock)
+          url       - full URL for context
+          html      - raw page HTML
+          timestamp - ISO-8601 string
         """
         from urllib.parse import urlsplit
 
@@ -146,6 +201,7 @@ class GoogleSpider(BaseJobSpider):
         item = self.create_item(
             url=response.url,
             html=html_content,
+            start_url_id=response.meta.get("start_url_id"),
             # title=title,  # Additional metadata
         )
 

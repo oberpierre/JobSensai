@@ -1,11 +1,19 @@
 load("@aspect_rules_lint//format:defs.bzl", "format_multirun", "format_test")
+load("@npm//web:prettier/package_json.bzl", prettier = "bin")
 
 package(default_visibility = ["//:__subpackages__"])
+
+prettier.prettier_binary(
+    name = "prettier",
+    env = {"BAZEL_BINDIR": "."},
+)
 
 # Runs Ruff formatter on all files in the workspace
 # Usage: bazel run //tools/format (or via alias defined in root BUILD.bazel: bazel run format)
 format_multirun(
     name = "format",
+    css = ":prettier",
+    javascript = ":prettier",
     python = "@aspect_rules_lint//format:ruff",
 )
 
@@ -17,6 +25,8 @@ format_multirun(
 format_test(
     name = "format_tests",
     size = "small",
+    css = ":prettier",
+    javascript = ":prettier",
     python = "@aspect_rules_lint//format:ruff",
     no_sandbox = True,
     workspace = "//:BUILD.bazel"

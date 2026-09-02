@@ -1,0 +1,468 @@
+import "@testing-library/jest-dom/vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useLocation, useNavigate } from "react-router";
+import { describe, expect, it, vi } from "vitest";
+import { JobIndex } from "./JobIndex";
+import { ApiError } from "../../../api/ApiError";
+import { renderWithProviders } from "../../../../test/TestProviders";
+import type { JobsApi } from "../../../api/jobsApi";
+import type {
+  FacetsResponse,
+  JobListResponse,
+  JobSummary,
+} from "../../../api/types";
+
+// Typed once here so every test's mock rejects/resolves against the real
+// listJobs signature instead of `unknown`.
+function mockListJobs() {
+  return vi.fn<JobsApi["listJobs"]>();
+}
+
+function emptyFacets(): FacetsResponse {
+  return { location: [], company: [], employment_type: [] };
+}
+
+function job(overrides: Partial<JobSummary> = {}): JobSummary {
+  return {
+    id: "1",
+    url: "https://example.com/1",
+    title: "Backend Engineer",
+    company_name: "Acme",
+    employment_type: "full_time",
+    locations: ["Zurich"],
+    categories: [],
+    metadata: {},
+    snippet: "A great role.",
+    first_seen: new Date().toISOString(),
+    last_seen: new Date().toISOString(),
+    closed: false,
+    ...overrides,
+  };
+}
+
+function listResponse(
+  items: JobSummary[],
+  overrides: Partial<JobListResponse> = {},
+): JobListResponse {
+  return {
+    items,
+    total: items.length,
+    page: 1,
+    page_size: 25,
+    company_count: new Set(items.map((item) => item.company_name)).size,
+    ...overrides,
+  };
+}
+
+// Exercises real back-navigation rather than a second render, which is the only
+// way to reproduce the history-navigation defects this suite pins.
+function ShowUrl() {
+  const location = useLocation();
+  return <span data-testid="url">{location.pathname + location.search}</span>;
+}
+
+function GoBack() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      go back
+    </button>
+  );
+}
+
+// A history entry's key is fresh on every push or replace, even a replace whose
+// URL is unchanged, so the log distinguishes "redirected once" from "redirected
+// twice to the same place" in a way the URL alone cannot. Kept distinct, since a
+// render with no navigation repeats the current key rather than minting a new one.
+function NavigationKeys({ keys }: { keys: string[] }) {
+  const location = useLocation();
+  if (keys.at(-1) !== location.key) keys.push(location.key);
+  return null;
+}
+
+// Every test here exercises listJobs, so a caller that only cares about the list
+// gets a fixed empty-facets stub rather than restating one per test. That default
+// differs from the shared helper's, which is why this wraps rather than calls it
+// directly: pushing it into the shared helper would change what the other three
+// files get, silently.
+function renderJobIndexWithProviders(
+  api: Partial<JobsApi>,
+  initialEntries = ["/"],
+  initialIndex?: number,
+) {
+  const fullApi: Partial<JobsApi> = {
+    getFacets: () => Promise.resolve(emptyFacets()),
+    ...api,
+  };
+  return renderWithProviders(
+    <>
+      <GoBack />
+      <ShowUrl />
+      <JobIndex />
+    </>,
+    { jobsApi: fullApi, initialEntries, initialIndex },
+  );
+}
+
+describe("JobIndex", () => {
+  it("renders the loading state before the response resolves", () => {
+    const api: Partial<JobsApi> = { listJobs: () => new Promise(() => {}) };
+    renderJobIndexWithProviders(api);
+    expect(screen.getByText("loading")).toBeInTheDocument();
+  });
+
+  it("renders the empty state when nothing matches", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([]));
+    renderJobIndexWithProviders({ listJobs });
+    expect(
+      await screen.findByText("Nothing matches these filters."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the error state and its status code", async () => {
+    const listJobs = mockListJobs().mockRejectedValue(
+      new ApiError(503, "Service unavailable"),
+    );
+    renderJobIndexWithProviders({ listJobs });
+    expect(
+      await screen.findByText("Couldn't load postings"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("GET /api/jobs → 503")).toBeInTheDocument();
+  });
+
+  it("retries the request when Retry is clicked", async () => {
+    const listJobs = mockListJobs()
+      .mockRejectedValueOnce(new ApiError(503, "Service unavailable"))
+      .mockResolvedValueOnce(listResponse([job()]));
+    renderJobIndexWithProviders({ listJobs });
+    await screen.findByText("Couldn't load postings");
+
+    await userEvent.click(screen.getByText("Retry"));
+
+    expect(await screen.findByText("Backend Engineer")).toBeInTheDocument();
+    expect(listJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders a closed posting struck through", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(
+      listResponse([job({ title: "Closed Role", closed: true })]),
+    );
+    renderJobIndexWithProviders({ listJobs });
+    const title = await screen.findByText("Closed Role");
+    expect(title.className).toMatch(/title/);
+    expect(title.closest("li")?.className).toMatch(/rowClosed/);
+  });
+
+  it("links a row's title to its detail page with the canonical trailing slash", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderJobIndexWithProviders({ listJobs });
+    const title = await screen.findByText("Backend Engineer");
+    expect(title.closest("a")).toHaveAttribute("href", "/jobs/1/");
+  });
+
+  it("writes the search text into the q query parameter", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderJobIndexWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    await userEvent.type(
+      screen.getByPlaceholderText("Title or company"),
+      "staff",
+    );
+
+    await waitFor(() => {
+      const lastCall = listJobs.mock.calls.at(-1)?.[0];
+      expect(lastCall?.q).toBe("staff");
+    });
+  });
+
+  it("pluralizes the posting count", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(
+      listResponse([job()], { total: 1 }),
+    );
+    renderJobIndexWithProviders({ listJobs });
+    expect(await screen.findByText("1 posting")).toBeInTheDocument();
+  });
+
+  // Zero items with a nonzero total is what a legitimately empty last page looks like,
+  // and is exactly what the render gate must key on data.total rather than
+  // data.items.length to tell apart from no results at all.
+  it("renders the total rather than the empty state for a page with items.length 0 but a nonzero total", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(
+      listResponse([], { total: 5, page: 1 }),
+    );
+    renderJobIndexWithProviders({ listJobs });
+
+    expect(await screen.findByText("5 postings")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Nothing matches these filters."),
+    ).not.toBeInTheDocument();
+  });
+
+  // With a total of 5 against the default page size of 25, page 2 is past the end, so the
+  // past-the-end redirect lands the render on page 1 before either assertion runs. The gate
+  // that used to misread this as an empty page is keyed on data.total, which the render-gate
+  // test above pins directly. A request race between the offset query and a delete instead
+  // produces a backwards showing-range in ResultsList, not this branch.
+  it("lands a stale link to a page past the end on page 1, with the page parameter dropped", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) => {
+      if (page === 2) {
+        return listResponse([], { total: 5, page: 2 });
+      }
+      return listResponse([job()], { total: 5, page: 1 });
+    });
+    renderJobIndexWithProviders({ listJobs }, ["/?page=2"]);
+
+    expect(await screen.findByText("5 postings")).toBeInTheDocument();
+    expect(screen.getByTestId("url")).not.toHaveTextContent("page=");
+    expect(
+      screen.queryByText("Nothing matches these filters."),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText("Include closed postings"));
+
+    await waitFor(() => {
+      const lastCall = listJobs.mock.calls.at(-1)?.[0];
+      expect(lastCall?.page).toBe(1);
+    });
+  });
+
+  it("restores includeClosed from the URL on reload", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderJobIndexWithProviders({ listJobs }, ["/?include_closed=true"]);
+    await screen.findByText("Backend Engineer");
+
+    expect(screen.getByLabelText("Include closed postings")).toBeChecked();
+    expect(listJobs.mock.calls[0][0]).toMatchObject({ includeClosed: true });
+  });
+
+  it("pages forward and back with prev/next", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) => {
+      if (page === 2) {
+        return listResponse([job({ id: "2", title: "Staff Engineer" })], {
+          total: 30,
+          page: 2,
+        });
+      }
+      return listResponse([job({ id: "1", title: "Backend Engineer" })], {
+        total: 30,
+        page: 1,
+      });
+    });
+    renderJobIndexWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    await userEvent.click(screen.getByText("next →"));
+    await screen.findByText("Staff Engineer");
+
+    await userEvent.click(screen.getByText("← prev"));
+    await screen.findByText("Backend Engineer");
+  });
+
+  it("keeps the search input in step with q after a back navigation", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderJobIndexWithProviders({ listJobs }, ["/?q=foo", "/?q=bar"], 1);
+    await screen.findByText("Backend Engineer");
+
+    expect(screen.getByPlaceholderText("Title or company")).toHaveValue("bar");
+
+    await userEvent.click(screen.getByText("go back"));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Title or company")).toHaveValue(
+        "foo",
+      );
+    });
+  });
+
+  it("keeps the unfiltered list reachable by back after a first search", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderJobIndexWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    await userEvent.type(screen.getByRole("textbox"), "AI");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("q=AI"),
+    );
+
+    await userEvent.click(screen.getByText("go back"));
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("/"),
+    );
+    expect(screen.getByTestId("url")).not.toHaveTextContent("q=AI");
+  });
+
+  it("does not add a history entry while a search is being refined", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderJobIndexWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    const box = screen.getByRole("textbox");
+    await userEvent.type(box, "A");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("q=A"),
+    );
+    await userEvent.type(box, "I");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("q=AI"),
+    );
+
+    // One entry for the whole search, so back lands on the unfiltered list
+    // rather than on the half-typed query.
+    await userEvent.click(screen.getByText("go back"));
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("/"),
+    );
+    expect(screen.getByTestId("url")).not.toHaveTextContent("q=");
+  });
+
+  it("drops the page parameter rather than writing page=1", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(
+      listResponse([job()], { total: 40, page: 2 }),
+    );
+    renderJobIndexWithProviders({ listJobs }, ["/?page=2"]);
+    await screen.findByText("Backend Engineer");
+
+    await userEvent.click(screen.getByText("← prev"));
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).not.toHaveTextContent("page"),
+    );
+  });
+
+  it("passes the active facet filters to getFacets", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    const getFacets = vi
+      .fn<JobsApi["getFacets"]>()
+      .mockResolvedValue(emptyFacets());
+    renderJobIndexWithProviders({ listJobs, getFacets }, ["/?company=Acme"]);
+    await screen.findByText("Backend Engineer");
+
+    await waitFor(() => {
+      expect(getFacets).toHaveBeenCalledWith(
+        expect.objectContaining({ company: ["Acme"] }),
+      );
+    });
+  });
+
+  // Total 40 against the default page size of 25 puts lastPage at 2, so page 2 renders
+  // with no redirect and the facet click below is the only thing that can move the URL
+  // off it.
+  it("resets the page when a facet is toggled from a genuine page 2", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([job()], { total: 40, page, page_size: 25 }),
+    );
+    const getFacets = vi.fn<JobsApi["getFacets"]>().mockResolvedValue({
+      location: [{ value: "Berlin", count: 1 }],
+      company: [],
+      employment_type: [],
+    });
+    renderJobIndexWithProviders({ listJobs, getFacets }, ["/?page=2"]);
+    await screen.findByText("Backend Engineer");
+    expect(screen.getByTestId("url")).toHaveTextContent("page=2");
+
+    await userEvent.click(await screen.findByText("Berlin"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).not.toHaveTextContent("page="),
+    );
+  });
+
+  it("the sort control writes sort=oldest and back", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderJobIndexWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    await userEvent.selectOptions(screen.getByRole("combobox"), "oldest");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("sort=oldest"),
+    );
+    expect(listJobs.mock.calls.at(-1)?.[0]).toMatchObject({ sort: "oldest" });
+
+    await userEvent.selectOptions(screen.getByRole("combobox"), "newest");
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).not.toHaveTextContent("sort="),
+    );
+    expect(listJobs.mock.calls.at(-1)?.[0]).toMatchObject({ sort: "newest" });
+  });
+
+  it("redirects a page past the end to the last page with results", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([job()], { total: 30, page, page_size: 25 }),
+    );
+    renderJobIndexWithProviders({ listJobs }, ["/?page=99"]);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("page=2"),
+    );
+    expect(screen.getByTestId("url")).not.toHaveTextContent("page=99");
+  });
+
+  it("keeps the other parameters and the path when redirecting", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([job()], { total: 30, page, page_size: 25 }),
+    );
+    renderJobIndexWithProviders({ listJobs }, ["/?q=eng&company=Acme&page=99"]);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent(
+        "/?q=eng&company=Acme&page=2",
+      ),
+    );
+  });
+
+  it("replaces rather than pushes, so back from the redirect skips the over-run URL", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([job()], { total: 30, page, page_size: 25 }),
+    );
+    renderJobIndexWithProviders({ listJobs }, ["/external", "/?page=99"], 1);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("page=2"),
+    );
+
+    await userEvent.click(screen.getByText("go back"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("url")).toHaveTextContent("/external"),
+    );
+  });
+
+  it("redirects a zero-total over-run page to page 1 and shows the empty state", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([], { total: 0, page, page_size: 25 }),
+    );
+    renderJobIndexWithProviders({ listJobs }, ["/?page=5&q=zzz"]);
+
+    expect(
+      await screen.findByText("Nothing matches these filters."),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("url")).toHaveTextContent("/?q=zzz");
+    expect(screen.getByTestId("url")).not.toHaveTextContent("page=");
+  });
+
+  it("redirects once from a last page that itself has no items, rather than looping", async () => {
+    const listJobs = mockListJobs().mockImplementation(async ({ page }) =>
+      listResponse([], { total: 30, page, page_size: 25 }),
+    );
+    const keys: string[] = [];
+    renderWithProviders(
+      <>
+        <NavigationKeys keys={keys} />
+        <ShowUrl />
+        <JobIndex />
+      </>,
+      {
+        jobsApi: { listJobs, getFacets: () => Promise.resolve(emptyFacets()) },
+        initialEntries: ["/?page=99"],
+      },
+    );
+
+    await waitFor(() => expect(listJobs).toHaveBeenCalledTimes(2));
+    expect(listJobs.mock.calls.map((call) => call[0]?.page)).toEqual([99, 2]);
+    expect(screen.getByTestId("url")).toHaveTextContent("page=2");
+    // The initial entry plus exactly one redirect: a second redirect back onto
+    // the same page would still show "page=2" here but push a third key.
+    expect(keys).toHaveLength(2);
+  });
+});

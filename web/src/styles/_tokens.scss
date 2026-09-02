@@ -1,0 +1,57 @@
+// The full palette is declared here in one file, so a component reaches for a token
+// here instead of restating a colour.
+:root {
+  --page: #e8e5df;
+  --surface: #f4f2ed;
+  --raised: #fbfaf7;
+  --band: #efece6;
+  --ink: #17140f;
+  --accent: #8a4b12;
+  --accent-hover: #5e3208;
+  // Ordered like the font sizes: the name says how strong, the role says what for.
+  --rule-xs: rgba(23, 20, 15, 0.12); // row separators
+  --rule-sm: rgba(23, 20, 15, 0.18); // panel and table borders, and inert fills
+  --rule-md: rgba(23, 20, 15, 0.25); // dashed and neutral unspecified borders
+  --muted: rgba(23, 20, 15, 0.6);
+  --faint: rgba(23, 20, 15, 0.45);
+  --ghost: rgba(23, 20, 15, 0.35);
+  --danger: oklch(0.45 0.11 25);
+
+  --font-sans: "Inter Tight", Helvetica, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  // The scale is 2, 4, 8, 12, 16, 20, 24, 32, 40px, and a screen snaps to the nearest
+  // step rather than picking its own number.
+  --space-2: 0.125rem;
+  --space-4: 0.25rem;
+  --space-8: 0.5rem;
+  --space-12: 0.75rem;
+  --space-16: 1rem;
+  --space-20: 1.25rem;
+  --space-24: 1.5rem;
+  --space-32: 2rem;
+  --space-40: 2.5rem;
+
+  // One ordered scale shared by both families: the name says how big, the role
+  // below says what for.
+  --font-size-2xs: 0.625rem; // uppercase micro-labels and badges, mono
+  --font-size-xs: 0.71875rem; // counts, timestamps, codes, pagination, mono
+  --font-size-sm: 0.8125rem; // controls, tabs, body prose, sans
+  --font-size-md: 0.875rem; // the wordmark, mono
+  --font-size-lg: 1.03125rem; // posting titles and empty-state messages, sans
+  --font-size-xl: 1.25rem; // the result total, sans
+
+  --line-height-xs: 1; // a single line that must not grow
+  --line-height-sm: 1.35; // compact interface text
+  --line-height-md: 1.5; // prose
+
+  --font-weight-normal: 400; // body and aside text
+  --font-weight-medium: 500; // controls, titles, active states
+  --font-weight-semibold: 600; // the wordmark
+
+  --letter-spacing-tight: -0.02em; // sans text at lg and above
+  --letter-spacing-wide: 0.14em; // uppercase mono micro-labels
+
+  --border-width: 1px; // every rule and panel edge
+  --border-width-thick: 2px; // the active-tab underline and the error card's left rule
+}

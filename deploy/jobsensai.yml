@@ -1,7 +1,7 @@
 app_name: jobsensai
 app_namespace: jobsensai
 
-# Credential for pulling the three private images. All three keys are required
+# Credential for pulling the four private images. All three keys are required
 # together, or the deploy rejects the file before anything is applied.
 registry:
   host: ghcr.io
@@ -39,6 +39,10 @@ app_secrets:
     REDIS_PORT: "6379"
     REDIS_USERNAME: jobsensai # must match a redis_users name above
     REDIS_PASSWORD: "{{ app_redis_password }}"
+  # Opaque, single key, nginx htpasswd form: what ingress-nginx's auth-secret
+  # annotation on the web workload's Ingress expects.
+  jobsensai-admin-auth:
+    auth: "{{ app_basic_auth }}"
 
 workloads:
   - name: bronze-worker
@@ -65,7 +69,9 @@ workloads:
     # clear of the 02:00-05:00 UTC backup/verify window.
     schedule: "0 */6 * * *"
     image: "{{ crawler_image }}"
-    env_from: [jobsensai-redis]
+    # DiscoverySpider.start_requests reads the start_urls table before it
+    # yields anything, so the crawler needs Postgres too, not just Redis.
+    env_from: [jobsensai-postgres, jobsensai-redis]
     # Sized for an HTTP crawler: no request goes through scrapy-playwright, so
     # no Chromium page ever launches. Wiring scrapy-playwright must raise this
     # limit or cap concurrency in the same change, since each concurrent
@@ -73,3 +79,21 @@ workloads:
     resources:
       requests: { cpu: 200m, memory: 512Mi }
       limits: { cpu: 2000m, memory: 2Gi }
+  - name: web
+    kind: Deployment
+    image: "{{ web_image }}"
+    replicas: 1
+    # The API's whole data path is SQLAlchemy against Postgres and it imports
+    # no redis client, so a Redis Secret here would widen what a compromised
+    # web pod can reach and buy nothing.
+    env_from: [jobsensai-postgres]
+    service: { port: 80, target_port: 8000 }
+    ingress:
+      hosts: ["{{ app_host }}"]
+      annotations:
+        nginx.ingress.kubernetes.io/auth-type: basic
+        nginx.ingress.kubernetes.io/auth-secret: jobsensai-admin-auth
+        nginx.ingress.kubernetes.io/auth-realm: "JobSensai admin"
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }

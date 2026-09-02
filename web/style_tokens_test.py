@@ -1,0 +1,119 @@
+"""Fails the build when a stylesheet under web/src/ writes a literal a design
+token already exists for, including inside an @media prelude, where a custom
+property cannot appear and a Sass variable stands in for one instead.
+"""
+
+import re
+import tempfile
+import unittest
+from pathlib import Path
+
+SRC_ROOT = Path(__file__).parent / "src"
+
+# _tokens.scss is where every literal is declared by name in the first place.
+# _layout.scss's container widths are px by a documented decision, distinct from
+# every other pixel value a component might write.
+FILES_EXEMPT_FROM_ALL_CHECKS = {"_tokens.scss"}
+FILES_EXEMPT_FROM_PX_CHECK = {"_layout.scss"}
+
+# A declaration, however it wraps across lines: "prop: value;" with no "{" in
+# between, which is what tells a nested selector like "&:disabled {" apart from
+# an actual property.
+DECLARATION_RE = re.compile(
+    r"^[ \t]*(?P<prop>[a-zA-Z-]+)\s*:\s*(?P<value>[^;{]*);", re.MULTILINE
+)
+# The prelude between "@media" and its opening brace. A prelude ends with a
+# brace rather than a semicolon, so DECLARATION_RE never matches inside one.
+MEDIA_PRELUDE_RE = re.compile(r"@media\s*(?P<condition>[^{]*)\{")
+VAR_RE = re.compile(r"var\(--[\w-]+\)")
+COLOR_RE = re.compile(r"oklch\(|#[0-9a-fA-F]{3,8}\b|rgba?\(")
+PX_RE = re.compile(r"\d+(?:\.\d+)?px")
+
+# The properties a size, weight, line height or tracking value can hide behind,
+# including the "font" shorthand this codebase writes exclusively.
+FONT_PROPS = {"font", "font-size", "font-weight", "line-height", "letter-spacing"}
+
+# A dimmed element takes the colour token named for that treatment. `opacity`
+# fades borders and anything non-textual with it, and its value sits on no scale
+# this design system defines.
+DIMMING_PROPS = {"opacity"}
+
+
+def _strip_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    return re.sub(r"(?m)//.*$", "", text)
+
+
+def find_violations(path: Path) -> list[str]:
+    if path.name in FILES_EXEMPT_FROM_ALL_CHECKS:
+        return []
+    text = _strip_comments(path.read_text())
+    violations = []
+    for match in DECLARATION_RE.finditer(text):
+        prop = match.group("prop")
+        value = match.group("value").strip()
+        bare = VAR_RE.sub("", value)
+        if COLOR_RE.search(bare):
+            violations.append(f"{path}: `{prop}: {value};` writes a colour literal")
+        if prop in FONT_PROPS and re.search(r"\d", bare):
+            violations.append(f"{path}: `{prop}: {value};` writes a literal {prop}")
+        if prop in DIMMING_PROPS:
+            violations.append(
+                f"{path}: `{prop}: {value};` dims with {prop} rather than taking"
+                " the colour token named for a disabled or not-crawled treatment"
+            )
+        if path.name not in FILES_EXEMPT_FROM_PX_CHECK:
+            for px in PX_RE.finditer(bare):
+                if px.group(0) != "1px":
+                    violations.append(
+                        f"{path}: `{prop}: {value};` writes a px literal"
+                        " outside _tokens.scss, _layout.scss and one-pixel rules"
+                    )
+    if path.name not in FILES_EXEMPT_FROM_PX_CHECK:
+        for prelude in MEDIA_PRELUDE_RE.finditer(text):
+            condition = prelude.group("condition").strip()
+            if PX_RE.search(condition):
+                violations.append(
+                    f"{path}: `@media {condition}` writes a raw px length in its"
+                    " prelude, where a custom property cannot appear"
+                )
+    return violations
+
+
+def check_stylesheets(root: Path) -> list[str]:
+    """Returns the violations under root."""
+    violations = []
+    for path in sorted(root.rglob("*.scss")):
+        violations.extend(find_violations(path))
+    return violations
+
+
+class TestStylesheetsUseTokens(unittest.TestCase):
+    def test_no_scss_file_writes_a_literal_a_token_exists_for(self):
+        self.assertEqual(check_stylesheets(SRC_ROOT), [])
+
+    def test_a_stylesheet_holding_a_literal_the_rules_catch_is_flagged(self):
+        # Proves the rules still match, independent of the tree: a rule that
+        # stops matching (see COLOR_RE) would leave this coming back empty too.
+        with tempfile.TemporaryDirectory() as tmp:
+            control = Path(tmp) / "control.module.scss"
+            content = ".foo {\n  color: #ffffff;\n}\n"
+            control.write_text(content)
+            self.assertNotEqual(find_violations(control), [])
+
+    def test_scan_reaches_the_layout_anchors_a_narrowed_glob_would_miss(self):
+        names = {str(p.relative_to(SRC_ROOT)) for p in SRC_ROOT.rglob("*.scss")}
+        self.assertIn("styles/_tokens.scss", names)
+        self.assertTrue(
+            any(
+                n.startswith("components/") and n.endswith(".module.scss")
+                for n in names
+            )
+        )
+        self.assertTrue(
+            any(n.startswith("features/") and n.endswith(".module.scss") for n in names)
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

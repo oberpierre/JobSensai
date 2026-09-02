@@ -1,0 +1,101 @@
+# The JobSensai web frontend, built with rules_js and Vite.
+
+load("@aspect_rules_js//js:defs.bzl", "js_run_binary")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@rules_python//python:defs.bzl", "py_test")
+load("@npm//web:eslint/package_json.bzl", eslint_bin = "bin")
+load("@npm//web:typescript/package_json.bzl", tsc_bin = "bin")
+load("@npm//web:vite/package_json.bzl", vite_bin = "bin")
+load("@npm//web:vitest/package_json.bzl", vitest_bin = "bin")
+
+npm_link_all_packages(name = "node_modules")
+
+# One list, used on both sides below, so a pattern added to only one of them
+# can't happen: SRCS excludes it from the production build, TEST_SRCS adds it
+# back for the test targets. Each pattern needs its own "src/**/", because a
+# glob exclude does not inherit another pattern's "**".
+TEST_PATTERNS = [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/**/__tests__/**",
+    "src/**/__mocks__/**",
+]
+
+# Globbed so adding a component never edits this file. Colocated test files
+# are excluded so the production build's sandbox never has them and bundling
+# one is impossible, not just unlikely.
+SRCS = glob(
+    ["src/**"],
+    exclude = TEST_PATTERNS,
+) + [
+    "eslint.config.js",
+    "index.html",
+    "package.json",
+    "pnpm-lock.yaml",
+    "tsconfig.json",
+    "vite.config.ts",
+    ":node_modules",
+]
+
+# test/ holds the shared render harness, and TEST_PATTERNS restores the
+# colocated test files SRCS excluded above so the test targets keep seeing them.
+# allow_empty: not every pattern (e.g. *.spec.tsx) has a match today.
+TEST_SRCS = SRCS + glob(TEST_PATTERNS + ["test/**"], allow_empty = True)
+
+vite_bin.vite_binary(
+    name = "vite",
+    chdir = package_name(),
+)
+
+# Host and port come from WEB_HOST/WEB_PORT in vite.config.ts, so this target
+# serves 5173 on a laptop and the devcontainer's forwarded 20003 unmodified.
+# `data` is what makes vite.config.ts and the rest of the package a tracked
+# input, rather than whatever another target's build happened to leave in bin.
+vite_bin.vite_binary(
+    name = "dev",
+    args = ["dev"],
+    chdir = package_name(),
+    data = SRCS,
+)
+
+js_run_binary(
+    name = "dist",
+    srcs = SRCS,
+    args = ["build"],
+    out_dirs = ["dist"],
+    tool = ":vite",
+    visibility = ["//visibility:public"],
+)
+
+vitest_bin.vitest_test(
+    name = "vitest_test",
+    args = ["run"],
+    chdir = package_name(),
+    data = TEST_SRCS,
+)
+
+tsc_bin.tsc_test(
+    name = "typecheck_test",
+    args = ["--noEmit"],
+    chdir = package_name(),
+    data = TEST_SRCS,
+)
+
+eslint_bin.eslint_test(
+    name = "eslint_test",
+    args = ["."],
+    chdir = package_name(),
+    data = TEST_SRCS,
+)
+
+# Fails a stylesheet under src/ that writes a literal a design token already
+# names, so the check runs on every build rather than only when someone greps.
+py_test(
+    name = "style_tokens_test",
+    srcs = ["style_tokens_test.py"],
+    data = glob(["src/**/*.scss"]),
+    imports = ["."],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,53 @@
+@use "../../styles/layout";
+
+.page {
+  @include layout.container;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-12);
+  padding-block: var(--space-40);
+}
+
+.title {
+  margin: 0;
+  font: var(--font-weight-medium) var(--font-size-xl)/var(--line-height-sm)
+    var(--font-sans);
+  letter-spacing: var(--letter-spacing-tight);
+  color: var(--ink);
+  max-width: 24ch;
+}
+
+.message {
+  margin: 0;
+  font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-md)
+    var(--font-sans);
+  color: var(--muted);
+  max-width: 42ch;
+}
+
+.from {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  background: var(--raised);
+  border: var(--border-width) solid var(--rule-sm);
+}
+
+.fromPath {
+  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-mono);
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.action {
+  margin-top: var(--space-4);
+  background: var(--ink);
+  color: var(--surface);
+  padding: var(--space-8) var(--space-16);
+  font: var(--font-weight-medium) var(--font-size-sm)/var(--line-height-xs)
+    var(--font-sans);
+}

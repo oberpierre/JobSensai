@@ -1,0 +1,19 @@
+.chip {
+  display: inline-block;
+  font: var(--font-weight-medium) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-sans);
+  padding: var(--space-4) var(--space-8);
+  color: var(--chip-text);
+  background: var(--chip-bg);
+  border: var(--border-width) solid var(--chip-border);
+}
+
+.neutral {
+  display: inline-block;
+  font: var(--font-weight-medium) var(--font-size-xs)/var(--line-height-xs)
+    var(--font-sans);
+  padding: var(--space-4) var(--space-8);
+  color: var(--muted);
+  background: transparent;
+  border: var(--border-width) solid var(--rule-md);
+}

@@ -1,0 +1,33 @@
+// The interface's one responsive breakpoint. A custom property cannot appear in
+// a media-query prelude, so this is a Sass variable rather than joining
+// _tokens.scss. It coincides in value with the container scale's own md step
+// below, a separately-decided Bootstrap width table that stays literal.
+$breakpoint-md: 768px;
+
+// The one place page width is decided. Both the nav's contents and each screen's
+// body take this, so the two stay aligned down the same edges.
+@mixin container {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: var(--space-20);
+
+  @media (min-width: 576px) {
+    max-width: 540px;
+  }
+
+  @media (min-width: 768px) {
+    max-width: 720px;
+  }
+
+  @media (min-width: 992px) {
+    max-width: 960px;
+  }
+
+  @media (min-width: 1200px) {
+    max-width: 1140px;
+  }
+
+  @media (min-width: 1400px) {
+    max-width: 1320px;
+  }
+}
