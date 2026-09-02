@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { httpJson } from "./httpClient";
+import { ApiError } from "./ApiError";
 
 describe("httpJson error bodies", () => {
   afterEach(() => {
@@ -47,5 +48,29 @@ describe("httpJson error bodies", () => {
       status: 503,
       message: "Service Unavailable",
     });
+  });
+
+  it("names the status code when the body isn't JSON and statusText is empty (HTTP/2)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: "",
+        json: async () => {
+          throw new SyntaxError("Unexpected token < in JSON");
+        },
+      }),
+    );
+
+    let caught: unknown;
+    try {
+      await httpJson("/api/boards");
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect((caught as ApiError).message).not.toBe("");
   });
 });

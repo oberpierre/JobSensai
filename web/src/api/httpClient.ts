@@ -26,7 +26,10 @@ async function errorDetail(response: Response): Promise<string> {
   } catch {
     // The body wasn't JSON, so fall through to the status text below.
   }
-  return response.statusText;
+  // HTTP/2 carries no reason phrase, so statusText is "" through the ingress
+  // that answers on FastAPI's behalf (a 502 while the pod restarts, a 413):
+  // the status code is the one fact always present, so it anchors the message.
+  return response.statusText || `Request failed with status ${response.status}`;
 }
 
 function extractMsg(entry: unknown): string | null {
