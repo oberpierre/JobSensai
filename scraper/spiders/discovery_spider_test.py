@@ -121,7 +121,10 @@ class TestLoadStartUrls(unittest.TestCase):
             pairs = DiscoverySpider.load_start_urls(self.session)
 
         self.assertEqual(pairs, [])
-        self.assertTrue(any("skipped" in message for message in logs.output))
+        # The count, not just the warning: one message now covers the empty table and
+        # the table whose every row was filtered out, and only the number tells an
+        # operator which of the two they are looking at.
+        self.assertIn("out of 0 configured", logs.output[0])
 
     def test_table_holding_only_json_api_rows_warns_and_yields_nothing(self):
         self.session.add(
@@ -139,7 +142,7 @@ class TestLoadStartUrls(unittest.TestCase):
             pairs = DiscoverySpider.load_start_urls(self.session)
 
         self.assertEqual(pairs, [])
-        self.assertTrue(any("skipped" in message for message in logs.output))
+        self.assertIn("out of 1 configured", logs.output[0])
 
     def test_does_not_warn_when_html_crawl_rows_are_returned(self):
         self.session.add(

@@ -84,10 +84,10 @@ class DiscoverySpider(BaseJobSpider):
         )
         if not rows:
             logger.warning(
-                "%d configured start_urls row(s) skipped: none is both type %r"
-                " and active, so this crawl has nothing to do.",
-                total_count,
+                "This crawl has nothing to do: no start_urls row is both type %r"
+                " and active, out of %d configured.",
                 START_URL_TYPE_HTML_CRAWL,
+                total_count,
             )
         return [(row.id, row.url) for row in rows]
 
