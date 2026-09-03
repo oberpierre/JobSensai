@@ -36,15 +36,6 @@ class DiscoverySpider(BaseJobSpider):
 
     name = "google"
 
-    fallback_start_urls = [
-        "https://www.google.com/about/careers/applications/jobs/results/?location=Switzerland&location=Singapore&sort_by=date",
-        # https://www.google.com/about/careers/applications/jobs/results/120830781164528326-program-manager-talent-outreach-talent-engagement?location=Switzerland&location=Singapore&sort_by=date
-        # Greenhouse is read through its JSON board API instead, so crawling this HTML
-        # path would teach an extraction adapter for a format being dropped, and would
-        # tombstone every posting it ingested once the URL goes again.
-        # "https://job-boards.greenhouse.io/anthropic?error=true&departments%5B%5D=4002061008&departments%5B%5D=4010154008&departments%5B%5D=4050633008&departments%5B%5D=4019632008",
-    ]
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.registry = AdapterRegistry()
@@ -77,20 +68,13 @@ class DiscoverySpider(BaseJobSpider):
 
     @classmethod
     def load_start_urls(cls, session) -> list[tuple[uuid.UUID | None, str]]:
-        """Return (start_url_id, url) pairs to crawl, newest configuration first.
+        """Return (start_url_id, url) pairs to crawl, ordered by name.
 
-        Reads `html_crawl` rows that are `active`, ordered by name. When the table
-        holds no rows at all, falls back to the class's own `fallback_start_urls`
-        literal, each paired with a None id.
+        Reads `html_crawl` rows that are `active`. An empty table and a table holding
+        only `json_api` or inactive rows are the same situation from an operator's
+        side, namely that the table is not driving this crawl, so all of them are
+        covered by the one warning below rather than a separate one per case.
         """
-        total_count = session.query(StartUrl).count()
-        if total_count == 0:
-            logger.warning(
-                "start_urls table is empty: falling back to %d built-in URL(s),"
-                " so this crawl is not driven by the table.",
-                len(cls.fallback_start_urls),
-            )
-            return [(None, url) for url in cls.fallback_start_urls]
         rows = (
             session.query(StartUrl)
             .filter(StartUrl.type == START_URL_TYPE_HTML_CRAWL, StartUrl.active)
@@ -98,11 +82,12 @@ class DiscoverySpider(BaseJobSpider):
             .all()
         )
         if not rows:
+            total_count = session.query(StartUrl).count()
             logger.warning(
-                "%d configured start_urls row(s) skipped: none is both type %r"
-                " and active, so this crawl has nothing to do.",
-                total_count,
+                "This crawl has nothing to do: no start_urls row is both type %r"
+                " and active, out of %d configured.",
                 START_URL_TYPE_HTML_CRAWL,
+                total_count,
             )
         return [(row.id, row.url) for row in rows]
 
