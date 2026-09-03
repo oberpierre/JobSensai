@@ -75,7 +75,6 @@ class DiscoverySpider(BaseJobSpider):
         side, namely that the table is not driving this crawl, so all of them are
         covered by the one warning below rather than a separate one per case.
         """
-        total_count = session.query(StartUrl).count()
         rows = (
             session.query(StartUrl)
             .filter(StartUrl.type == START_URL_TYPE_HTML_CRAWL, StartUrl.active)
@@ -83,6 +82,7 @@ class DiscoverySpider(BaseJobSpider):
             .all()
         )
         if not rows:
+            total_count = session.query(StartUrl).count()
             logger.warning(
                 "This crawl has nothing to do: no start_urls row is both type %r"
                 " and active, out of %d configured.",
