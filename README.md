@@ -129,6 +129,25 @@ Open `http://localhost:8000`: the API answers under `/api`, and every other path
 
 This devcontainer and Apple Silicon are both arm64, while the image is built for linux/amd64, so build and run it there only to inspect the image, not to serve traffic.
 
+## Releasing
+
+Pushing a tag matching `v*` is what deploys. Merging to `main` builds, tests and publishes the four images but does not deploy them, so nothing reaches the cluster until someone tags. The tag may sit on any branch, so a branch can be released before it merges.
+
+One release run, in order: builds and tests everything, smoke-tests the four images, publishes them as `sha-<short>` and as the tag itself, deploys, then opens the GitHub release whose notes GitHub generates from the pull requests merged since the previous release.
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+A tag whose name contains a hyphen, such as `v1.2.0-rc.1`, is published as a prerelease.
+
+A failed deploy leaves the tag and the images in place with no release. Re-running the workflow from the Actions tab is the repair.
+
+A published tag is cut once and never moved. The deployed image is named by the tag itself, so force-pushing a tag onto a different commit rebuilds and overwrites its images while the workload's image reference stays the same string, and a cluster that sees no change in that string keeps running what it already pulled. Cut a new version instead.
+
+Keep the tag to `v`, digits and dots, with an optional hyphenated prerelease suffix. It becomes an image tag verbatim, so a character a registry rejects, `+` among them, fails the run only after the whole build and smoke-test suite has already passed.
+
 ## Code Quality
 
 We enforce code quality using **Ruff** for both formatting and linting, integrated via Bazel with [aspect_rules_lint](https://github.com/aspect-build/rules_lint). This approach provides incremental, cacheable builds and hermetic test environments.
