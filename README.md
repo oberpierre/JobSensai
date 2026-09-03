@@ -144,7 +144,9 @@ A tag whose name contains a hyphen, such as `v1.2.0-rc.1`, is published as a pre
 
 A failed deploy leaves the tag and the images in place with no release. Re-running the workflow from the Actions tab is the repair.
 
-Force-pushing a published tag onto a different commit deploys again, from that commit. The run recomputes every image reference from the commit the tag now names, so the cluster rolls and the version image tag is overwritten in the registry. Cut a new tag instead, so what shipped when stays readable.
+A published tag is cut once and never moved. The deployed image is named by the tag itself, so force-pushing a tag onto a different commit rebuilds and overwrites its images while the workload's image reference stays the same string, and a cluster that sees no change in that string keeps running what it already pulled. Cut a new version instead.
+
+Keep the tag to `v`, digits and dots, with an optional hyphenated prerelease suffix. It becomes an image tag verbatim, so a character a registry rejects, `+` among them, fails the run only after the whole build and smoke-test suite has already passed.
 
 ## Code Quality
 

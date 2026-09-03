@@ -41,7 +41,10 @@ concurrency:
   # shared by tag pushes. The third is the point: GitHub keeps at most one pending
   # run per group and discards the earlier one, so a single queue would let a push
   # to main discard a queued release and leave a tag that never shipped and never
-  # said why. Two tags still serialise against each other, keeping two deploys apart.
+  # said why. Two tags serialise against each other, keeping two deploys apart. Three do
+  # not: a third tag pushed while the first still runs evicts the second from that one
+  # pending slot, so it never ships and shows only as a cancelled run. Per-tag groups
+  # would trade that for two deploys racing the cluster, which is the worse of the two.
   #
   # The push step runs four sequential, non-transactional `bazel run`
   # invocations, one per image. GitHub Actions cancels by signalling the
@@ -58,8 +61,6 @@ permissions:
 jobs:
   build-smoke-push:
     runs-on: ubuntu-latest
-    outputs:
-      short_sha: ${{ steps.push.outputs.short_sha }}
 
     steps:
       - name: Checkout code
@@ -145,12 +146,13 @@ jobs:
       # latest moves only on a push to main. A tag push publishes the tag itself
       # instead, alongside sha-<short> either way.
       - name: Push images
-        id: push
         if: github.event_name == 'push'
-        env:
-          COMMIT_SHA: ${{ github.sha }}
         run: |
-          SHORT_SHA="${COMMIT_SHA:0:7}"
+          # From the checked-out commit rather than github.sha, which on an annotated
+          # tag push names the tag object and so would build a sha- tag naming no
+          # commit at all. --short=7 pins the length, unlike bare --short, whose
+          # length grows with the repository.
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
           SHA_TAG="sha-$SHORT_SHA"
           TAGS=(--tag "$SHA_TAG")
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
@@ -162,7 +164,6 @@ jobs:
           bazel run //oci:bronze_worker_push -- "${TAGS[@]}"
           bazel run //oci:silver_worker_push -- "${TAGS[@]}"
           bazel run //oci:web_push -- "${TAGS[@]}"
-          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
   # needs: alone is not a tag-only gate: build-smoke-push succeeds on a pull_request
   # and on a push to main just as it does on a tag push, so needs: would be
@@ -186,16 +187,21 @@ jobs:
       # Each password is wrapped in toJSON rather than interpolated between
       # quotes: a value containing a quote, backslash or newline would
       # otherwise break the object below into invalid JSON.
+      #
+      # The four images are named by the release tag, which is what makes the running
+      # workload legible as a version. Moving a published tag therefore does not roll
+      # the cluster, the reference being unchanged and imagePullPolicy IfNotPresent,
+      # so a release tag is cut once and never moved.
       ansible_extra_vars: |
         {
           "registry_password": ${{ toJSON(secrets.JOBSENSAI_GHCR_PAT) }},
           "app_db_password": ${{ toJSON(secrets.JOBSENSAI_DB_PASSWORD) }},
           "app_redis_password": ${{ toJSON(secrets.JOBSENSAI_REDIS_PASSWORD) }},
           "app_llm_redis_password": ${{ toJSON(secrets.JOBSENSAI_LLM_REDIS_PASSWORD) }},
-          "bronze_worker_image": "ghcr.io/oberpierre/jobsensai-bronze-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
-          "silver_worker_image": "ghcr.io/oberpierre/jobsensai-silver-worker:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
-          "crawler_image": "ghcr.io/oberpierre/jobsensai-crawler:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
-          "web_image": "ghcr.io/oberpierre/jobsensai-web:sha-${{ needs.build-smoke-push.outputs.short_sha }}",
+          "bronze_worker_image": "ghcr.io/oberpierre/jobsensai-bronze-worker:${{ github.ref_name }}",
+          "silver_worker_image": "ghcr.io/oberpierre/jobsensai-silver-worker:${{ github.ref_name }}",
+          "crawler_image": "ghcr.io/oberpierre/jobsensai-crawler:${{ github.ref_name }}",
+          "web_image": "ghcr.io/oberpierre/jobsensai-web:${{ github.ref_name }}",
           "app_host": ${{ toJSON(secrets.JOBSENSAI_HOST) }},
           "app_basic_auth": ${{ toJSON(secrets.JOBSENSAI_BASIC_AUTH) }}
         }
