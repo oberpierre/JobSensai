@@ -230,8 +230,9 @@ function ResultsList({
           </span>
         </span>
         <label className={styles.sort}>
-          sort:
+          <span className={styles.sortLabel}>sort:</span>
           <select
+            aria-label="Sort order"
             value={sort}
             onChange={(event) => onSetSort(event.target.value as SortOrder)}
           >
