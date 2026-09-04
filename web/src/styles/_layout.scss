@@ -1,7 +1,8 @@
-// The interface's one responsive breakpoint. A custom property cannot appear in
-// a media-query prelude, so this is a Sass variable rather than joining
-// _tokens.scss. It coincides in value with the container scale's own md step
-// below, a separately-decided Bootstrap width table that stays literal.
+// The interface's responsive breakpoints. A custom property cannot appear in a
+// media-query prelude, so these are Sass variables rather than joining
+// _tokens.scss. Each coincides in value with the container scale's own step of
+// the same name below, a separately-decided Bootstrap width table that stays
+// literal.
 $breakpoint-md: 768px;
 $breakpoint-lg: 992px;
 

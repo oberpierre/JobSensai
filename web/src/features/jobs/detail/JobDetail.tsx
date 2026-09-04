@@ -89,31 +89,31 @@ function Detail({
               : "Location not specified"}
           </span>
         </div>
-        <div className={styles.badges}>
-          {job.employment_type ? (
-            <span className={styles.employmentBadge}>
-              {job.employment_type}
-            </span>
-          ) : (
-            <span className={styles.unspecifiedBadge}>
-              Employment type not specified
-            </span>
-          )}
-          {job.closed && <span className={styles.closedBadge}>Closed</span>}
-        </div>
+        {job.closed && (
+          <div className={styles.badges}>
+            <span className={styles.closedBadge}>Closed</span>
+          </div>
+        )}
       </header>
 
       <aside className={styles.sidebar}>
         <SourceCard job={job} />
 
         <div className={styles.sidebarSection}>
+          <MicroLabel>Employment type</MicroLabel>
+          {job.employment_type ? (
+            <p className={styles.fieldValue}>{job.employment_type}</p>
+          ) : (
+            <p className={styles.fieldEmpty}>Not provided by this board.</p>
+          )}
+        </div>
+
+        <div className={styles.sidebarSection}>
           <MicroLabel>Categories</MicroLabel>
           {job.categories.length > 0 ? (
-            <p className={styles.categories}>{job.categories.join(", ")}</p>
+            <p className={styles.fieldValue}>{job.categories.join(", ")}</p>
           ) : (
-            <p className={styles.categoriesEmpty}>
-              Not provided by this board.
-            </p>
+            <p className={styles.fieldEmpty}>Not provided by this board.</p>
           )}
         </div>
 
