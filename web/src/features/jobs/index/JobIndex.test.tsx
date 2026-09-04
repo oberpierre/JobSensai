@@ -378,18 +378,6 @@ describe("JobIndex", () => {
     ).toBeInTheDocument();
   });
 
-  // jsdom applies no stylesheet, so this cannot assert that the prefix is
-  // actually hidden below the breakpoint, only that it is in the document and
-  // carries the class the stylesheet keys its media query on.
-  it("renders the sort: prefix under the class that hides it below the breakpoint", async () => {
-    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
-    renderJobIndexWithProviders({ listJobs });
-    await screen.findByText("Backend Engineer");
-
-    const prefix = screen.getByText("sort:");
-    expect(prefix.className).toMatch(/sortLabel/);
-  });
-
   it("the sort control writes sort=oldest and back", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
     renderJobIndexWithProviders({ listJobs });

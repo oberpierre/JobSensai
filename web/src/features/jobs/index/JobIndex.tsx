@@ -230,7 +230,7 @@ function ResultsList({
           </span>
         </span>
         <label className={styles.sort}>
-          <span className={styles.sortLabel}>sort:</span>
+          <span>sort:</span>
           <select
             aria-label="Sort order"
             value={sort}
@@ -266,7 +266,6 @@ function ResultsList({
               </div>
               <div className={styles.rowSeen}>
                 <span>first seen {relativeTime(job.first_seen)}</span>
-                <span>{job.employment_type ?? "type not specified"}</span>
               </div>
             </Link>
           </li>

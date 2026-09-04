@@ -3,6 +3,7 @@
 // _tokens.scss. It coincides in value with the container scale's own md step
 // below, a separately-decided Bootstrap width table that stays literal.
 $breakpoint-md: 768px;
+$breakpoint-lg: 992px;
 
 // The one place page width is decided. Both the nav's contents and each screen's
 // body take this, so the two stay aligned down the same edges.
