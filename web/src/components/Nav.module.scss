@@ -11,7 +11,7 @@
   @include layout.container;
 
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-16);
 }
 
@@ -24,7 +24,7 @@
 }
 
 .mark {
-  height: var(--font-size-xl);
+  height: var(--logo-size);
   width: auto;
 }
 
@@ -40,6 +40,7 @@
     var(--font-sans);
   color: var(--muted);
   text-decoration: none;
+  padding-top: var(--space-4);
   padding-bottom: var(--space-2);
   border-bottom: var(--border-width-thick) solid transparent;
 }
