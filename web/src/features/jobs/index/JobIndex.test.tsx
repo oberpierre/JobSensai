@@ -368,6 +368,16 @@ describe("JobIndex", () => {
     );
   });
 
+  it("names the sort control Sort order regardless of the visible prefix", async () => {
+    const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
+    renderJobIndexWithProviders({ listJobs });
+    await screen.findByText("Backend Engineer");
+
+    expect(
+      screen.getByRole("combobox", { name: "Sort order" }),
+    ).toBeInTheDocument();
+  });
+
   it("the sort control writes sort=oldest and back", async () => {
     const listJobs = mockListJobs().mockResolvedValue(listResponse([job()]));
     renderJobIndexWithProviders({ listJobs });

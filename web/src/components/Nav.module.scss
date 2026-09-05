@@ -11,8 +11,21 @@
   @include layout.container;
 
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-16);
+}
+
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: inherit;
+  text-decoration: none;
+}
+
+.mark {
+  height: var(--logo-size);
+  width: auto;
 }
 
 .wordmark {
@@ -27,6 +40,7 @@
     var(--font-sans);
   color: var(--muted);
   text-decoration: none;
+  padding-top: var(--space-4);
   padding-bottom: var(--space-2);
   border-bottom: var(--border-width-thick) solid transparent;
 }

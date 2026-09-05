@@ -89,22 +89,6 @@
   margin-top: var(--space-2);
 }
 
-.employmentBadge {
-  font: var(--font-weight-medium) var(--font-size-xs)/var(--line-height-xs)
-    var(--font-sans);
-  padding: var(--space-4) var(--space-8);
-  border: var(--border-width) solid var(--rule-sm);
-  color: var(--ink);
-}
-
-.unspecifiedBadge {
-  font: var(--font-weight-normal) var(--font-size-xs)/var(--line-height-xs)
-    var(--font-sans);
-  padding: var(--space-4) var(--space-8);
-  border: var(--border-width) dashed var(--rule-md);
-  color: var(--faint);
-}
-
 .closedBadge {
   font: var(--font-weight-medium) var(--font-size-2xs)/var(--line-height-xs)
     var(--font-mono);
@@ -200,18 +184,20 @@
   gap: var(--space-8);
 }
 
-.categories,
-.categoriesEmpty {
+// One pair for every labelled sidebar field, so a second field cannot drift
+// from the first by carrying its own copy of these rules.
+.fieldValue,
+.fieldEmpty {
   margin: 0;
   font: var(--font-weight-normal) var(--font-size-sm)/var(--line-height-sm)
     var(--font-sans);
 }
 
-.categories {
+.fieldValue {
   color: var(--ink);
 }
 
-.categoriesEmpty {
+.fieldEmpty {
   color: var(--faint);
 }
 

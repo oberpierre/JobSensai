@@ -27,7 +27,7 @@ TEST_PATTERNS = [
 # are excluded so the production build's sandbox never has them and bundling
 # one is impossible, not just unlikely.
 SRCS = glob(
-    ["src/**"],
+    ["src/**", "public/**"],
     exclude = TEST_PATTERNS,
 ) + [
     "eslint.config.js",

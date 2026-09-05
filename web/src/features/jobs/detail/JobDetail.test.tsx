@@ -100,4 +100,36 @@ describe("JobDetail", () => {
     expect(links.length).toBeGreaterThan(0);
     expect(screen.getByText("Closed")).toBeInTheDocument();
   });
+
+  // The header is the title, the company and the location, so an employment type
+  // reaches the reader as a labelled field beside Categories rather than as a
+  // badge under the title. Asserting the label is what distinguishes the two
+  // placements, the value alone having been present in both.
+  it("shows an employment type as a labelled field, not a header badge", async () => {
+    const getJob = vi
+      .fn<JobsApi["getJob"]>()
+      .mockResolvedValue(detail({ employment_type: "Full-time" }));
+    renderJobDetailWithProviders({ getJob });
+
+    expect(await screen.findByText("Employment type")).toBeInTheDocument();
+    const value = screen.getByText("Full-time");
+    expect(value.closest("header")).toBeNull();
+    expect(value.previousElementSibling).toHaveTextContent("Employment type");
+  });
+
+  it("says a missing employment type is the board's omission", async () => {
+    const getJob = vi
+      .fn<JobsApi["getJob"]>()
+      .mockResolvedValue(detail({ employment_type: null }));
+    renderJobDetailWithProviders({ getJob });
+
+    await screen.findByText("Backend Engineer");
+    expect(screen.getByText("Employment type")).toBeInTheDocument();
+    // Categories is empty in this fixture too and carries the same sentence, so
+    // count the occurrences rather than fetching one and proving nothing.
+    expect(screen.getAllByText("Not provided by this board.")).toHaveLength(2);
+    expect(
+      screen.queryByText("Employment type not specified"),
+    ).not.toBeInTheDocument();
+  });
 });

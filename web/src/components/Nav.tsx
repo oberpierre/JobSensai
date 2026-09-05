@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router";
+import logoUrl from "../assets/logo.svg";
 import styles from "./Nav.module.scss";
 
 interface Tab {
@@ -28,7 +29,10 @@ export function Nav() {
   return (
     <nav className={styles.nav}>
       <div className={styles.tabs}>
-        <span className={styles.wordmark}>jobsensai</span>
+        <Link to="/" className={styles.lockup}>
+          <img src={logoUrl} alt="" className={styles.mark} />
+          <span className={styles.wordmark}>jobsensai</span>
+        </Link>
         {TABS.map((tab) => {
           const active = tab.isActive(pathname);
           return (

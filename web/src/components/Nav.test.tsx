@@ -30,7 +30,7 @@ describe("Nav", () => {
         <Nav />
       </MemoryRouter>,
     );
-    expect(screen.getAllByRole("link")).toHaveLength(2);
+    expect(screen.getAllByRole("link")).toHaveLength(3);
     expect(screen.queryByText("My CV")).not.toBeInTheDocument();
     expect(screen.queryByText("basic auth")).not.toBeInTheDocument();
   });
@@ -66,5 +66,26 @@ describe("Nav", () => {
       "aria-current",
       "page",
     );
+  });
+
+  it("links the lockup to the index by its accessible name", () => {
+    render(
+      <MemoryRouter initialEntries={["/admin"]}>
+        <Nav />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: "jobsensai" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+  });
+
+  it("renders the mark as a decorative image, not announced beside the word", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Nav />
+      </MemoryRouter>,
+    );
+    expect(screen.getByAltText("")).toBeInTheDocument();
   });
 });

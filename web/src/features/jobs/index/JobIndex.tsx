@@ -230,8 +230,9 @@ function ResultsList({
           </span>
         </span>
         <label className={styles.sort}>
-          sort:
+          <span>sort:</span>
           <select
+            aria-label="Sort order"
             value={sort}
             onChange={(event) => onSetSort(event.target.value as SortOrder)}
           >
@@ -265,7 +266,6 @@ function ResultsList({
               </div>
               <div className={styles.rowSeen}>
                 <span>first seen {relativeTime(job.first_seen)}</span>
-                <span>{job.employment_type ?? "type not specified"}</span>
               </div>
             </Link>
           </li>
