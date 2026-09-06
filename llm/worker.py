@@ -42,6 +42,10 @@ _EXTRACTION_NUM_CTX = int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
 # A requeue with nothing else in the queue would otherwise spin on the same task.
 _REQUEUE_BACKOFF_SECONDS = int(os.getenv("REQUEUE_BACKOFF_SECONDS", "30"))
 
+# A dense model reasoning over a wide context can outlive the default lease, letting a
+# second learning run start on the same domain before the first releases it.
+_LEASE_TTL_SECONDS = int(os.getenv("LEARNING_LEASE_TTL_SECONDS", "1800"))
+
 
 def _domain_slug(domain: str) -> str:
     """Turn a domain into a valid Python module-name fragment.
@@ -175,7 +179,9 @@ class LLMWorker:
             is not None
         )
 
-    def start_learning(self, domain: str, adapter_type: str, ttl: int = 1800) -> bool:
+    def start_learning(
+        self, domain: str, adapter_type: str, ttl: int = _LEASE_TTL_SECONDS
+    ) -> bool:
         """Acquire a learning lock for *domain* + *adapter_type*.
 
         Discovery and extraction learn independently, so the lock is namespaced by
