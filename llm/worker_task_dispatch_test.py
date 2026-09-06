@@ -173,7 +173,7 @@ class TestProcessTask(unittest.TestCase):
         self.mock_publisher.has_existing_pr.return_value = None
         self.mock_redis.set.return_value = True
         self.worker._learn_extraction = MagicMock(
-            return_value=_adapter_names("newboard.com", "extraction")
+            return_value=(_adapter_names("newboard.com", "extraction"), "some-model")
         )
         self.worker._run_adapter_tests = MagicMock(return_value=(True, "TEST LOG"))
 
