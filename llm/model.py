@@ -141,19 +141,22 @@ def build_code_prompt(
 class LLMModel:
     def __init__(
         self,
-        model_name: str = "qwen3-coder:30b",
+        model_name: str | None = None,
         base_url: str | None = None,
         num_ctx: int | None = None,
         temperature: float = 0.0,
         **kwargs,
     ):
-        logger.info("Initializing Ollama with model: %s", model_name)
+        if model_name is None:
+            model_name = os.getenv("OLLAMA_MODEL", "qwen3-coder:30b")
+        self.model_name = model_name
         if base_url is None:
             base_url = "http://localhost:11434"
         if num_ctx is None:
             # Ollama otherwise defaults to a ~2-4k token window that silently truncates
             # large pages regardless of the model's real capacity.
             num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "32768"))
+        logger.info("Initializing Ollama with model: %s", model_name)
         logger.info(
             "Connecting to Ollama at %s (num_ctx=%d, temperature=%s)",
             base_url,
@@ -161,7 +164,7 @@ class LLMModel:
             temperature,
         )
         self.llm = OllamaLLM(
-            model=model_name,
+            model=self.model_name,
             base_url=base_url,
             num_ctx=num_ctx,
             temperature=temperature,

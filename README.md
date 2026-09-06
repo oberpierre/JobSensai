@@ -75,10 +75,10 @@ Python dependencies are managed via `requirements.in`.
 The LLM service handles CV optimization and job analysis.
 
 **Prerequisite:** Ensure Ollama is running (`ollama serve`) and you have pulled the required model.
-> **Note:** The default model is `qwen3:4b` (see `llm/model.py`). You can customize this by modifying the `LLMModel` initialization.
+> **Note:** The default model is `qwen3-coder:30b` (see `llm/model.py`). Set the `OLLAMA_MODEL` environment variable to use a different one.
 
 ```bash
-ollama pull qwen3:4b # Pull the model(s) you intend to use
+ollama pull qwen3-coder:30b # Pull the model(s) you intend to use
 ```
 
 **Run the service:**
