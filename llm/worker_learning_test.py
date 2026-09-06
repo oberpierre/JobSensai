@@ -34,6 +34,7 @@ class TestLearnDiscovery(unittest.TestCase):
         llm.generate_code.return_value = (
             "```python\nclass AcmeComDiscoveryAdapter: pass\n```"
         )
+        llm.model_name = "acme-test-model"
         with patch("redis.Redis", return_value=MagicMock()):
             worker = LLMWorker()
 
@@ -42,7 +43,7 @@ class TestLearnDiscovery(unittest.TestCase):
             patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
         ):
             (Path(tmp) / "base.py").write_text("class DiscoveryAdapter: pass\n")
-            names = worker._learn_discovery(
+            names, model_name = worker._learn_discovery(
                 "acme.com",
                 "https://acme.com/jobs",
                 "<html><body>"
@@ -58,6 +59,8 @@ class TestLearnDiscovery(unittest.TestCase):
 
         # Discovery runs on the pruned skeleton, so the smaller context window suffices.
         self.assertEqual(mock_llm_cls.call_args.kwargs["num_ctx"], 32768)
+        # The model that ran travels out alongside the names it generated.
+        self.assertEqual(model_name, "acme-test-model")
         self.assertEqual(names.basename, "acme_com_discovery_v1")
         self.assertEqual(expected["job_links"], ["https://acme.com/jobs/1"])
         self.assertIn("DiscoverySnapshotTest", test_src)
@@ -94,6 +97,7 @@ class TestLearnExtraction(unittest.TestCase):
         llm.generate_code.return_value = (
             "```python\nclass AcmeComExtractionAdapter: pass\n```"
         )
+        llm.model_name = "acme-test-model"
         with patch("redis.Redis", return_value=MagicMock()):
             worker = LLMWorker()
 
@@ -102,7 +106,7 @@ class TestLearnExtraction(unittest.TestCase):
             patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
         ):
             (Path(tmp) / "base.py").write_text("class ExtractionAdapter: pass\n")
-            names = worker._learn_extraction(
+            names, model_name = worker._learn_extraction(
                 "acme.com",
                 "https://acme.com/job/1",
                 "<html><body><h1>Staff Engineer</h1></body></html>",
@@ -115,6 +119,8 @@ class TestLearnExtraction(unittest.TestCase):
 
         # Detail bodies are large, so extraction gets the wider context window.
         self.assertEqual(mock_llm_cls.call_args.kwargs["num_ctx"], 65536)
+        # The model that ran travels out alongside the names it generated.
+        self.assertEqual(model_name, "acme-test-model")
         self.assertEqual(names.basename, "acme_com_extraction_v1")
         self.assertEqual(expected["url"], "https://acme.com/job/1")
         self.assertEqual(expected["title"], "Staff Engineer")

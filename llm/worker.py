@@ -192,7 +192,9 @@ class LLMWorker:
         path.write_text(content)
         return path
 
-    def _learn_discovery(self, domain: str, url: str, html: str) -> AdapterNames:
+    def _learn_discovery(
+        self, domain: str, url: str, html: str
+    ) -> tuple[AdapterNames, str]:
         """Generate a discovery adapter for a listing page, test-first.
 
         Prune to the link-bearing skeleton, have the truth agent snapshot the
@@ -217,7 +219,7 @@ class LLMWorker:
         )
         self._write_adapter(names, "discovery", lean, [domain], llm)
         logger.info("Generated discovery adapter and snapshot for %s", names.basename)
-        return names
+        return names, llm.model_name
 
     def _write_snapshot(
         self,
@@ -246,7 +248,9 @@ class LLMWorker:
         )
         (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
 
-    def _learn_extraction(self, domain: str, url: str, html: str) -> AdapterNames:
+    def _learn_extraction(
+        self, domain: str, url: str, html: str
+    ) -> tuple[AdapterNames, str]:
         """Generate an extraction adapter for a detail page, test-first.
 
         Unlike discovery, the page is cleaned but never pruned, since extraction reads
@@ -269,7 +273,7 @@ class LLMWorker:
         )
         self._write_adapter(names, "extraction", cleaned, [domain], llm)
         logger.info("Generated extraction adapter and snapshot for %s", names.basename)
-        return names
+        return names, llm.model_name
 
     def _write_adapter(
         self,
@@ -402,9 +406,9 @@ class LLMWorker:
             url = task.get("url") or f"https://{domain}"
 
             if adapter_type == "discovery":
-                names = self._learn_discovery(domain, url, raw_html)
+                names, model_name = self._learn_discovery(domain, url, raw_html)
             else:
-                names = self._learn_extraction(domain, url, raw_html)
+                names, model_name = self._learn_extraction(domain, url, raw_html)
 
             passed, test_output = self._run_adapter_tests()
             logger.info(
@@ -422,6 +426,7 @@ class LLMWorker:
                 adapter_type=adapter_type,
                 passed=passed,
                 test_output=test_output,
+                model_name=model_name,
             )
             if pr_url:
                 logger.info("Opened PR for %s: %s", names.basename, pr_url)

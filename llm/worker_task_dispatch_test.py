@@ -1,5 +1,8 @@
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from llm.worker import LLMWorker, _adapter_names
@@ -22,7 +25,9 @@ class TestProcessTask(unittest.TestCase):
         self.mock_redis.set.return_value = True
 
         # Orchestration only: the discovery flow generates then runs the suite once.
-        self.worker._learn_discovery = MagicMock()
+        self.worker._learn_discovery = MagicMock(
+            return_value=(_adapter_names("newboard.com", "discovery"), "some-model")
+        )
         self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
         self.worker.release_learning = MagicMock()
 
@@ -47,7 +52,9 @@ class TestProcessTask(unittest.TestCase):
         self.mock_redis.set.return_value = True
 
         # The extraction queue drives the same generate-then-test-once flow.
-        self.worker._learn_extraction = MagicMock()
+        self.worker._learn_extraction = MagicMock(
+            return_value=(_adapter_names("newboard.com", "extraction"), "some-model")
+        )
         self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
         self.worker.release_learning = MagicMock()
 
@@ -68,7 +75,10 @@ class TestProcessTask(unittest.TestCase):
         """Drive one extraction task past generation with a canned test result."""
         self.mock_redis.set.return_value = True
         self.worker._learn_extraction = MagicMock(
-            return_value=_adapter_names("newboard.com", "extraction")
+            return_value=(
+                _adapter_names("newboard.com", "extraction"),
+                "acme-test-model",
+            )
         )
         self.worker._run_adapter_tests = MagicMock(return_value=(passed, test_output))
 
@@ -82,6 +92,34 @@ class TestProcessTask(unittest.TestCase):
             "LEARNING_IN_PROGRESS:extraction:newboard.com"
         )
 
+    @patch("llm.worker.LLMModel")
+    def test_publish_receives_the_model_that_ran_not_the_environment(
+        self, mock_llm_cls
+    ):
+        """OLLAMA_MODEL names one model, and the LLMModel instance reports another,
+        so a re-read of the variable at publish time would disagree with what ran.
+        """
+        self.mock_redis.set.return_value = True
+        llm = mock_llm_cls.return_value
+        llm.model_name = "qwen3.8:27b-mlx"
+        llm.generate_expected.return_value = json.dumps({"title": "Staff Engineer"})
+        llm.generate_code.return_value = "class NewboardComExtractionAdapter: pass"
+        self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
+            patch.dict(os.environ, {"OLLAMA_MODEL": "qwen3-coder:30b"}),
+        ):
+            (Path(tmp) / "base.py").write_text("class ExtractionAdapter: pass\n")
+            task_payload = json.dumps(
+                {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+            ).encode("utf-8")
+            self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        kwargs = self.mock_publisher.publish.call_args.kwargs
+        self.assertEqual(kwargs["model_name"], "qwen3.8:27b-mlx")
+
     def test_green_run_publishes_and_releases_the_lease(self):
         self._run_extraction_task(passed=True)
 
@@ -93,6 +131,7 @@ class TestProcessTask(unittest.TestCase):
         self.assertTrue(kwargs["passed"])
         # The suite's output travels to the publisher so it can land in the PR body.
         self.assertEqual(kwargs["test_output"], "TEST LOG")
+        self.assertEqual(kwargs["model_name"], "acme-test-model")
         self._assert_lease_released()
 
     def test_red_run_still_publishes_for_review(self):
