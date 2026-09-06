@@ -64,8 +64,68 @@ py_binary(
 )
 
 py_test(
-    name = "worker_test",
-    srcs = ["worker_test.py"],
+    name = "worker_lease_test",
+    srcs = ["worker_lease_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_task_dispatch_test",
+    srcs = ["worker_task_dispatch_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_run_loop_test",
+    srcs = ["worker_run_loop_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_learning_test",
+    srcs = ["worker_learning_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_naming_test",
+    srcs = ["worker_naming_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_startup_test",
+    srcs = ["worker_startup_test.py"],
     imports = [".."],
     deps = [
         ":worker",
