@@ -58,6 +58,8 @@ class TestLearningLease(unittest.TestCase):
     def test_start_learning_uses_lease_ttl_env_var(self):
         # The default is a module-level constant read at import, so the env var has to
         # be in place before the module (re)loads for start_learning to see it.
+        # Sibling tests use self.worker, bound from the pre-reload class, so the
+        # reload does not reach them.
         with patch.dict(os.environ, {"LEARNING_LEASE_TTL_SECONDS": "60"}):
             importlib.reload(worker_module)
             self.addCleanup(importlib.reload, worker_module)
@@ -73,7 +75,10 @@ class TestLearningLease(unittest.TestCase):
                 "LEARNING_IN_PROGRESS:discovery:acme.com", "1", nx=True, ex=60
             )
 
-    def test_start_learning_explicit_ttl_wins_over_env_var(self):
+    def test_start_learning_honours_an_explicit_ttl_over_the_default(self):
+        # The constant could have been wired as ex=_LEASE_TTL_SECONDS, ignoring the
+        # argument, so this pins that a caller's value still reaches Redis. It does
+        # not exercise the environment variable and passed before one existed.
         self.mock_redis.set.return_value = True
         self.worker.start_learning("acme.com", "discovery", ttl=99)
         self.mock_redis.set.assert_called_with(
