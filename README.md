@@ -99,6 +99,44 @@ bazel run //scraper:main
 bazel run //scraper:worker
 ```
 
+### 3. Adapter Learning Worker
+
+The learning worker consumes the two adapter-learning queues from Redis, generates a parsing adapter with the LLM, gates it with `bazel test //adapters:adapter_test`, and opens a pull request for it. Unlike the services above it writes to your clone and pushes from it, so treat it as an operator task rather than something to leave running unattended.
+
+**Prerequisites:**
+
+- Ollama running with the model pulled, as in section 1.
+- An authenticated `gh`. The worker runs `gh auth status` before it consumes anything and exits non-zero with `Cannot publish` when that fails, so a missing credential costs a restart rather than a half-finished run.
+- **A clean clone on `main`.** Publishing runs `git checkout -B feature/adapter-<name> main` in the checkout you started it from, commits the generated adapter, pushes to `origin` and returns to `main`. Uncommitted work in that clone is at risk, and starting from another branch publishes against the wrong base.
+
+**Run it:**
+
+```bash
+bazel run //llm:worker
+```
+
+It reads `.env` for Redis and Ollama exactly as the scraper does, and logs `Starting LLM Worker, listening on [...]` as soon as the `gh` check passes, so the absence of that line points at the credential rather than at Redis. The Redis client connects lazily, which means a wrong host or password surfaces a moment later on the first poll instead of at startup.
+
+**With a different model:**
+
+```bash
+OLLAMA_MODEL=qwen3.8:27b-mlx bazel run //llm:worker
+```
+
+`bazel run` hands the binary your shell's environment, and `.env` is loaded without overriding what is already set, so a variable supplied this way wins over the file without editing it. That holds for every knob `.env.example` documents, not just this one.
+
+**Against a remote Redis, keeping the password out of your shell history and out of `.env`:**
+
+```bash
+read -rs -p 'Redis password: ' REDIS_PASSWORD && export REDIS_PASSWORD && echo
+export REDIS_USERNAME=<acl-user> REDIS_HOST=<host> REDIS_PORT=<port>
+bazel run //llm:worker
+```
+
+`read -rs` prints nothing as you type, and history records only the `read` line rather than what you typed into it. Writing `REDIS_PASSWORD=... bazel run ...` as one line does the opposite, storing the password in history verbatim. The export lives as long as the shell, so run `unset REDIS_PASSWORD` when you are done with it. This keeps the value off your terminal and out of the file, though it stays readable in the process environment to anyone already on the machine as your user.
+
+**While it runs:** a domain being learned is leased for 30 minutes by default, so a second task for the same board and adapter type is dropped rather than queued behind the first. A model slow enough to outlive that lease learns one domain twice. You may set the lease duration by setting `LEARNING_LEASE_TTL_SECONDS` in `.env` or the shell.
+
 ## Running it locally
 
 The API and the built web frontend ship in one image, `jobsensai-web`, containing `//api:server` with the `//web:dist` build mounted as its SPA. Build and load it into the local Docker daemon:
