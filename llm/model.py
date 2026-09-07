@@ -7,10 +7,15 @@ from langchain_ollama import OllamaLLM
 
 logger = logging.getLogger(__name__)
 
+
 # How much cleaned HTML to put in a prompt. The old 8k cap dropped everything on real
 # pages: a listing's job links can start ~70k chars in — so the model saw only the
 # header/nav. Keep within the model's context window (see OLLAMA_NUM_CTX).
-_HTML_CHAR_BUDGET = int(os.getenv("LLM_HTML_CHARS", "120000"))
+def _html_char_budget() -> int:
+    # Read per call, not at import: every caller imports this module before its own
+    # load_dotenv() runs, so an import-time read never sees a .env value.
+    return int(os.getenv("LLM_HTML_CHARS", "120000"))
+
 
 _PROMPT_DIR = Path(__file__).parent / "prompts"
 _TEMPLATE_CACHE: dict[str, str] = {}
@@ -108,7 +113,7 @@ def build_expected_prompt(adapter_type: str, cleaned_html: str, url: str) -> str
         role_instructions=role["instructions"],
         output_shape=role["output_shape"],
         url=url,
-        cleaned_html=cleaned_html[:_HTML_CHAR_BUDGET],
+        cleaned_html=cleaned_html[: _html_char_budget()],
     )
 
 
@@ -134,7 +139,7 @@ def build_code_prompt(
         test_contract=role["test_contract"],
         domains=list(domains),
         base_code=base_code,
-        cleaned_html=cleaned_html[:_HTML_CHAR_BUDGET],
+        cleaned_html=cleaned_html[: _html_char_budget()],
     )
 
 
