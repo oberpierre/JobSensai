@@ -63,7 +63,7 @@ class DiscoverySnapshotTest:
 
     def test_snapshot_pins_at_least_one_job_link(self):
         self.assertTrue(
-            self.snapshot["job_links"],
+            self.snapshot.get("job_links"),
             f"{self.fixture_dir}: snapshot pins no job links, so this suite proves "
             "nothing an adapter could get wrong",
         )
@@ -132,10 +132,14 @@ class ExtractionSnapshotTest:
             self.assertEqual(actual, expected, "description")
 
     def test_snapshot_pins_a_title_and_a_description(self):
-        title = (self.snapshot.get("title") or "").strip()
-        description = (self.snapshot.get("description") or "").strip()
+        title = self.snapshot.get("title")
+        description = self.snapshot.get("description")
+        # A non-string value (a truth-agent snapshot the orchestrator did not write
+        # could hold anything) is treated as unpinned rather than raising from .strip().
+        title_text = title.strip() if isinstance(title, str) else ""
+        description_text = description.strip() if isinstance(description, str) else ""
         self.assertTrue(
-            title and description,
+            title_text and description_text,
             f"{self.fixture_dir}: snapshot pins no title or no description, so this "
             "suite proves nothing an adapter could get wrong",
         )

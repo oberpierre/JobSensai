@@ -263,6 +263,10 @@ class LLMWorker:
         adapter_type = "discovery" if "discovery" in queue_name else "extraction"
         domain: str | None = None
         lock_key: str | None = None
+        # Bound early like domain and lock_key: the UnlearnablePage except clause
+        # below reads it, and it must exist even if the try raises before the
+        # line that would otherwise assign it.
+        url: str | None = None
 
         try:
             task = json.loads(message)
@@ -365,7 +369,9 @@ class LLMWorker:
                 adapter_type,
                 exc,
             )
-            self.release_learning(domain, adapter_type)
+            # Held to its TTL rather than released: this path opens no PR, so nothing
+            # else stops every other queued task for this board from each running a
+            # full truth-agent call before being dropped the same way.
             return False
         except json.JSONDecodeError as exc:
             logger.error("Failed to decode task message: %s", exc)

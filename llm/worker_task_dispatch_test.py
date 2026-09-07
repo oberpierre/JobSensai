@@ -163,7 +163,7 @@ class TestProcessTask(unittest.TestCase):
         self.assertIs(result, False)
         self.mock_publisher.publish.assert_not_called()
         self.mock_redis.lpush.assert_not_called()
-        self._assert_lease_released()
+        self.mock_redis.delete.assert_not_called()
         # The dedicated handler names domain, url and adapter type at error level,
         # rather than the generic catch-all's "Unexpected error" with a stack trace.
         mock_logger.error.assert_called_once_with(
@@ -173,6 +173,24 @@ class TestProcessTask(unittest.TestCase):
             "extraction",
             exc,
         )
+
+    def test_unlearnable_page_holds_the_lease_instead_of_releasing_it(self):
+        """No PR opens on this path, so nothing else suppresses the rest of a
+        board's queued tasks, which means releasing the lease here would let each
+        of them run a full truth-agent call before being dropped the same way.
+        """
+        self.mock_redis.set.return_value = True
+        self.worker._learn_extraction = MagicMock(
+            side_effect=UnlearnablePage("truth agent grounded no title")
+        )
+        self.worker.release_learning = MagicMock()
+
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        self.worker.release_learning.assert_not_called()
 
     def test_failed_publish_releases_the_lease_so_the_next_crawl_retries(self):
         """No PR exists, so the gh check will not skip it next time."""
