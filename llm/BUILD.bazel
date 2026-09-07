@@ -49,9 +49,6 @@ py_library(
     name = "adapter_files",
     srcs = ["adapter_files.py"],
     imports = [".."],
-    deps = [
-        "@pip//python_dotenv",
-    ],
     visibility = ["//visibility:public"],
 )
 

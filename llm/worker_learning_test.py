@@ -4,7 +4,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from llm.worker import LLMWorker, UnlearnablePage, _parse_json_object
+from llm.worker import (
+    LLMWorker,
+    TruthAgentUnreadable,
+    UnlearnablePage,
+    _parse_json_object,
+)
 
 
 class TestParseJsonObject(unittest.TestCase):
@@ -102,6 +107,53 @@ class TestLearnDiscoveryUnlearnable(unittest.TestCase):
         llm.generate_code.assert_not_called()
 
 
+class TestLearnDiscoveryTruthAgentUnreadable(unittest.TestCase):
+    """A reply _parse_json_object cannot read is not a page with no links on it."""
+
+    @patch("llm.worker.LLMModel")
+    def test_unparseable_reply_raises_before_writing_anything(self, mock_llm_cls):
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = "the model rambled instead of answering"
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
+        ):
+            with self.assertRaises(TruthAgentUnreadable):
+                worker._learn_discovery(
+                    "acme.com",
+                    "https://acme.com/jobs",
+                    "<html><body><a href='/jobs/1'>Job</a></body></html>",
+                )
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+        llm.generate_code.assert_not_called()
+
+    @patch("llm.worker.LLMModel")
+    def test_job_links_present_but_empty_still_raises_unlearnable_page(
+        self, mock_llm_cls
+    ):
+        """A dict with keys present and empty values answered the question, so it
+        stays an unlearnable page rather than an unreadable reply."""
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = json.dumps({"job_links": []})
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
+            self.assertRaises(UnlearnablePage),
+        ):
+            worker._learn_discovery(
+                "acme.com",
+                "https://acme.com/jobs",
+                "<html><body>no anchors here</body></html>",
+            )
+        llm.generate_code.assert_not_called()
+
+
 class TestLearnExtraction(unittest.TestCase):
     @patch("llm.worker.LLMModel")
     def test_writes_detail_fixture_and_snapshot_test(self, mock_llm_cls):
@@ -196,6 +248,39 @@ class TestLearnExtractionUnlearnable(unittest.TestCase):
         self._assert_raises_and_writes_nothing(
             mock_llm_cls, {"title": "  ", "description": ""}
         )
+
+    @patch("llm.worker.LLMModel")
+    def test_list_valued_title_raises_before_writing_anything(self, mock_llm_cls):
+        """A list stringifies truthy via str(...).strip(), so the check must reject
+        it directly rather than let it pass as grounded text."""
+        self._assert_raises_and_writes_nothing(
+            mock_llm_cls,
+            {"title": ["Staff", "Engineer"], "description": "We build things."},
+        )
+
+
+class TestLearnExtractionTruthAgentUnreadable(unittest.TestCase):
+    """A reply _parse_json_object cannot read is not a page with no title on it."""
+
+    @patch("llm.worker.LLMModel")
+    def test_unparseable_reply_raises_before_writing_anything(self, mock_llm_cls):
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = "the model rambled instead of answering"
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
+        ):
+            with self.assertRaises(TruthAgentUnreadable):
+                worker._learn_extraction(
+                    "acme.com",
+                    "https://acme.com/job/1",
+                    "<html><body><h1>Staff Engineer</h1></body></html>",
+                )
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+        llm.generate_code.assert_not_called()
 
 
 if __name__ == "__main__":

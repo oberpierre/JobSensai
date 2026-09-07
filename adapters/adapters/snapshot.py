@@ -48,8 +48,11 @@ class DiscoverySnapshotTest:
         )
 
     def test_job_links_match_snapshot(self):
+        # A snapshot the orchestrator did not write may omit the key entirely, which
+        # must fail the exact-set comparison like an empty list rather than raise
+        # KeyError.
         found = self.adapter.get_job_links(self.snapshot_html, self._url())
-        self._assert_matches(found, self.snapshot["job_links"], "job links")
+        self._assert_matches(found, self.snapshot.get("job_links", []), "job links")
 
     def test_next_page_links_match_snapshot(self):
         found = self.adapter.get_next_page_links(self.snapshot_html, self._url())
@@ -126,10 +129,12 @@ class ExtractionSnapshotTest:
                 )
 
     def test_description_matches_snapshot(self):
-        expected = self.snapshot.get("description", "").strip()
-        if expected:
+        # A null or non-string description (a snapshot the orchestrator did not write
+        # may hold anything) is treated as unpinned rather than raising from .strip().
+        expected = self.snapshot.get("description")
+        if isinstance(expected, str) and expected.strip():
             actual = (self.data.get("description") or "").strip()
-            self.assertEqual(actual, expected, "description")
+            self.assertEqual(actual, expected.strip(), "description")
 
     def test_snapshot_pins_a_title_and_a_description(self):
         title = self.snapshot.get("title")

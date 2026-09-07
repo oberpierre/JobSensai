@@ -153,6 +153,28 @@ class TestDiscoverySnapshotTest(unittest.TestCase):
         self.assertIn("keyless_discovery_fixture", message)
         self.assertIn("proves nothing", message)
 
+    def test_whole_suite_fails_rather_than_errors_when_job_links_key_is_absent(self):
+        """The isolated-method run above never exercised the sibling method that
+        reads the same missing key. Running the whole TestCase does."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "index.html").write_text("<html></html>")
+            (fixtures / "expected.json").write_text(
+                json.dumps({"url": "https://example.com/jobs"})
+            )
+
+            class _Case(DiscoverySnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MissingAdapter
+            _Case.fixture_dir = "keyless_discovery_fixture_whole_suite"
+            result = _run(_Case)
+
+        self.assertEqual(result.errors, [])
+        self.assertFalse(result.wasSuccessful())
+
 
 _SILVER = {
     "url": "https://example.com/job/1",
@@ -324,6 +346,27 @@ class TestExtractionSnapshotTest(unittest.TestCase):
         message = str(outcome.failures[0][1])
         self.assertIn("non_string_title_fixture", message)
         self.assertIn("proves nothing", message)
+
+    def test_whole_suite_fails_rather_than_errors_when_description_is_null(self):
+        """The isolated-method run above never exercised the sibling method that
+        also calls .strip() on the same field. Running the whole TestCase does."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "detail.html").write_text("<html><body>a job</body></html>")
+            malformed = {**_SILVER, "description": None}
+            (fixtures / "expected.json").write_text(json.dumps(malformed))
+
+            class _Case(ExtractionSnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MatchingExtraction
+            _Case.fixture_dir = "null_description_fixture_whole_suite"
+            result = _run(_Case)
+
+        self.assertEqual(result.errors, [])
+        self.assertFalse(result.wasSuccessful())
 
 
 if __name__ == "__main__":

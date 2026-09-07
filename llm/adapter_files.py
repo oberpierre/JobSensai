@@ -6,12 +6,6 @@ import re
 from pathlib import Path
 from typing import NamedTuple
 
-from dotenv import load_dotenv
-
-# The paths below are read at import time, which is before the importing module's own
-# load_dotenv() call has run.
-load_dotenv()
-
 # Paths resolved relative to this file so they work in both bazel run and tests.
 # During `bazel run`, BUILD_WORKSPACE_DIRECTORY points to the real checkout root,
 # which is where generated adapter files are written.

@@ -70,8 +70,22 @@ def _parse_json_object(raw: str) -> dict:
     return {}
 
 
+def _is_grounded_text(value: object) -> bool:
+    """True when *value* is non-blank text, matching ExtractionSnapshotTest's rule.
+
+    A list or other non-string survives ``str(...).strip()`` as truthy, so this check
+    has to reject it the same way the snapshot base does rather than stringify it into
+    passing.
+    """
+    return isinstance(value, str) and bool(value.strip())
+
+
 class UnlearnablePage(Exception):
     """The truth agent grounded nothing on the page, so there is no adapter to write."""
+
+
+class TruthAgentUnreadable(Exception):
+    """The truth agent's reply could not be parsed, so the page was never assessed."""
 
 
 # The Silver-schema keys the extraction truth agent enumerates into expected.json.
@@ -154,6 +168,8 @@ class LLMWorker:
 
         truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
+        if truth == {}:
+            raise TruthAgentUnreadable("truth agent reply could not be parsed")
         job_links = truth.get("job_links", [])
         if not job_links:
             raise UnlearnablePage("truth agent grounded no job links")
@@ -188,9 +204,10 @@ class LLMWorker:
 
         truth = _parse_json_object(llm.generate_expected("extraction", cleaned, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
-        if (
-            not str(truth.get("title") or "").strip()
-            or not str(truth.get("description") or "").strip()
+        if truth == {}:
+            raise TruthAgentUnreadable("truth agent reply could not be parsed")
+        if not _is_grounded_text(truth.get("title")) or not _is_grounded_text(
+            truth.get("description")
         ):
             raise UnlearnablePage("truth agent grounded no title or description")
         expected = {"url": url}
@@ -358,6 +375,21 @@ class LLMWorker:
                 )
             self.release_learning(domain, adapter_type)
             return False
+
+        except TruthAgentUnreadable as exc:
+            # Unlike UnlearnablePage, the same page may well yield a readable answer
+            # next time, since a truncated or wrongly-shaped generation is what the
+            # loop already requeues elsewhere for an undeterminable has_existing_pr.
+            logger.error(
+                "Truth agent reply unreadable for domain=%s url=%s adapter_type=%s: %s",
+                domain,
+                url,
+                adapter_type,
+                exc,
+            )
+            self.release_learning(domain, adapter_type)
+            self.redis_client.lpush(queue_name, message)
+            return True
 
         except UnlearnablePage as exc:
             # Dropped rather than requeued: the same page yields the same answer, so

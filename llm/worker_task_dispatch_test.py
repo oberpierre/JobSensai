@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from llm.adapter_files import _adapter_names
-from llm.worker import LLMWorker, UnlearnablePage
+from llm.worker import LLMWorker, TruthAgentUnreadable, UnlearnablePage
 
 
 class TestProcessTask(unittest.TestCase):
@@ -168,6 +168,34 @@ class TestProcessTask(unittest.TestCase):
         # rather than the generic catch-all's "Unexpected error" with a stack trace.
         mock_logger.error.assert_called_once_with(
             "Learned nothing for domain=%s url=%s adapter_type=%s: %s",
+            "newboard.com",
+            "https://newboard.com/job/1",
+            "extraction",
+            exc,
+        )
+
+    @patch("llm.worker.logger")
+    def test_truth_agent_unreadable_requeues_releases_and_backs_off(self, mock_logger):
+        """Unlike UnlearnablePage, an unreadable reply is a transient model failure,
+        not a fact about the page, so it goes back on the queue instead of being
+        dropped, and the lease is released so a retry does not wait out the TTL."""
+        self.mock_redis.set.return_value = True
+        exc = TruthAgentUnreadable("truth agent reply could not be parsed")
+        self.worker._learn_extraction = MagicMock(side_effect=exc)
+
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        result = self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        self.assertIs(result, True)
+        self.mock_publisher.publish.assert_not_called()
+        self.mock_redis.lpush.assert_called_once_with(
+            "extraction_learning_tasks", task_payload
+        )
+        self._assert_lease_released()
+        mock_logger.error.assert_called_once_with(
+            "Truth agent reply unreadable for domain=%s url=%s adapter_type=%s: %s",
             "newboard.com",
             "https://newboard.com/job/1",
             "extraction",
