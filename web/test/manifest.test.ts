@@ -8,6 +8,8 @@ const publicFiles = import.meta.glob("/public/*", { eager: true });
 
 const manifest = JSON.parse(manifestRaw) as { icons: { src: string }[] };
 
+import indexHtml from "../index.html?raw";
+
 describe("site.webmanifest", () => {
   it("names an icon src that resolves under web/public/", () => {
     for (const icon of manifest.icons) {
@@ -19,5 +21,15 @@ describe("site.webmanifest", () => {
     for (const file of ["favicon.ico", "favicon.svg", "apple-touch-icon.png"]) {
       expect(publicFiles).toHaveProperty(`/public/${file}`);
     }
+  });
+
+  // A manifest link is fetched in CORS mode, and without this attribute the
+  // browser omits the credentials it already holds for the origin. Behind the
+  // ingress's basic auth that is a 401 the browser never retries, so the app
+  // silently stops being installable while every other asset still loads.
+  it("asks for the manifest with the origin's credentials", () => {
+    const link = indexHtml.match(/<link[^>]*rel="manifest"[^>]*>/)?.[0];
+    expect(link).toBeDefined();
+    expect(link).toContain('crossorigin="use-credentials"');
   });
 });
