@@ -470,7 +470,3 @@ def main() -> None:
     except KeyboardInterrupt:
         worker.running = False
         logger.info("Interrupted, shutting down")
-
-
-if __name__ == "__main__":
-    main()

@@ -15,6 +15,7 @@ ruff_test(
         "//llm:html_cleaner",
         "//llm:model",
         "//llm:worker",
+        "//llm:worker_lib",
         "//llm:worker_lease_test",
         "//llm:worker_task_dispatch_test",
         "//llm:worker_run_loop_test",
