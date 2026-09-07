@@ -45,6 +45,17 @@ py_binary(
     visibility = ["//visibility:public"],
 )
 
+py_library(
+    name = "adapter_files",
+    srcs = ["adapter_files.py"],
+    imports = [".."],
+    deps = [
+        ":model",
+        "@pip//python_dotenv",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 # A library rather than the binary's own srcs, so a test depends on worker.py without
 # also inheriting //:env. A developer's .env reaching the test runfiles decides the
 # defaults those tests assert, which passes in CI, where there is none, and fails on
@@ -55,6 +66,7 @@ py_library(
     imports = [".."],
     data = ["//llm:prompts"],
     deps = [
+        ":adapter_files",
         ":dom",
         ":html_cleaner",
         ":model",
@@ -126,14 +138,10 @@ py_test(
 )
 
 py_test(
-    name = "worker_naming_test",
-    srcs = ["worker_naming_test.py"],
+    name = "adapter_files_naming_test",
+    srcs = ["adapter_files_naming_test.py"],
     imports = [".."],
-    deps = [
-        ":worker_lib",
-        "//adapters:adapters_base",
-        "@pip//redis",
-    ],
+    deps = [":adapter_files"],
     visibility = ["//visibility:public"],
 )
 

@@ -40,7 +40,7 @@ class TestLearnDiscovery(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
         ):
             (Path(tmp) / "base.py").write_text("class DiscoveryAdapter: pass\n")
             names, model_name = worker._learn_discovery(
@@ -103,7 +103,7 @@ class TestLearnExtraction(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
         ):
             (Path(tmp) / "base.py").write_text("class ExtractionAdapter: pass\n")
             names, model_name = worker._learn_extraction(

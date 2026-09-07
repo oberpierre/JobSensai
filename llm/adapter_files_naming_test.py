@@ -1,6 +1,6 @@
 import unittest
 
-from llm.worker import _adapter_names, _domain_slug
+from llm.adapter_files import _adapter_names, _domain_slug
 
 
 class TestDomainSlug(unittest.TestCase):

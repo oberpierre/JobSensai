@@ -5,7 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from llm.worker import LLMWorker, _adapter_names
+from llm.adapter_files import _adapter_names
+from llm.worker import LLMWorker
 
 
 class TestProcessTask(unittest.TestCase):
@@ -108,7 +109,7 @@ class TestProcessTask(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
             patch.dict(os.environ, {"OLLAMA_MODEL": "qwen3-coder:30b"}),
         ):
             (Path(tmp) / "base.py").write_text("class ExtractionAdapter: pass\n")
