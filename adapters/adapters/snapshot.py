@@ -61,6 +61,13 @@ class DiscoverySnapshotTest:
         self.assertEqual(self.adapter.get_job_links(empty, self._url()), [])
         self.assertEqual(self.adapter.get_next_page_links(empty, self._url()), [])
 
+    def test_snapshot_pins_at_least_one_job_link(self):
+        self.assertTrue(
+            self.snapshot["job_links"],
+            f"{self.fixture_dir}: snapshot pins no job links, so this suite proves "
+            "nothing an adapter could get wrong",
+        )
+
 
 class ExtractionSnapshotTest:
     """Assert an ExtractionAdapter reproduces a captured detail-page snapshot.
@@ -123,3 +130,12 @@ class ExtractionSnapshotTest:
         if expected:
             actual = (self.data.get("description") or "").strip()
             self.assertEqual(actual, expected, "description")
+
+    def test_snapshot_pins_a_title_and_a_description(self):
+        title = (self.snapshot.get("title") or "").strip()
+        description = (self.snapshot.get("description") or "").strip()
+        self.assertTrue(
+            title and description,
+            f"{self.fixture_dir}: snapshot pins no title or no description, so this "
+            "suite proves nothing an adapter could get wrong",
+        )

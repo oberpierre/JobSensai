@@ -89,6 +89,43 @@ class TestDiscoverySnapshotTest(unittest.TestCase):
         # Exact-set equality catches the one extra (over-selected) job link.
         self.assertEqual(len(result.failures), 1)
 
+    def test_guard_passes_when_snapshot_pins_a_job_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._snapshot_case(_MatchingAdapter, Path(tmp) / "sample")
+            outcome = unittest.TestResult()
+            case("test_snapshot_pins_at_least_one_job_link").run(outcome)
+        self.assertTrue(outcome.wasSuccessful(), outcome.failures)
+
+    def test_guard_fails_when_snapshot_pins_no_job_links(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "index.html").write_text("<html></html>")
+            (fixtures / "expected.json").write_text(
+                json.dumps(
+                    {
+                        "url": "https://example.com/jobs",
+                        "job_links": [],
+                        "next_page_links": [],
+                    }
+                )
+            )
+
+            class _Case(DiscoverySnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MissingAdapter
+            _Case.fixture_dir = "empty_discovery_fixture"
+            outcome = unittest.TestResult()
+            _Case("test_snapshot_pins_at_least_one_job_link").run(outcome)
+
+        self.assertFalse(outcome.wasSuccessful())
+        self.assertEqual(len(outcome.failures), 1)
+        message = str(outcome.failures[0][1])
+        self.assertIn("empty_discovery_fixture", message)
+        self.assertIn("proves nothing", message)
+
 
 _SILVER = {
     "url": "https://example.com/job/1",
@@ -204,6 +241,36 @@ class TestExtractionSnapshotTest(unittest.TestCase):
             any("description" in str(f[1]) for f in result.failures),
             result.failures,
         )
+
+    def test_guard_passes_when_snapshot_pins_title_and_description(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._snapshot_case(_MatchingExtraction, Path(tmp) / "s")
+            outcome = unittest.TestResult()
+            case("test_snapshot_pins_a_title_and_a_description").run(outcome)
+        self.assertTrue(outcome.wasSuccessful(), outcome.failures)
+
+    def test_guard_fails_when_snapshot_pins_no_title_or_description(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "detail.html").write_text("<html><body>a job</body></html>")
+            blank = {**_SILVER, "title": "", "description": "   "}
+            (fixtures / "expected.json").write_text(json.dumps(blank))
+
+            class _Case(ExtractionSnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MatchingExtraction
+            _Case.fixture_dir = "empty_extraction_fixture"
+            outcome = unittest.TestResult()
+            _Case("test_snapshot_pins_a_title_and_a_description").run(outcome)
+
+        self.assertFalse(outcome.wasSuccessful())
+        self.assertEqual(len(outcome.failures), 1)
+        message = str(outcome.failures[0][1])
+        self.assertIn("empty_extraction_fixture", message)
+        self.assertIn("proves nothing", message)
 
 
 if __name__ == "__main__":
