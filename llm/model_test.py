@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,17 @@ class TestPromptBuilders(unittest.TestCase):
         self.assertIn("next_page_links", prompt)
         # $-placeholders must all be substituted.
         self.assertNotIn("$cleaned_html", prompt)
+
+    def test_html_budget_is_read_when_the_prompt_is_built(self):
+        # Set after this module imported llm.model, which is the ordering every caller
+        # has, because load_dotenv() runs after its imports. An import-time read of the
+        # budget would ignore this.
+        with patch.dict(os.environ, {"LLM_HTML_CHARS": "10"}):
+            prompt = build_expected_prompt(
+                "discovery", "X" * 500, "https://acme.com/jobs"
+            )
+        self.assertIn("X" * 10, prompt)
+        self.assertNotIn("X" * 11, prompt)
 
     def test_build_expected_prompt_extraction_shape(self):
         prompt = build_expected_prompt(
@@ -84,3 +96,29 @@ class TestPromptBuilders(unittest.TestCase):
         self.assertEqual(out, '{"job_links": [], "next_page_links": []}')
         instance.invoke.assert_called_once()
         self.assertIn("https://acme.com/jobs", instance.invoke.call_args[0][0])
+
+    @patch("llm.model.OllamaLLM")
+    def test_model_name_defaults_when_env_unset(self, mock_ollama):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OLLAMA_MODEL", None)
+            model = LLMModel()
+        self.assertEqual(model.model_name, "qwen3-coder:30b")
+        self.assertEqual(mock_ollama.call_args.kwargs["model"], "qwen3-coder:30b")
+
+    @patch("llm.model.OllamaLLM")
+    def test_model_name_reads_env_var(self, mock_ollama):
+        with patch.dict(os.environ, {"OLLAMA_MODEL": "qwen3.8:27b-mlx"}):
+            model = LLMModel()
+        self.assertEqual(model.model_name, "qwen3.8:27b-mlx")
+        self.assertEqual(mock_ollama.call_args.kwargs["model"], "qwen3.8:27b-mlx")
+
+    @patch("llm.model.OllamaLLM")
+    def test_explicit_model_name_beats_env_var(self, mock_ollama):
+        with patch.dict(os.environ, {"OLLAMA_MODEL": "qwen3.8:27b-mlx"}):
+            model = LLMModel(model_name="explicit-model")
+        self.assertEqual(model.model_name, "explicit-model")
+        self.assertEqual(mock_ollama.call_args.kwargs["model"], "explicit-model")
+
+
+if __name__ == "__main__":
+    unittest.main()
