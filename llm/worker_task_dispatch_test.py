@@ -146,12 +146,14 @@ class TestProcessTask(unittest.TestCase):
         self.assertEqual(kwargs["test_output"], "FAILED: 1 test")
         self._assert_lease_released()
 
-    def test_unlearnable_page_drops_the_task_without_publishing_or_requeueing(self):
+    @patch("llm.worker.logger")
+    def test_unlearnable_page_drops_the_task_without_publishing_or_requeueing(
+        self, mock_logger
+    ):
         """A truth agent that grounds nothing gets no PR: a requeue would only spin."""
         self.mock_redis.set.return_value = True
-        self.worker._learn_extraction = MagicMock(
-            side_effect=UnlearnablePage("truth agent grounded no title or description")
-        )
+        exc = UnlearnablePage("truth agent grounded no title or description")
+        self.worker._learn_extraction = MagicMock(side_effect=exc)
 
         task_payload = json.dumps(
             {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
@@ -162,6 +164,15 @@ class TestProcessTask(unittest.TestCase):
         self.mock_publisher.publish.assert_not_called()
         self.mock_redis.lpush.assert_not_called()
         self._assert_lease_released()
+        # The dedicated handler names domain, url and adapter type at error level,
+        # rather than the generic catch-all's "Unexpected error" with a stack trace.
+        mock_logger.error.assert_called_once_with(
+            "Learned nothing for domain=%s url=%s adapter_type=%s: %s",
+            "newboard.com",
+            "https://newboard.com/job/1",
+            "extraction",
+            exc,
+        )
 
     def test_failed_publish_releases_the_lease_so_the_next_crawl_retries(self):
         """No PR exists, so the gh check will not skip it next time."""
