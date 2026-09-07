@@ -42,6 +42,10 @@ _EXTRACTION_NUM_CTX = int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
 # A requeue with nothing else in the queue would otherwise spin on the same task.
 _REQUEUE_BACKOFF_SECONDS = int(os.getenv("REQUEUE_BACKOFF_SECONDS", "30"))
 
+# A dense model reasoning over a wide context can outlive the default lease, letting a
+# second learning run start on the same domain before the first releases it.
+_LEASE_TTL_SECONDS = int(os.getenv("LEARNING_LEASE_TTL_SECONDS", "1800"))
+
 
 def _domain_slug(domain: str) -> str:
     """Turn a domain into a valid Python module-name fragment.
@@ -105,28 +109,15 @@ def _strip_code_fences(text: str) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
-# The discovery test is deterministic boilerplate: all grounded assertions live in the
-# snapshot the DiscoverySnapshotTest base compares against.
-_DISCOVERY_TEST_TEMPLATE = """import unittest
+# The generated test is deterministic boilerplate: all grounded assertions live in the
+# snapshot base class it imports and subclasses.
+_TEST_TEMPLATE = """import unittest
 
-from adapters.adapters.snapshot import DiscoverySnapshotTest
+from adapters.adapters.snapshot import {snapshot_base}
 from {module_path} import {adapter_class}
 
 
-class {test_class}(DiscoverySnapshotTest, unittest.TestCase):
-    adapter_cls = {adapter_class}
-    fixture_dir = "{basename}"
-"""
-
-# Same deterministic boilerplate for extraction because ExtractionSnapshotTest holds the
-# grounded per-field comparison against the snapshot.
-_EXTRACTION_TEST_TEMPLATE = """import unittest
-
-from adapters.adapters.snapshot import ExtractionSnapshotTest
-from {module_path} import {adapter_class}
-
-
-class {test_class}(ExtractionSnapshotTest, unittest.TestCase):
+class {test_class}({snapshot_base}, unittest.TestCase):
     adapter_cls = {adapter_class}
     fixture_dir = "{basename}"
 """
@@ -175,7 +166,9 @@ class LLMWorker:
             is not None
         )
 
-    def start_learning(self, domain: str, adapter_type: str, ttl: int = 1800) -> bool:
+    def start_learning(
+        self, domain: str, adapter_type: str, ttl: int = _LEASE_TTL_SECONDS
+    ) -> bool:
         """Acquire a learning lock for *domain* + *adapter_type*.
 
         Discovery and extraction learn independently, so the lock is namespaced by
@@ -199,37 +192,21 @@ class LLMWorker:
         path.write_text(content)
         return path
 
-    def _learn_discovery(self, domain: str, url: str, html: str) -> AdapterNames:
+    def _learn_discovery(
+        self, domain: str, url: str, html: str
+    ) -> tuple[AdapterNames, str]:
         """Generate a discovery adapter for a listing page, test-first.
 
-        Prune the page to its link-bearing skeleton, have the truth agent snapshot the
-        job/next-page links from it and write the deterministic test, then have the code
-        agent write the adapter from the same lean HTML — never from the snapshot.
+        Prune to the link-bearing skeleton, have the truth agent snapshot the
+        job/next-page links from it, then have the code agent write the adapter from
+        that same lean HTML rather than the snapshot. The stored ``index.html`` keeps
+        the full cleaned page, catching over-selection a lean-only test would miss.
         """
         names = _adapter_names(domain, "discovery")
         cleaned = clean_html(resolve_hrefs(html, url))
         lean = prune_to_links(cleaned)
         llm = LLMModel(base_url=self.llm_url, num_ctx=_DISCOVERY_NUM_CTX)
 
-        self._write_discovery_snapshot(names, cleaned, lean, url, llm)
-        self._write_adapter(names, "discovery", lean, [domain], llm)
-        logger.info("Generated discovery adapter and snapshot for %s", names.basename)
-        return names
-
-    def _write_discovery_snapshot(
-        self,
-        names: AdapterNames,
-        cleaned: str,
-        lean: str,
-        url: str,
-        llm: LLMModel,
-    ) -> None:
-        """Truth agent → full-page fixture, grounded ``expected.json``, and the test.
-
-        The truth agent sees only the lean skeleton, whereas the stored ``index.html``
-        is the full cleaned page, so an adapter's selectors are later tested against
-        everything a real page holds (catching over-selection).
-        """
         truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
         expected = {
@@ -237,60 +214,66 @@ class LLMWorker:
             "job_links": truth.get("job_links", []),
             "next_page_links": truth.get("next_page_links", []),
         }
-        self._write_fixture(names.basename, "index.html", cleaned)
+        self._write_snapshot(
+            names, "index.html", cleaned, expected, "DiscoverySnapshotTest"
+        )
+        self._write_adapter(names, "discovery", lean, [domain], llm)
+        logger.info("Generated discovery adapter and snapshot for %s", names.basename)
+        return names, llm.model_name
+
+    def _write_snapshot(
+        self,
+        names: AdapterNames,
+        fixture_filename: str,
+        page: str,
+        expected: dict,
+        snapshot_base: str,
+    ) -> None:
+        """Write the page fixture, the grounded ``expected.json``, and the test.
+
+        Shared by both flows: each builds its own ``expected`` dict from the HTML it
+        grounded, then hands it here so the three files land the same way regardless
+        of adapter type.
+        """
+        self._write_fixture(names.basename, fixture_filename, page)
         self._write_fixture(
             names.basename, "expected.json", json.dumps(expected, indent=2)
         )
-        test_source = _DISCOVERY_TEST_TEMPLATE.format(
+        test_source = _TEST_TEMPLATE.format(
             module_path=names.module_path,
             adapter_class=names.adapter_class,
             test_class=names.test_class,
             basename=names.basename,
+            snapshot_base=snapshot_base,
         )
         (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
 
-    def _learn_extraction(self, domain: str, url: str, html: str) -> AdapterNames:
+    def _learn_extraction(
+        self, domain: str, url: str, html: str
+    ) -> tuple[AdapterNames, str]:
         """Generate an extraction adapter for a detail page, test-first.
 
-        Unlike discovery, the page is cleaned but never pruned: extraction reads the
-        posting's content, so both agents need the whole page rather than a link-only
-        skeleton. The truth agent snapshots the fields. The code agent then writes the
-        adapter from the same cleaned HTML — never from the snapshot.
+        Unlike discovery, the page is cleaned but never pruned, since extraction reads
+        the posting's content rather than only its links. The truth agent pins only
+        the Silver fields it actually reports, so the snapshot test stays silent on
+        the rest.
         """
         names = _adapter_names(domain, "extraction")
         cleaned = clean_html(html)
         llm = LLMModel(base_url=self.llm_url, num_ctx=_EXTRACTION_NUM_CTX)
 
-        self._write_extraction_snapshot(names, cleaned, url, llm)
-        self._write_adapter(names, "extraction", cleaned, [domain], llm)
-        logger.info("Generated extraction adapter and snapshot for %s", names.basename)
-        return names
-
-    def _write_extraction_snapshot(
-        self, names: AdapterNames, cleaned: str, url: str, llm: LLMModel
-    ) -> None:
-        """Truth agent → detail-page fixture, grounded ``expected.json``, and the test.
-
-        Only the Silver fields the truth agent actually reports are pinned, so the
-        snapshot test checks what the page states and stays silent on the rest.
-        """
         truth = _parse_json_object(llm.generate_expected("extraction", cleaned, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
         expected = {"url": url}
         for field in _SILVER_FIELDS:
             if field in truth:
                 expected[field] = truth[field]
-        self._write_fixture(names.basename, "detail.html", cleaned)
-        self._write_fixture(
-            names.basename, "expected.json", json.dumps(expected, indent=2)
+        self._write_snapshot(
+            names, "detail.html", cleaned, expected, "ExtractionSnapshotTest"
         )
-        test_source = _EXTRACTION_TEST_TEMPLATE.format(
-            module_path=names.module_path,
-            adapter_class=names.adapter_class,
-            test_class=names.test_class,
-            basename=names.basename,
-        )
-        (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
+        self._write_adapter(names, "extraction", cleaned, [domain], llm)
+        logger.info("Generated extraction adapter and snapshot for %s", names.basename)
+        return names, llm.model_name
 
     def _write_adapter(
         self,
@@ -423,9 +406,9 @@ class LLMWorker:
             url = task.get("url") or f"https://{domain}"
 
             if adapter_type == "discovery":
-                names = self._learn_discovery(domain, url, raw_html)
+                names, model_name = self._learn_discovery(domain, url, raw_html)
             else:
-                names = self._learn_extraction(domain, url, raw_html)
+                names, model_name = self._learn_extraction(domain, url, raw_html)
 
             passed, test_output = self._run_adapter_tests()
             logger.info(
@@ -443,6 +426,7 @@ class LLMWorker:
                 adapter_type=adapter_type,
                 passed=passed,
                 test_output=test_output,
+                model_name=model_name,
             )
             if pr_url:
                 logger.info("Opened PR for %s: %s", names.basename, pr_url)
@@ -486,7 +470,3 @@ def main() -> None:
     except KeyboardInterrupt:
         worker.running = False
         logger.info("Interrupted, shutting down")
-
-
-if __name__ == "__main__":
-    main()

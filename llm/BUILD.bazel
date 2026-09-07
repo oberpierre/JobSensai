@@ -45,11 +45,15 @@ py_binary(
     visibility = ["//visibility:public"],
 )
 
-py_binary(
-    name = "worker",
+# A library rather than the binary's own srcs, so a test depends on worker.py without
+# also inheriting //:env. A developer's .env reaching the test runfiles decides the
+# defaults those tests assert, which passes in CI, where there is none, and fails on
+# the machine of whoever set the knob.
+py_library(
+    name = "worker_lib",
     srcs = ["worker.py"],
     imports = [".."],
-    data = ["//:env", "//llm:prompts"],
+    data = ["//llm:prompts"],
     deps = [
         ":dom",
         ":html_cleaner",
@@ -63,12 +67,82 @@ py_binary(
     visibility = ["//visibility:public"],
 )
 
+py_binary(
+    name = "worker",
+    srcs = ["worker_main.py"],
+    main = "worker_main.py",
+    imports = [".."],
+    data = ["//:env"],
+    deps = [":worker_lib"],
+    visibility = ["//visibility:public"],
+)
+
 py_test(
-    name = "worker_test",
-    srcs = ["worker_test.py"],
+    name = "worker_lease_test",
+    srcs = ["worker_lease_test.py"],
     imports = [".."],
     deps = [
-        ":worker",
+        ":worker_lib",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_task_dispatch_test",
+    srcs = ["worker_task_dispatch_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker_lib",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_run_loop_test",
+    srcs = ["worker_run_loop_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker_lib",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_learning_test",
+    srcs = ["worker_learning_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker_lib",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_naming_test",
+    srcs = ["worker_naming_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker_lib",
+        "//adapters:adapters_base",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_startup_test",
+    srcs = ["worker_startup_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker_lib",
         "//adapters:adapters_base",
         "@pip//redis",
     ],
