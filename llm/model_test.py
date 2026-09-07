@@ -107,3 +107,7 @@ class TestPromptBuilders(unittest.TestCase):
             model = LLMModel(model_name="explicit-model")
         self.assertEqual(model.model_name, "explicit-model")
         self.assertEqual(mock_ollama.call_args.kwargs["model"], "explicit-model")
+
+
+if __name__ == "__main__":
+    unittest.main()
