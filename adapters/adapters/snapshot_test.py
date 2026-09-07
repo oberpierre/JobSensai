@@ -89,6 +89,92 @@ class TestDiscoverySnapshotTest(unittest.TestCase):
         # Exact-set equality catches the one extra (over-selected) job link.
         self.assertEqual(len(result.failures), 1)
 
+    def test_guard_passes_when_snapshot_pins_a_job_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._snapshot_case(_MatchingAdapter, Path(tmp) / "sample")
+            outcome = unittest.TestResult()
+            case("test_snapshot_pins_at_least_one_job_link").run(outcome)
+        self.assertTrue(outcome.wasSuccessful(), outcome.failures)
+
+    def test_guard_fails_when_snapshot_pins_no_job_links(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "index.html").write_text("<html></html>")
+            (fixtures / "expected.json").write_text(
+                json.dumps(
+                    {
+                        "url": "https://example.com/jobs",
+                        "job_links": [],
+                        "next_page_links": [],
+                    }
+                )
+            )
+
+            class _Case(DiscoverySnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MissingAdapter
+            _Case.fixture_dir = "empty_discovery_fixture"
+            outcome = unittest.TestResult()
+            _Case("test_snapshot_pins_at_least_one_job_link").run(outcome)
+
+        self.assertFalse(outcome.wasSuccessful())
+        self.assertEqual(len(outcome.failures), 1)
+        message = str(outcome.failures[0][1])
+        self.assertIn("empty_discovery_fixture", message)
+        self.assertIn("proves nothing", message)
+
+    def test_guard_fails_with_a_message_when_job_links_key_is_absent(self):
+        """A snapshot the orchestrator did not write may omit the key entirely,
+        which must fail like an empty list rather than raise KeyError."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "index.html").write_text("<html></html>")
+            (fixtures / "expected.json").write_text(
+                json.dumps({"url": "https://example.com/jobs"})
+            )
+
+            class _Case(DiscoverySnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MissingAdapter
+            _Case.fixture_dir = "keyless_discovery_fixture"
+            outcome = unittest.TestResult()
+            _Case("test_snapshot_pins_at_least_one_job_link").run(outcome)
+
+        self.assertFalse(outcome.wasSuccessful())
+        self.assertEqual(outcome.errors, [])
+        self.assertEqual(len(outcome.failures), 1)
+        message = str(outcome.failures[0][1])
+        self.assertIn("keyless_discovery_fixture", message)
+        self.assertIn("proves nothing", message)
+
+    def test_whole_suite_fails_rather_than_errors_when_job_links_key_is_absent(self):
+        """The isolated-method run above never exercised the sibling method that
+        reads the same missing key. Running the whole TestCase does."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "index.html").write_text("<html></html>")
+            (fixtures / "expected.json").write_text(
+                json.dumps({"url": "https://example.com/jobs"})
+            )
+
+            class _Case(DiscoverySnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MissingAdapter
+            _Case.fixture_dir = "keyless_discovery_fixture_whole_suite"
+            result = _run(_Case)
+
+        self.assertEqual(result.errors, [])
+        self.assertFalse(result.wasSuccessful())
+
 
 _SILVER = {
     "url": "https://example.com/job/1",
@@ -204,6 +290,83 @@ class TestExtractionSnapshotTest(unittest.TestCase):
             any("description" in str(f[1]) for f in result.failures),
             result.failures,
         )
+
+    def test_guard_passes_when_snapshot_pins_title_and_description(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._snapshot_case(_MatchingExtraction, Path(tmp) / "s")
+            outcome = unittest.TestResult()
+            case("test_snapshot_pins_a_title_and_a_description").run(outcome)
+        self.assertTrue(outcome.wasSuccessful(), outcome.failures)
+
+    def test_guard_fails_when_snapshot_pins_no_title_or_description(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "detail.html").write_text("<html><body>a job</body></html>")
+            blank = {**_SILVER, "title": "", "description": "   "}
+            (fixtures / "expected.json").write_text(json.dumps(blank))
+
+            class _Case(ExtractionSnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MatchingExtraction
+            _Case.fixture_dir = "empty_extraction_fixture"
+            outcome = unittest.TestResult()
+            _Case("test_snapshot_pins_a_title_and_a_description").run(outcome)
+
+        self.assertFalse(outcome.wasSuccessful())
+        self.assertEqual(len(outcome.failures), 1)
+        message = str(outcome.failures[0][1])
+        self.assertIn("empty_extraction_fixture", message)
+        self.assertIn("proves nothing", message)
+
+    def test_guard_fails_with_a_message_when_title_is_not_a_string(self):
+        """A snapshot the orchestrator did not write may pin a non-string title,
+        which must fail like a blank one rather than raise AttributeError."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "detail.html").write_text("<html><body>a job</body></html>")
+            malformed = {**_SILVER, "title": 12345}
+            (fixtures / "expected.json").write_text(json.dumps(malformed))
+
+            class _Case(ExtractionSnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MatchingExtraction
+            _Case.fixture_dir = "non_string_title_fixture"
+            outcome = unittest.TestResult()
+            _Case("test_snapshot_pins_a_title_and_a_description").run(outcome)
+
+        self.assertFalse(outcome.wasSuccessful())
+        self.assertEqual(outcome.errors, [])
+        self.assertEqual(len(outcome.failures), 1)
+        message = str(outcome.failures[0][1])
+        self.assertIn("non_string_title_fixture", message)
+        self.assertIn("proves nothing", message)
+
+    def test_whole_suite_fails_rather_than_errors_when_description_is_null(self):
+        """The isolated-method run above never exercised the sibling method that
+        also calls .strip() on the same field. Running the whole TestCase does."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fixtures = Path(tmp) / "s"
+            fixtures.mkdir(parents=True)
+            (fixtures / "detail.html").write_text("<html><body>a job</body></html>")
+            malformed = {**_SILVER, "description": None}
+            (fixtures / "expected.json").write_text(json.dumps(malformed))
+
+            class _Case(ExtractionSnapshotTest, unittest.TestCase):
+                def _fixtures_dir(self_inner) -> Path:
+                    return fixtures
+
+            _Case.adapter_cls = _MatchingExtraction
+            _Case.fixture_dir = "null_description_fixture_whole_suite"
+            result = _run(_Case)
+
+        self.assertEqual(result.errors, [])
+        self.assertFalse(result.wasSuccessful())
 
 
 if __name__ == "__main__":

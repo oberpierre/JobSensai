@@ -3,16 +3,21 @@
 import json
 import logging
 import os
-import re
 import subprocess
 import time
-from pathlib import Path
-from typing import NamedTuple
 from urllib.parse import urlsplit
 
 import redis
 from dotenv import load_dotenv
 
+from llm.adapter_files import (
+    _WORKSPACE_ROOT,
+    AdapterNames,
+    _adapter_names,
+    _read_base_code,
+    _write_adapter,
+    _write_snapshot,
+)
 from llm.dom import prune_to_links, resolve_hrefs
 from llm.html_cleaner import clean_html
 from llm.model import LLMModel
@@ -23,14 +28,6 @@ logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-# Paths resolved relative to this file so they work in both bazel run and tests.
-# During `bazel run`, BUILD_WORKSPACE_DIRECTORY points to the real checkout root,
-# which is where generated adapter files are written.
-_WORKSPACE_ROOT = Path(
-    os.environ.get("BUILD_WORKSPACE_DIRECTORY", str(Path(__file__).parent.parent))
-)
-_ADAPTERS_DIR = _WORKSPACE_ROOT / "adapters" / "adapters"
 
 # Ollama sizes its KV cache from num_ctx, so the window is set per adapter type.
 # Discovery feeds a pruned link-only skeleton that stays small. Detail pages carry the
@@ -47,40 +44,14 @@ _REQUEUE_BACKOFF_SECONDS = int(os.getenv("REQUEUE_BACKOFF_SECONDS", "30"))
 _LEASE_TTL_SECONDS = int(os.getenv("LEARNING_LEASE_TTL_SECONDS", "1800"))
 
 
-def _domain_slug(domain: str) -> str:
-    """Turn a domain into a valid Python module-name fragment.
-
-    Lowercases and replaces every run of non-alphanumeric characters with a single
-    underscore, e.g. ``job-boards.greenhouse.io`` -> ``job_boards_greenhouse_io``.
-    ``domain.replace(".", "_")`` left hyphens in place and produced illegal module
-    names for hyphenated boards.
-    """
-    return re.sub(r"[^a-z0-9]+", "_", domain.lower()).strip("_")
-
-
-class AdapterNames(NamedTuple):
-    basename: str
-    module_path: str
-    adapter_class: str
-    test_class: str
-
-
-def _adapter_names(domain: str, adapter_type: str, version: int = 1) -> AdapterNames:
-    """Derive the file/module/class names for a generated adapter.
-
-    Both agents receive these names up-front, so the generated test's import line and
-    the adapter's class definition line up without either agent seeing the other.
-    """
-    slug = _domain_slug(domain)
-    basename = f"{slug}_{adapter_type}_v{version}"
-    pascal = "".join(part.capitalize() for part in slug.split("_") if part)
-    adapter_class = f"{pascal}{adapter_type.capitalize()}Adapter"
-    return AdapterNames(
-        basename=basename,
-        module_path=f"adapters.adapters.{basename}",
-        adapter_class=adapter_class,
-        test_class=f"Test{adapter_class}",
-    )
+def _strip_code_fences(text: str) -> str:
+    """Drop a leading/trailing markdown code fence if the model wrapped its output."""
+    lines = text.strip().splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip() + "\n"
 
 
 def _parse_json_object(raw: str) -> dict:
@@ -99,28 +70,23 @@ def _parse_json_object(raw: str) -> dict:
     return {}
 
 
-def _strip_code_fences(text: str) -> str:
-    """Drop a leading/trailing markdown code fence if the model wrapped its output."""
-    lines = text.strip().splitlines()
-    if lines and lines[0].startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].startswith("```"):
-        lines = lines[:-1]
-    return "\n".join(lines).strip() + "\n"
+def _is_grounded_text(value: object) -> bool:
+    """True when *value* is non-blank text, matching ExtractionSnapshotTest's rule.
+
+    A list or other non-string survives ``str(...).strip()`` as truthy, so this check
+    has to reject it the same way the snapshot base does rather than stringify it into
+    passing.
+    """
+    return isinstance(value, str) and bool(value.strip())
 
 
-# The generated test is deterministic boilerplate: all grounded assertions live in the
-# snapshot base class it imports and subclasses.
-_TEST_TEMPLATE = """import unittest
-
-from adapters.adapters.snapshot import {snapshot_base}
-from {module_path} import {adapter_class}
+class UnlearnablePage(Exception):
+    """The truth agent grounded nothing on the page, so there is no adapter to write."""
 
 
-class {test_class}({snapshot_base}, unittest.TestCase):
-    adapter_cls = {adapter_class}
-    fixture_dir = "{basename}"
-"""
+class TruthAgentUnreadable(Exception):
+    """The truth agent's reply could not be parsed, so the page was never assessed."""
+
 
 # The Silver-schema keys the extraction truth agent enumerates into expected.json.
 _SILVER_FIELDS = (
@@ -185,13 +151,6 @@ class LLMWorker:
         """Release the lease once the task is finished."""
         self.redis_client.delete(f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}")
 
-    def _write_fixture(self, basename: str, filename: str, content: str) -> Path:
-        fixture_dir = _ADAPTERS_DIR / "fixtures" / basename
-        fixture_dir.mkdir(parents=True, exist_ok=True)
-        path = fixture_dir / filename
-        path.write_text(content)
-        return path
-
     def _learn_discovery(
         self, domain: str, url: str, html: str
     ) -> tuple[AdapterNames, str]:
@@ -209,44 +168,25 @@ class LLMWorker:
 
         truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
+        if truth == {}:
+            raise TruthAgentUnreadable("truth agent reply could not be parsed")
+        job_links = truth.get("job_links", [])
+        if not job_links:
+            raise UnlearnablePage("truth agent grounded no job links")
         expected = {
             "url": url,
-            "job_links": truth.get("job_links", []),
+            "job_links": job_links,
             "next_page_links": truth.get("next_page_links", []),
         }
-        self._write_snapshot(
-            names, "index.html", cleaned, expected, "DiscoverySnapshotTest"
+        _write_snapshot(names, "index.html", cleaned, expected, "DiscoverySnapshotTest")
+        adapter_src = _strip_code_fences(
+            llm.generate_code(
+                "discovery", lean, names.adapter_class, [domain], _read_base_code()
+            )
         )
-        self._write_adapter(names, "discovery", lean, [domain], llm)
+        _write_adapter(names, adapter_src)
         logger.info("Generated discovery adapter and snapshot for %s", names.basename)
         return names, llm.model_name
-
-    def _write_snapshot(
-        self,
-        names: AdapterNames,
-        fixture_filename: str,
-        page: str,
-        expected: dict,
-        snapshot_base: str,
-    ) -> None:
-        """Write the page fixture, the grounded ``expected.json``, and the test.
-
-        Shared by both flows: each builds its own ``expected`` dict from the HTML it
-        grounded, then hands it here so the three files land the same way regardless
-        of adapter type.
-        """
-        self._write_fixture(names.basename, fixture_filename, page)
-        self._write_fixture(
-            names.basename, "expected.json", json.dumps(expected, indent=2)
-        )
-        test_source = _TEST_TEMPLATE.format(
-            module_path=names.module_path,
-            adapter_class=names.adapter_class,
-            test_class=names.test_class,
-            basename=names.basename,
-            snapshot_base=snapshot_base,
-        )
-        (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
 
     def _learn_extraction(
         self, domain: str, url: str, html: str
@@ -264,33 +204,27 @@ class LLMWorker:
 
         truth = _parse_json_object(llm.generate_expected("extraction", cleaned, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
+        if truth == {}:
+            raise TruthAgentUnreadable("truth agent reply could not be parsed")
+        if not _is_grounded_text(truth.get("title")) or not _is_grounded_text(
+            truth.get("description")
+        ):
+            raise UnlearnablePage("truth agent grounded no title or description")
         expected = {"url": url}
         for field in _SILVER_FIELDS:
             if field in truth:
                 expected[field] = truth[field]
-        self._write_snapshot(
+        _write_snapshot(
             names, "detail.html", cleaned, expected, "ExtractionSnapshotTest"
         )
-        self._write_adapter(names, "extraction", cleaned, [domain], llm)
-        logger.info("Generated extraction adapter and snapshot for %s", names.basename)
-        return names, llm.model_name
-
-    def _write_adapter(
-        self,
-        names: AdapterNames,
-        adapter_type: str,
-        html: str,
-        domains: list[str],
-        llm: LLMModel,
-    ) -> None:
-        """Code agent → the adapter that must satisfy the (withheld) snapshot."""
-        base_code = (_ADAPTERS_DIR / "base.py").read_text()
         adapter_src = _strip_code_fences(
             llm.generate_code(
-                adapter_type, html, names.adapter_class, domains, base_code
+                "extraction", cleaned, names.adapter_class, [domain], _read_base_code()
             )
         )
-        (_ADAPTERS_DIR / f"{names.basename}.py").write_text(adapter_src)
+        _write_adapter(names, adapter_src)
+        logger.info("Generated extraction adapter and snapshot for %s", names.basename)
+        return names, llm.model_name
 
     def _run_adapter_tests(self) -> tuple[bool, str]:
         """Run the adapter suite once. Return whether it passed and its output.
@@ -346,6 +280,10 @@ class LLMWorker:
         adapter_type = "discovery" if "discovery" in queue_name else "extraction"
         domain: str | None = None
         lock_key: str | None = None
+        # Bound early like domain and lock_key: the UnlearnablePage except clause
+        # below reads it, and it must exist even if the try raises before the
+        # line that would otherwise assign it.
+        url: str | None = None
 
         try:
             task = json.loads(message)
@@ -438,6 +376,35 @@ class LLMWorker:
             self.release_learning(domain, adapter_type)
             return False
 
+        except TruthAgentUnreadable as exc:
+            # Unlike UnlearnablePage, the same page may well yield a readable answer
+            # next time, since a truncated or wrongly-shaped generation is what the
+            # loop already requeues elsewhere for an undeterminable has_existing_pr.
+            logger.error(
+                "Truth agent reply unreadable for domain=%s url=%s adapter_type=%s: %s",
+                domain,
+                url,
+                adapter_type,
+                exc,
+            )
+            self.release_learning(domain, adapter_type)
+            self.redis_client.lpush(queue_name, message)
+            return True
+
+        except UnlearnablePage as exc:
+            # Dropped rather than requeued: the same page yields the same answer, so
+            # a requeue only spins, and the next crawl re-enqueues the board anyway.
+            logger.error(
+                "Learned nothing for domain=%s url=%s adapter_type=%s: %s",
+                domain,
+                url,
+                adapter_type,
+                exc,
+            )
+            # Held to its TTL rather than released: this path opens no PR, so nothing
+            # else stops every other queued task for this board from each running a
+            # full truth-agent call before being dropped the same way.
+            return False
         except json.JSONDecodeError as exc:
             logger.error("Failed to decode task message: %s", exc)
             return False

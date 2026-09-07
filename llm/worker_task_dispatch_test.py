@@ -5,7 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from llm.worker import LLMWorker, _adapter_names
+from llm.adapter_files import _adapter_names
+from llm.worker import LLMWorker, TruthAgentUnreadable, UnlearnablePage
 
 
 class TestProcessTask(unittest.TestCase):
@@ -102,13 +103,15 @@ class TestProcessTask(unittest.TestCase):
         self.mock_redis.set.return_value = True
         llm = mock_llm_cls.return_value
         llm.model_name = "qwen3.8:27b-mlx"
-        llm.generate_expected.return_value = json.dumps({"title": "Staff Engineer"})
+        llm.generate_expected.return_value = json.dumps(
+            {"title": "Staff Engineer", "description": "We build things."}
+        )
         llm.generate_code.return_value = "class NewboardComExtractionAdapter: pass"
         self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch("llm.worker._ADAPTERS_DIR", Path(tmp)),
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
             patch.dict(os.environ, {"OLLAMA_MODEL": "qwen3-coder:30b"}),
         ):
             (Path(tmp) / "base.py").write_text("class ExtractionAdapter: pass\n")
@@ -142,6 +145,80 @@ class TestProcessTask(unittest.TestCase):
         self.assertFalse(kwargs["passed"])
         self.assertEqual(kwargs["test_output"], "FAILED: 1 test")
         self._assert_lease_released()
+
+    @patch("llm.worker.logger")
+    def test_unlearnable_page_drops_the_task_without_publishing_or_requeueing(
+        self, mock_logger
+    ):
+        """A truth agent that grounds nothing gets no PR: a requeue would only spin."""
+        self.mock_redis.set.return_value = True
+        exc = UnlearnablePage("truth agent grounded no title or description")
+        self.worker._learn_extraction = MagicMock(side_effect=exc)
+
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        result = self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        self.assertIs(result, False)
+        self.mock_publisher.publish.assert_not_called()
+        self.mock_redis.lpush.assert_not_called()
+        self.mock_redis.delete.assert_not_called()
+        # The dedicated handler names domain, url and adapter type at error level,
+        # rather than the generic catch-all's "Unexpected error" with a stack trace.
+        mock_logger.error.assert_called_once_with(
+            "Learned nothing for domain=%s url=%s adapter_type=%s: %s",
+            "newboard.com",
+            "https://newboard.com/job/1",
+            "extraction",
+            exc,
+        )
+
+    @patch("llm.worker.logger")
+    def test_truth_agent_unreadable_requeues_releases_and_backs_off(self, mock_logger):
+        """Unlike UnlearnablePage, an unreadable reply is a transient model failure,
+        not a fact about the page, so it goes back on the queue instead of being
+        dropped, and the lease is released so a retry does not wait out the TTL."""
+        self.mock_redis.set.return_value = True
+        exc = TruthAgentUnreadable("truth agent reply could not be parsed")
+        self.worker._learn_extraction = MagicMock(side_effect=exc)
+
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        result = self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        self.assertIs(result, True)
+        self.mock_publisher.publish.assert_not_called()
+        self.mock_redis.lpush.assert_called_once_with(
+            "extraction_learning_tasks", task_payload
+        )
+        self._assert_lease_released()
+        mock_logger.error.assert_called_once_with(
+            "Truth agent reply unreadable for domain=%s url=%s adapter_type=%s: %s",
+            "newboard.com",
+            "https://newboard.com/job/1",
+            "extraction",
+            exc,
+        )
+
+    def test_unlearnable_page_holds_the_lease_instead_of_releasing_it(self):
+        """No PR opens on this path, so nothing else suppresses the rest of a
+        board's queued tasks, which means releasing the lease here would let each
+        of them run a full truth-agent call before being dropped the same way.
+        """
+        self.mock_redis.set.return_value = True
+        self.worker._learn_extraction = MagicMock(
+            side_effect=UnlearnablePage("truth agent grounded no title")
+        )
+        self.worker.release_learning = MagicMock()
+
+        task_payload = json.dumps(
+            {"url": "https://newboard.com/job/1", "html_content": "<html/>"}
+        ).encode("utf-8")
+        self.worker.process_task(task_payload, "extraction_learning_tasks")
+
+        self.worker.release_learning.assert_not_called()
 
     def test_failed_publish_releases_the_lease_so_the_next_crawl_retries(self):
         """No PR exists, so the gh check will not skip it next time."""
