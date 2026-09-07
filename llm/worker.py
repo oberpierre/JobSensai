@@ -70,6 +70,10 @@ def _parse_json_object(raw: str) -> dict:
     return {}
 
 
+class UnlearnablePage(Exception):
+    """The truth agent grounded nothing on the page, so there is no adapter to write."""
+
+
 # The Silver-schema keys the extraction truth agent enumerates into expected.json.
 _SILVER_FIELDS = (
     "title",
@@ -150,9 +154,12 @@ class LLMWorker:
 
         truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
+        job_links = truth.get("job_links", [])
+        if not job_links:
+            raise UnlearnablePage("truth agent grounded no job links")
         expected = {
             "url": url,
-            "job_links": truth.get("job_links", []),
+            "job_links": job_links,
             "next_page_links": truth.get("next_page_links", []),
         }
         _write_snapshot(names, "index.html", cleaned, expected, "DiscoverySnapshotTest")
@@ -181,6 +188,11 @@ class LLMWorker:
 
         truth = _parse_json_object(llm.generate_expected("extraction", cleaned, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
+        if (
+            not str(truth.get("title") or "").strip()
+            or not str(truth.get("description") or "").strip()
+        ):
+            raise UnlearnablePage("truth agent grounded no title or description")
         expected = {"url": url}
         for field in _SILVER_FIELDS:
             if field in truth:
@@ -343,6 +355,18 @@ class LLMWorker:
             self.release_learning(domain, adapter_type)
             return False
 
+        except UnlearnablePage as exc:
+            # Dropped rather than requeued: the same page yields the same answer, so
+            # a requeue only spins, and the next crawl re-enqueues the board anyway.
+            logger.error(
+                "Learned nothing for domain=%s url=%s adapter_type=%s: %s",
+                domain,
+                url,
+                adapter_type,
+                exc,
+            )
+            self.release_learning(domain, adapter_type)
+            return False
         except json.JSONDecodeError as exc:
             logger.error("Failed to decode task message: %s", exc)
             return False

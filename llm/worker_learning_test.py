@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from llm.worker import LLMWorker, _parse_json_object
+from llm.worker import LLMWorker, UnlearnablePage, _parse_json_object
 
 
 class TestParseJsonObject(unittest.TestCase):
@@ -78,6 +78,30 @@ class TestLearnDiscovery(unittest.TestCase):
         self.assertIn("/jobs/1", lean_code)
 
 
+class TestLearnDiscoveryUnlearnable(unittest.TestCase):
+    @patch("llm.worker.LLMModel")
+    def test_empty_job_links_raises_before_writing_anything(self, mock_llm_cls):
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = json.dumps(
+            {"job_links": [], "next_page_links": []}
+        )
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
+        ):
+            with self.assertRaises(UnlearnablePage):
+                worker._learn_discovery(
+                    "acme.com",
+                    "https://acme.com/jobs",
+                    "<html><body>no anchors here</body></html>",
+                )
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+        llm.generate_code.assert_not_called()
+
+
 class TestLearnExtraction(unittest.TestCase):
     @patch("llm.worker.LLMModel")
     def test_writes_detail_fixture_and_snapshot_test(self, mock_llm_cls):
@@ -135,6 +159,43 @@ class TestLearnExtraction(unittest.TestCase):
         self.assertIn("Staff Engineer", llm.generate_expected.call_args.args[1])
         self.assertEqual(llm.generate_code.call_args.args[0], "extraction")
         self.assertIn("Staff Engineer", llm.generate_code.call_args.args[1])
+
+
+class TestLearnExtractionUnlearnable(unittest.TestCase):
+    def _assert_raises_and_writes_nothing(self, mock_llm_cls, truth: dict):
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = json.dumps(truth)
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
+        ):
+            with self.assertRaises(UnlearnablePage):
+                worker._learn_extraction(
+                    "acme.com",
+                    "https://acme.com/job/1",
+                    "<html><body>no posting content</body></html>",
+                )
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+        llm.generate_code.assert_not_called()
+
+    @patch("llm.worker.LLMModel")
+    def test_absent_title_and_description_raises_before_writing_anything(
+        self, mock_llm_cls
+    ):
+        self._assert_raises_and_writes_nothing(
+            mock_llm_cls, {"company_name": "Acme", "locations": ["Remote"]}
+        )
+
+    @patch("llm.worker.LLMModel")
+    def test_blank_title_and_description_raises_before_writing_anything(
+        self, mock_llm_cls
+    ):
+        self._assert_raises_and_writes_nothing(
+            mock_llm_cls, {"title": "  ", "description": ""}
+        )
 
 
 if __name__ == "__main__":
