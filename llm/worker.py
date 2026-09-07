@@ -14,6 +14,7 @@ from llm.adapter_files import (
     _WORKSPACE_ROOT,
     AdapterNames,
     _adapter_names,
+    _read_base_code,
     _write_adapter,
     _write_snapshot,
 )
@@ -41,6 +42,16 @@ _REQUEUE_BACKOFF_SECONDS = int(os.getenv("REQUEUE_BACKOFF_SECONDS", "30"))
 # A dense model reasoning over a wide context can outlive the default lease, letting a
 # second learning run start on the same domain before the first releases it.
 _LEASE_TTL_SECONDS = int(os.getenv("LEARNING_LEASE_TTL_SECONDS", "1800"))
+
+
+def _strip_code_fences(text: str) -> str:
+    """Drop a leading/trailing markdown code fence if the model wrapped its output."""
+    lines = text.strip().splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip() + "\n"
 
 
 def _parse_json_object(raw: str) -> dict:
@@ -145,7 +156,12 @@ class LLMWorker:
             "next_page_links": truth.get("next_page_links", []),
         }
         _write_snapshot(names, "index.html", cleaned, expected, "DiscoverySnapshotTest")
-        _write_adapter(names, "discovery", lean, [domain], llm)
+        adapter_src = _strip_code_fences(
+            llm.generate_code(
+                "discovery", lean, names.adapter_class, [domain], _read_base_code()
+            )
+        )
+        _write_adapter(names, adapter_src)
         logger.info("Generated discovery adapter and snapshot for %s", names.basename)
         return names, llm.model_name
 
@@ -172,7 +188,12 @@ class LLMWorker:
         _write_snapshot(
             names, "detail.html", cleaned, expected, "ExtractionSnapshotTest"
         )
-        _write_adapter(names, "extraction", cleaned, [domain], llm)
+        adapter_src = _strip_code_fences(
+            llm.generate_code(
+                "extraction", cleaned, names.adapter_class, [domain], _read_base_code()
+            )
+        )
+        _write_adapter(names, adapter_src)
         logger.info("Generated extraction adapter and snapshot for %s", names.basename)
         return names, llm.model_name
 

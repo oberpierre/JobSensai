@@ -8,8 +8,6 @@ from typing import NamedTuple
 
 from dotenv import load_dotenv
 
-from llm.model import LLMModel
-
 # The paths below are read at import time, which is before the importing module's own
 # load_dotenv() call has run.
 load_dotenv()
@@ -72,16 +70,6 @@ def _adapter_names(domain: str, adapter_type: str, version: int = 1) -> AdapterN
     )
 
 
-def _strip_code_fences(text: str) -> str:
-    """Drop a leading/trailing markdown code fence if the model wrapped its output."""
-    lines = text.strip().splitlines()
-    if lines and lines[0].startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].startswith("```"):
-        lines = lines[:-1]
-    return "\n".join(lines).strip() + "\n"
-
-
 def _write_fixture(basename: str, filename: str, content: str) -> Path:
     fixture_dir = _ADAPTERS_DIR / "fixtures" / basename
     fixture_dir.mkdir(parents=True, exist_ok=True)
@@ -115,16 +103,11 @@ def _write_snapshot(
     (_ADAPTERS_DIR / f"{names.basename}_test.py").write_text(test_source)
 
 
-def _write_adapter(
-    names: AdapterNames,
-    adapter_type: str,
-    html: str,
-    domains: list[str],
-    llm: LLMModel,
-) -> None:
-    """Code agent → the adapter that must satisfy the (withheld) snapshot."""
-    base_code = (_ADAPTERS_DIR / "base.py").read_text()
-    adapter_src = _strip_code_fences(
-        llm.generate_code(adapter_type, html, names.adapter_class, domains, base_code)
-    )
+def _read_base_code() -> str:
+    """Read now rather than at import: tests patch ``_ADAPTERS_DIR`` afterwards."""
+    return (_ADAPTERS_DIR / "base.py").read_text()
+
+
+def _write_adapter(names: AdapterNames, adapter_src: str) -> None:
+    """Write the finished adapter source the code agent produced."""
     (_ADAPTERS_DIR / f"{names.basename}.py").write_text(adapter_src)

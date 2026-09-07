@@ -50,7 +50,6 @@ py_library(
     srcs = ["adapter_files.py"],
     imports = [".."],
     deps = [
-        ":model",
         "@pip//python_dotenv",
     ],
     visibility = ["//visibility:public"],
