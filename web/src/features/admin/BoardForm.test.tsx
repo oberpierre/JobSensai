@@ -2,30 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { AdminBoards } from "./AdminBoards";
 import { ApiError } from "../../api/ApiError";
-import { renderWithProviders } from "../../../test/TestProviders";
+import {
+  board,
+  renderAdminBoardsWithProviders,
+} from "../../../test/AdminBoardsHarness";
 import type { BoardsApi } from "../../api/boardsApi";
-import type { Board } from "../../api/types";
-
-function board(overrides: Partial<Board> = {}): Board {
-  return {
-    id: "1",
-    name: "Google · all roles",
-    url: "https://www.google.com/careers",
-    type: "html_crawl",
-    active: true,
-    posting_count: 12,
-    health: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    ...overrides,
-  };
-}
-
-function renderAdminBoardsWithProviders(api: Partial<BoardsApi>) {
-  return renderWithProviders(<AdminBoards />, { boardsApi: api });
-}
 
 // Drives the form through the screen that owns its mutations, so the payload each
 // mode submits is asserted at the API boundary.
