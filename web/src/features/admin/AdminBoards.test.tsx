@@ -6,27 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 import { AdminBoards } from "./AdminBoards";
 import { ApiError } from "../../api/ApiError";
 import { renderWithProviders } from "../../../test/TestProviders";
+import {
+  board,
+  renderAdminBoardsWithProviders,
+} from "../../../test/AdminBoardsHarness";
 import type { BoardsApi } from "../../api/boardsApi";
-import type { Board } from "../../api/types";
-
-function board(overrides: Partial<Board> = {}): Board {
-  return {
-    id: "1",
-    name: "Google · all roles",
-    url: "https://www.google.com/careers",
-    type: "html_crawl",
-    active: true,
-    posting_count: 12,
-    health: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    ...overrides,
-  };
-}
-
-function renderAdminBoardsWithProviders(api: Partial<BoardsApi>) {
-  return renderWithProviders(<AdminBoards />, { boardsApi: api });
-}
 
 // Renders alongside AdminBoards so the test can read the same client the
 // component's own useQueryClient() call would see, without reaching into

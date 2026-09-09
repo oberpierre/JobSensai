@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { MicroLabel } from "../../components/MicroLabel";
 import { ActiveToggle } from "../../components/ActiveToggle";
+import { ErrorNote } from "../../components/ErrorNote";
 import type { BoardType } from "../../api/types";
-import styles from "./AdminBoards.module.scss";
+import styles from "./BoardForm.module.scss";
 
-// Shares AdminBoards.module.scss with the screen it sits in: the form renders as a
-// row of that table.
 export function BoardForm({
   mode,
   initialName = "",
@@ -129,7 +128,7 @@ export function BoardForm({
           Cancel
         </button>
       </div>
-      {error && <p className={styles.formError}>{error}</p>}
+      {error && <ErrorNote message={error} />}
     </form>
   );
 }

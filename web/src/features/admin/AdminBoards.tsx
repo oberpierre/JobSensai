@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MicroLabel } from "../../components/MicroLabel";
 import { ActiveToggle } from "../../components/ActiveToggle";
+import { ErrorNote } from "../../components/ErrorNote";
 import {
   StateCard,
   LoadingState,
@@ -144,7 +145,7 @@ export function AdminBoards() {
         </button>
       </div>
 
-      {rowError && <p className={styles.formError}>{rowError}</p>}
+      {rowError && <ErrorNote message={rowError} />}
 
       {isPending && <LoadingState />}
       {isError && (
