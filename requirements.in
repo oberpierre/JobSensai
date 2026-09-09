@@ -11,6 +11,7 @@ scrapy-playwright==0.0.44
 
 # Database
 sqlalchemy==2.0.44
+alembic==1.19.2
 psycopg2-binary==2.9.11
 redis==7.1.0
 
