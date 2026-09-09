@@ -3,12 +3,18 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 package(default_visibility = ["//visibility:public"])
 
 # Models and the DB session/engine, split out so the API package can depend
-# on the schema without dragging Scrapy and Playwright into its image.
+# on the schema without dragging Scrapy and Playwright into its image. The
+# migrations tree's Python files are srcs, not data, so the ruff_test label
+# already listed for this target covers them too. The non-Python files
+# (script.py.mako) still ship as data, or Alembic reports no such revision
+# path rather than a build error.
 py_library(
     name = "models_lib",
-    srcs = ["models.py", "database.py"],
+    srcs = ["models.py", "database.py"] + glob(["migrations/**/*.py"]),
+    data = glob(["migrations/**"], exclude = ["migrations/**/*.py"]),
     imports = ["."],
     deps = [
+        "@pip//alembic",
         "@pip//sqlalchemy",
         "@pip//psycopg2_binary",
         "@pip//python_dotenv",
