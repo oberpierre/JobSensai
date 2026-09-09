@@ -63,6 +63,10 @@ def init_db():
         _acquire_lock(connection)
         try:
             _run_migrations(connection)
+            # Alembic's begin_transaction() is a no-op on a connection the caller
+            # already began, so the caller is the one that has to land it, or
+            # closing the connection below rolls the whole upgrade back.
+            connection.commit()
         except Exception:
             # A failed migration leaves the connection's transaction aborted, and
             # the unlock below is a further statement on that same connection, so

@@ -55,9 +55,12 @@ class TestInitDbMigrationLock(unittest.TestCase):
         engine_patcher = patch.object(database, "engine")
         mock_engine = engine_patcher.start()
         self.addCleanup(engine_patcher.stop)
-        mock_engine.connect.return_value = self.connection
+        # A distinct object per call, so a second call to connect() would hand
+        # _run_migrations a connection other than the one the lock was taken on,
+        # and the identity assertion below would catch it.
+        mock_engine.connect.side_effect = [self.connection, MagicMock(name="other")]
 
-    def test_lock_taken_migration_run_and_lock_released_in_order_on_same_connection(
+    def test_lock_taken_migration_committed_and_lock_released_in_order_on_same_conn(
         self,
     ):
         calls = []
@@ -78,9 +81,14 @@ class TestInitDbMigrationLock(unittest.TestCase):
                 side_effect=lambda c: calls.append(("release", c)),
             ),
         ):
+            self.connection.commit.side_effect = lambda: calls.append(
+                ("commit", self.connection)
+            )
             database.init_db()
 
-        self.assertEqual([step for step, _ in calls], ["acquire", "upgrade", "release"])
+        self.assertEqual(
+            [step for step, _ in calls], ["acquire", "upgrade", "commit", "release"]
+        )
         self.assertTrue(all(conn is self.connection for _, conn in calls))
         self.connection.close.assert_called_once()
 
