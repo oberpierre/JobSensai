@@ -8,9 +8,11 @@ Create Date: ${create_date}
 from collections.abc import Sequence
 from typing import Union
 
-from alembic import op
 import sqlalchemy as sa
-${imports if imports else ""}
+from alembic import op
+% if imports:
+${imports}
+% endif
 
 # revision identifiers, used by Alembic.
 revision: str = ${repr(up_revision)}
