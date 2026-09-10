@@ -91,6 +91,26 @@ py_binary(
     python_version = "PY3",
 )
 
+# Operator-run authoring CLI for Alembic migrations: `revision` autogenerates
+# one, `check` reports whether the models and the chain still agree. Depends
+# on :models_lib alone, not :scraper_lib, since it never touches Scrapy. Reads
+# .env for its own Postgres connection settings, unlike :main/:worker/etc,
+# which get theirs from the deploy's Secrets instead.
+py_binary(
+    name = "migrate",
+    srcs = ["migrations_cli.py"],
+    main = "migrations_cli.py",
+    data = ["//:env"],
+    imports = ["."],
+    deps = [
+        ":models_lib",
+        "@pip//alembic",
+        "@pip//sqlalchemy",
+        "@pip//python_dotenv",
+    ],
+    python_version = "PY3",
+)
+
 py_test(
     name = "main_test",
     srcs = ["main_test.py"],
@@ -158,6 +178,17 @@ py_test(
     imports = ["."],
     deps = [
         ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "migrations_cli_test",
+    srcs = ["migrations_cli_test.py"],
+    imports = ["."],
+    deps = [
+        ":migrate",
+        ":models_lib",
     ],
     python_version = "PY3",
 )
