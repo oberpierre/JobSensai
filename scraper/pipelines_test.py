@@ -49,7 +49,9 @@ class TestProcessItemCarriesStartUrlId(unittest.TestCase):
         start_url_id = uuid.uuid4()
         item = RawJobItem()
         item["url"] = "https://example.com/job/1"
-        item["html_content"] = "<html/>"
+        item["raw_content"] = "<html/>"
+        item["source_url"] = "https://example.com/job/1"
+        item["content_type"] = "text/html"
         item["start_url_id"] = str(start_url_id)
         item["metadata"] = {"spider_name": "test_spider"}
 
@@ -60,7 +62,9 @@ class TestProcessItemCarriesStartUrlId(unittest.TestCase):
         ]
         posting = RawJobPosting(
             url=pushed_item["url"],
-            html_content=pushed_item["html_content"],
+            raw_content=pushed_item["raw_content"],
+            source_url=pushed_item["source_url"],
+            content_type=pushed_item["content_type"],
             start_url_id=pushed_item["start_url_id"],
         )
         self.assertEqual(str(posting.start_url_id), str(start_url_id))

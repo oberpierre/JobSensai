@@ -2,8 +2,8 @@ import unittest
 import uuid
 
 from scraper.models import (
+    START_URL_TYPE_API,
     START_URL_TYPE_HTML_CRAWL,
-    START_URL_TYPE_JSON_API,
     JobPosting,
     RawJobPosting,
     StartUrl,
@@ -23,14 +23,15 @@ class TestModels(unittest.TestCase):
         self.assertEqual(start_url.type, START_URL_TYPE_HTML_CRAWL)
 
     def test_start_url_type_constants_are_distinct(self):
-        self.assertNotEqual(START_URL_TYPE_HTML_CRAWL, START_URL_TYPE_JSON_API)
+        self.assertNotEqual(START_URL_TYPE_HTML_CRAWL, START_URL_TYPE_API)
 
     def test_raw_job_posting_carries_its_start_url_id(self):
         start_url_id = uuid.uuid4()
         posting = RawJobPosting(
             id=uuid.uuid4(),
             url="https://example.com/job/1",
-            html_content="<html/>",
+            raw_content="<html/>",
+            source_url="https://example.com/job/1",
             start_url_id=start_url_id,
         )
 
@@ -62,6 +63,19 @@ class TestStartUrlDeletion(unittest.TestCase):
 
         self.assertEqual(foreign_key.ondelete, "SET NULL")
         self.assertTrue(column.nullable)
+
+
+class TestRawJobPostingBronzeColumns(unittest.TestCase):
+    def test_content_type_is_not_null_and_defaults_to_text_html(self):
+        column = RawJobPosting.__table__.columns["content_type"]
+
+        self.assertFalse(column.nullable)
+        self.assertEqual(column.default.arg, "text/html")
+
+    def test_source_url_is_not_null(self):
+        column = RawJobPosting.__table__.columns["source_url"]
+
+        self.assertFalse(column.nullable)
 
 
 class TestStartUrlActive(unittest.TestCase):

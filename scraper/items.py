@@ -8,7 +8,9 @@ class RawJobItem(Item):
 
     # Core fields
     url = Field()  # Unique identifier
-    html_content = Field()
+    raw_content = Field()
+    content_type = Field()
+    source_url = Field()
 
     # Which start_urls row the request that discovered this page came from
     start_url_id = Field()

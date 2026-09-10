@@ -116,11 +116,11 @@ class SilverWorker:
 
                 adapter = self.registry.get_extraction_adapter(url)
                 if not adapter:
-                    self._handle_missing_or_failed_adapter(url, raw_job.html_content)
+                    self._handle_missing_or_failed_adapter(url, raw_job.raw_content)
                     return
 
                 try:
-                    extracted_data = adapter.extract(raw_job.html_content, url)
+                    extracted_data = adapter.extract(raw_job.raw_content, url)
 
                     if not extracted_data:
                         raise ValueError("Extraction returned empty data")
@@ -129,7 +129,7 @@ class SilverWorker:
 
                 except Exception as e:
                     logger.error(f"Adapter extraction failed for URL {url}: {e}")
-                    self._handle_missing_or_failed_adapter(url, raw_job.html_content)
+                    self._handle_missing_or_failed_adapter(url, raw_job.raw_content)
 
             finally:
                 db.close()

@@ -32,7 +32,7 @@ class TestSilverWorker(unittest.TestCase):
             mock_filter = MagicMock()
             if model == RawJobPosting:
                 mock_filter.first.return_value = RawJobPosting(
-                    url="https://google.com/job/1", html_content="<html></html>"
+                    url="https://google.com/job/1", raw_content="<html></html>"
                 )
             else:
                 mock_filter.first.return_value = None
@@ -70,7 +70,7 @@ class TestSilverWorker(unittest.TestCase):
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
         mock_db.query().filter().first.return_value = RawJobPosting(
-            url="https://google.com/job/1", html_content="<html></html>"
+            url="https://google.com/job/1", raw_content="<html></html>"
         )
 
         mock_adapter = MagicMock()
@@ -92,7 +92,7 @@ class TestSilverWorker(unittest.TestCase):
         mock_session_local.return_value = mock_db
 
         mock_raw_job = RawJobPosting(
-            url="https://unknown.com/job/1", html_content="<html></html>"
+            url="https://unknown.com/job/1", raw_content="<html></html>"
         )
         mock_db.query().filter().first.return_value = mock_raw_job
 

@@ -39,14 +39,19 @@ class TestCandidateQuery(unittest.TestCase):
         self.session.add_all(
             [
                 RawJobPosting(
-                    url="https://example.com/candidate", html_content="<html/>"
+                    url="https://example.com/candidate",
+                    raw_content="<html/>",
+                    source_url="https://example.com/candidate",
                 ),
                 RawJobPosting(
-                    url="https://example.com/matched", html_content="<html/>"
+                    url="https://example.com/matched",
+                    raw_content="<html/>",
+                    source_url="https://example.com/matched",
                 ),
                 RawJobPosting(
                     url="https://example.com/deleted",
-                    html_content="<html/>",
+                    raw_content="<html/>",
+                    source_url="https://example.com/deleted",
                     deleted_at=datetime.now(timezone.utc),
                 ),
             ]

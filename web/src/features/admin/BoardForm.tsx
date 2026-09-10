@@ -100,13 +100,11 @@ export function BoardForm({
             <button
               type="button"
               className={
-                type === "json_api"
-                  ? styles.typeOptionActive
-                  : styles.typeOption
+                type === "api" ? styles.typeOptionActive : styles.typeOption
               }
-              onClick={() => setType("json_api")}
+              onClick={() => setType("api")}
             >
-              JSON API
+              API
             </button>
           </div>
         </div>

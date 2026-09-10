@@ -42,7 +42,7 @@ describe("AdminBoards", () => {
       listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
         items: [
           board({ id: "1", name: "Alpha", type: "html_crawl" }),
-          board({ id: "2", name: "Zebra", type: "json_api" }),
+          board({ id: "2", name: "Zebra", type: "api" }),
         ],
       }),
     });
@@ -50,7 +50,7 @@ describe("AdminBoards", () => {
     expect(await screen.findByText("Alpha")).toBeInTheDocument();
     expect(screen.getByText("Zebra")).toBeInTheDocument();
     expect(screen.getByText("HTML crawl")).toBeInTheDocument();
-    expect(screen.getByText("JSON API")).toBeInTheDocument();
+    expect(screen.getByText("API")).toBeInTheDocument();
   });
 
   it("renders a null posting_count as an em dash", async () => {
@@ -268,12 +268,12 @@ describe("AdminBoards", () => {
     });
   });
 
-  it("greys a json_api row and leaves an html_crawl row plain", async () => {
+  it("greys an api row and leaves an html_crawl row plain", async () => {
     renderAdminBoardsWithProviders({
       listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
         items: [
           board({ id: "1", name: "Alpha", type: "html_crawl" }),
-          board({ id: "2", name: "Zebra", type: "json_api" }),
+          board({ id: "2", name: "Zebra", type: "api" }),
         ],
       }),
     });

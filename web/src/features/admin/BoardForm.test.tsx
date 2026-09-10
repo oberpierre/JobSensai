@@ -42,6 +42,37 @@ describe("BoardForm", () => {
     );
   });
 
+  it("picking API in the create form reaches createBoard as the type", async () => {
+    const listBoards = vi
+      .fn<BoardsApi["listBoards"]>()
+      .mockResolvedValueOnce({ items: [] })
+      .mockResolvedValue({ items: [board({ type: "api" })] });
+    const createBoard = vi
+      .fn<BoardsApi["createBoard"]>()
+      .mockResolvedValue(board({ type: "api" }));
+    renderAdminBoardsWithProviders({ listBoards, createBoard });
+
+    await screen.findByText("Nothing here yet.");
+    const user = userEvent.setup();
+    await user.click(screen.getByText("+ Add board"));
+    await user.type(screen.getByPlaceholderText(/e.g. Google/), "New board");
+    await user.type(
+      screen.getByPlaceholderText("https://…"),
+      "https://new.example.com",
+    );
+    await user.click(screen.getByText("API", { selector: "button" }));
+    await user.click(screen.getByText("Save"));
+
+    await waitFor(() =>
+      expect(createBoard).toHaveBeenCalledWith({
+        name: "New board",
+        url: "https://new.example.com",
+        active: true,
+        type: "api",
+      }),
+    );
+  });
+
   it("the edit form carries no type control", async () => {
     renderAdminBoardsWithProviders({
       listBoards: vi
@@ -56,7 +87,7 @@ describe("BoardForm", () => {
       screen.queryByText("HTML crawl", { selector: "button" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("JSON API", { selector: "button" }),
+      screen.queryByText("API", { selector: "button" }),
     ).not.toBeInTheDocument();
   });
 

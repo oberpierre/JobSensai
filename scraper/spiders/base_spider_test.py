@@ -29,7 +29,7 @@ class TestCreateItem(unittest.TestCase):
         )
 
         self.assertEqual(item["url"], "https://example.com/job/1")
-        self.assertEqual(item["html_content"], "<html/>")
+        self.assertEqual(item["raw_content"], "<html/>")
         self.assertEqual(item["start_url_id"], str(start_url_id))
         self.assertEqual(item["metadata"]["spider_name"], "fixture")
 
@@ -39,6 +39,27 @@ class TestCreateItem(unittest.TestCase):
         item = spider.create_item(url="https://example.com/job/1", html="<html/>")
 
         self.assertIsNone(item["start_url_id"])
+
+    def test_source_url_and_content_type_default_when_omitted(self):
+        spider = _FixtureSpider()
+
+        item = spider.create_item(url="https://example.com/job/1", html="<html/>")
+
+        self.assertEqual(item["source_url"], "https://example.com/job/1")
+        self.assertEqual(item["content_type"], "text/html")
+
+    def test_source_url_and_content_type_pass_through_when_given(self):
+        spider = _FixtureSpider()
+
+        item = spider.create_item(
+            url="https://example.com/job/1",
+            html='{"title": "x"}',
+            source_url="https://api.example.com/feed",
+            content_type="application/json",
+        )
+
+        self.assertEqual(item["source_url"], "https://api.example.com/feed")
+        self.assertEqual(item["content_type"], "application/json")
 
     def test_start_url_id_is_keyword_only(self):
         # A positional 3rd argument must raise rather than silently bind to

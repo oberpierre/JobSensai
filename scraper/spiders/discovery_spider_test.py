@@ -9,8 +9,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
 from scraper.models import (
+    START_URL_TYPE_API,
     START_URL_TYPE_HTML_CRAWL,
-    START_URL_TYPE_JSON_API,
     Base,
     StartUrl,
 )
@@ -48,7 +48,7 @@ class TestLoadStartUrls(unittest.TestCase):
                 StartUrl(
                     name="beta-api",
                     url="https://beta.example.com/api",
-                    type=START_URL_TYPE_JSON_API,
+                    type=START_URL_TYPE_API,
                 ),
             ]
         )
@@ -126,12 +126,12 @@ class TestLoadStartUrls(unittest.TestCase):
         # operator which of the two they are looking at.
         self.assertIn("out of 0 configured", logs.output[0])
 
-    def test_table_holding_only_json_api_rows_warns_and_yields_nothing(self):
+    def test_table_holding_only_api_rows_warns_and_yields_nothing(self):
         self.session.add(
             StartUrl(
                 name="only-api",
                 url="https://api.example.com",
-                type=START_URL_TYPE_JSON_API,
+                type=START_URL_TYPE_API,
             )
         )
         self.session.commit()
@@ -234,6 +234,19 @@ class TestParseJob(unittest.TestCase):
         items = list(spider.parse_job(response))
 
         self.assertIsNone(items[0]["start_url_id"])
+
+    def test_sets_source_url_and_content_type_from_the_response(self):
+        spider = DiscoverySpider()
+        response = MagicMock()
+        response.url = "https://a.example.com/job/1"
+        response.text = "<html>job</html>"
+        response.meta = {}
+        response.headers = {"Content-Type": b"text/html"}
+
+        items = list(spider.parse_job(response))
+
+        self.assertEqual(items[0]["source_url"], "https://a.example.com/job/1")
+        self.assertEqual(items[0]["content_type"], "text/html")
 
 
 if __name__ == "__main__":

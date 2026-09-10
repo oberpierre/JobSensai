@@ -29,14 +29,18 @@ class BaseJobSpider(scrapy.Spider, ABC):
         html: str,
         *,
         start_url_id: uuid.UUID | None = None,
+        source_url: str | None = None,
+        content_type: str | None = None,
         **metadata: Any,
     ) -> RawJobItem:
         """Create a RawJobItem with common metadata.
 
         Args:
             url: Job posting URL
-            html: Raw HTML content
+            html: Raw content fetched for the posting
             start_url_id: id of the start_urls row whose crawl discovered this page
+            source_url: URL actually fetched, defaulting to url for a crawled posting
+            content_type: what html holds, defaulting to text/html
             **metadata: Additional metadata fields
 
         Returns:
@@ -44,8 +48,10 @@ class BaseJobSpider(scrapy.Spider, ABC):
         """
         item = RawJobItem()
         item["url"] = url
-        item["html_content"] = html
+        item["raw_content"] = html
         item["start_url_id"] = str(start_url_id) if start_url_id is not None else None
+        item["source_url"] = source_url if source_url is not None else url
+        item["content_type"] = content_type or "text/html"
         item["metadata"] = {
             "spider_name": self.name,
             **metadata,
