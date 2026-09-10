@@ -211,10 +211,7 @@ export function AdminBoards() {
               error={formError}
               onCancel={cancelForm}
               onSubmit={(values) =>
-                createMutation.mutate({
-                  ...values,
-                  type: values.type ?? "html_crawl",
-                })
+                createMutation.mutate({ ...values, type: values.type! })
               }
             />
           )}
@@ -237,16 +234,14 @@ function BoardRow({
   onToggleActive: () => void;
   toggling: boolean;
 }) {
-  const isJsonApi = board.type === "json_api";
+  const isApi = board.type === "api";
   return (
-    <div className={isJsonApi ? styles.rowGreyed : styles.row}>
+    <div className={isApi ? styles.rowGreyed : styles.row}>
       <div className={styles.nameCell}>
         <span className={styles.name}>{board.name}</span>
         <span className={styles.url}>{board.url}</span>
       </div>
-      <span className={styles.type}>
-        {isJsonApi ? "JSON API" : "HTML crawl"}
-      </span>
+      <span className={styles.type}>{isApi ? "API" : "HTML crawl"}</span>
       <span className={styles.count}>
         {board.posting_count === null ? "—" : board.posting_count}
       </span>

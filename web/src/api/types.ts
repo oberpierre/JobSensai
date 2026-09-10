@@ -50,7 +50,7 @@ export interface FacetsResponse {
   employment_type: FacetValue[];
 }
 
-export type BoardType = "html_crawl" | "json_api";
+export type BoardType = "html_crawl" | "api";
 
 export interface Board {
   id: string;

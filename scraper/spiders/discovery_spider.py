@@ -71,7 +71,7 @@ class DiscoverySpider(BaseJobSpider):
         """Return (start_url_id, url) pairs to crawl, ordered by name.
 
         Reads `html_crawl` rows that are `active`. An empty table and a table holding
-        only `json_api` or inactive rows are the same situation from an operator's
+        only `api` or inactive rows are the same situation from an operator's
         side, namely that the table is not driving this crawl, so all of them are
         covered by the one warning below rather than a separate one per case.
         """
@@ -187,6 +187,8 @@ class DiscoverySpider(BaseJobSpider):
             url=response.url,
             html=html_content,
             start_url_id=response.meta.get("start_url_id"),
+            source_url=response.url,
+            content_type=response.headers.get("Content-Type", b"text/html").decode(),
             # title=title,  # Additional metadata
         )
 

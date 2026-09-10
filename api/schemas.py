@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 
-BoardType = Literal["html_crawl", "json_api"]
+BoardType = Literal["html_crawl", "api"]
 
 
 def as_utc(value: datetime) -> datetime:

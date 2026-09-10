@@ -8,7 +8,7 @@ from sqlalchemy.sql import func
 Base = declarative_base()
 
 START_URL_TYPE_HTML_CRAWL = "html_crawl"
-START_URL_TYPE_JSON_API = "json_api"
+START_URL_TYPE_API = "api"
 
 
 class StartUrl(Base):
@@ -60,7 +60,13 @@ class RawJobPosting(Base):
     # URL is the natural key for deduplication
     url = Column(Text, unique=True, nullable=False, index=True)
 
-    html_content = Column(Text, nullable=False)
+    raw_content = Column(Text, nullable=False)
+    # What raw_content holds: page HTML for a crawled posting, the posting's own
+    # document for one reached by API.
+    content_type = Column(Text, nullable=False, default="text/html")
+    # The URL actually fetched, which for an API posting is the feed rather than
+    # the posting's own url.
+    source_url = Column(Text, nullable=False)
 
     # Metadata stores flexible fields like job_board, page_title, scraper_version
     metadata_ = Column("metadata", JSONB, default=dict)
