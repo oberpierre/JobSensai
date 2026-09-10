@@ -31,3 +31,9 @@ select = [
 # 2. Third-party imports
 # 3. First-party imports (your project code)
 known-first-party = ["adapters", "llm", "publisher", "scraper"]  # Add new top-level packages here as they're created
+
+[lint.per-file-ignores]
+# Alembic's fixed revision preamble imports both sa and op, but which one a
+# body needs depends on what the revision does, so an empty or op-only body
+# is a false-positive F401 rather than a real unused import.
+"scraper/migrations/versions/*.py" = ["F401"]

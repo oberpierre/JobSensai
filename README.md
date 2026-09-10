@@ -137,6 +137,26 @@ bazel run //llm:worker
 
 **While it runs:** a domain being learned is leased for 30 minutes by default, so a second task for the same board and adapter type is dropped rather than queued behind the first. A model slow enough to outlive that lease learns one domain twice. You may set the lease duration by setting `LEARNING_LEASE_TTL_SECONDS` in `.env` or the shell.
 
+### 4. Database Migrations
+
+`init_db`, run at startup by `scraper/worker.py` and `scraper/silver_worker.py`, applies the chain under `scraper/migrations/versions/` while holding a Postgres advisory lock, so several workloads starting at once serialise instead of racing. Authoring a revision is a separate step, through `scraper/migrations_cli.py`, behind `bazel run //scraper:migrate`.
+
+**Generate a revision after changing a model in `scraper/models.py`:**
+
+```bash
+bazel run //scraper:migrate -- revision -m "add company size"
+```
+
+This never touches your own database. It builds a scratch one from the migration chain, diffs the models against that, writes the new file into `scraper/migrations/versions/`, and drops the scratch database whether or not the diff found anything. Review what it wrote, then run `aspect format` before committing it: autogenerate's raw output is unwrapped, and the `op.add_column(..., sa.Column(...))` boilerplate alone is enough to push essentially every generated line over this repo's limit, not just an unusual column or table name, which is a formatting gap rather than a broken tool. A **rename is always hand-written**: autogenerate has no notion of a rename, and renders one as a `drop_column` paired with an `add_column`, which loses the column's data rather than carrying it forward the way a real rename would.
+
+**Check that the models and the migration chain still agree:**
+
+```bash
+bazel run //scraper:migrate -- check
+```
+
+Exits non-zero, naming the column or table it found, when a model changed with no matching revision. Nothing else in the build catches that gap. Both subcommands read `.env` for the same Postgres connection settings the rest of the scraper uses.
+
 ## Running it locally
 
 The API and the built web frontend ship in one image, `jobsensai-web`, containing `//api:server` with the `//web:dist` build mounted as its SPA. Build and load it into the local Docker daemon:

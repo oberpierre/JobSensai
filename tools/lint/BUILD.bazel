@@ -35,6 +35,8 @@ ruff_test(
         "//scraper:silver_worker_test",
         "//scraper:backfill_silver",
         "//scraper:backfill_silver_test",
+        "//scraper:migrate",
+        "//scraper:migrations_cli_test",
         "//scraper:pipelines_test",
         "//scraper:database_test",
         "//scraper:discovery_spider_test",
