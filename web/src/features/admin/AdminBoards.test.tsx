@@ -268,7 +268,7 @@ describe("AdminBoards", () => {
     });
   });
 
-  it("greys an api row and leaves an html_crawl row plain", async () => {
+  it("renders an api row the same as an html_crawl row", async () => {
     renderAdminBoardsWithProviders({
       listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
         items: [
@@ -280,10 +280,8 @@ describe("AdminBoards", () => {
 
     const htmlRow = (await screen.findByText("Alpha")).parentElement
       ?.parentElement;
-    expect(htmlRow?.className).not.toMatch(/rowGreyed/);
-
     const apiRow = screen.getByText("Zebra").parentElement?.parentElement;
-    expect(apiRow?.className).toMatch(/rowGreyed/);
+    expect(apiRow?.className).toEqual(htmlRow?.className);
   });
 
   it("renders the toggle on for an active row and off for an inactive one", async () => {
