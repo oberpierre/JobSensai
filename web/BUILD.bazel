@@ -90,6 +90,14 @@ eslint_bin.eslint_test(
     data = TEST_SRCS,
 )
 
+# The same linter the test runs, reachable with file arguments so the pre-commit
+# hook can check only what a commit touches. Paths are relative to this package.
+eslint_bin.eslint_binary(
+    name = "eslint_binary",
+    chdir = package_name(),
+    data = TEST_SRCS,
+)
+
 # Fails a stylesheet under src/ that writes a literal a design token already
 # names, so the check runs on every build rather than only when someone greps.
 py_test(

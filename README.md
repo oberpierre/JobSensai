@@ -219,6 +219,18 @@ aspect test lint_tests        # Run all lint tests defined in root BUILD.bazel
 aspect test //tools/lint/...  # Run all lint tests in tools/lint
 ```
 
+### Git Hooks
+
+The repository ships hooks in `.githooks/`. Git does not pick up a hooks directory on its own, so each clone points itself at this one once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`pre-commit` formats and lints only what the commit touches: a formatting check over every staged file Prettier or Ruff knows how to format, `ruff check` over every staged Python file, and, whenever a `BUILD.bazel` is staged, a check that no Python target has been left out of `//tools/lint:ruff_test`. It does not run tests, because a hook slow enough to be worth bypassing stops being a hook.
+
+`commit-msg` checks the message the commit is about to record.
+
 ### Adding Linting to New Targets
 
 When you create new targets, add them to the corresponding linting suite:

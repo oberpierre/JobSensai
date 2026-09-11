@@ -1,0 +1,4 @@
+# Checks that rest on conventions recorded outside this repository live here and
+# stay in the clone that has them.
+*
+!.gitignore
