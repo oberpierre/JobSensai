@@ -85,7 +85,7 @@ class IndexMapping(ABC):
         return strip_filter_params(start_url)
 
     @abstractmethod
-    def references(self, document: dict, start_url: str) -> list[PostingRef]:
+    def references(self, document: dict | list, start_url: str) -> list[PostingRef]:
         """Return the postings *document* (the response to *start_url*) carries."""
         pass
 
@@ -96,7 +96,7 @@ class DetailMapping(ABC):
     domains: list[str] = []
 
     @abstractmethod
-    def to_silver(self, document: dict) -> dict:
+    def to_silver(self, document: dict | list) -> dict:
         """Return the Silver fields *document* (one posting) carries."""
         pass
 

@@ -14,6 +14,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 
 import jmespath
 from jmespath import functions
@@ -74,6 +75,30 @@ _CUSTOM_FUNCTION_NAMES = frozenset({"unescape", "markdown"})
 _BUILTIN_FUNCTION_NAMES = frozenset(functions.Functions.FUNCTION_TABLE.keys())
 _KNOWN_FUNCTION_NAMES = _BUILTIN_FUNCTION_NAMES | _CUSTOM_FUNCTION_NAMES
 _OPTIONS = jmespath.Options(custom_functions=_MappingFunctions())
+
+
+def evaluate_expression(expression: str, document: dict | list) -> Any:
+    """Evaluate *expression* against *document*, outside any mapping document.
+
+    The engine's one door for an ad-hoc expression a document never declared, a
+    spider's ``filter.`` key today. Compiling then searching with
+    ``options=_OPTIONS`` explicitly, rather than the ``jmespath.search`` shortcut
+    that defaults ``options`` to ``None``, keeps ``unescape``, ``markdown`` and the
+    unknown-function walk below live for this caller too.
+    """
+    try:
+        compiled = jmespath.compile(expression)
+    except jmespath.exceptions.ParseError as exc:
+        raise MappingError(
+            f"invalid jmespath expression {expression!r}: {exc}"
+        ) from exc
+    except TypeError as exc:
+        raise MappingError(f"jmespath expression must be a string: {exc}") from exc
+    _validate_function_names(compiled.parsed)
+    try:
+        return compiled.search(document, options=_OPTIONS)
+    except jmespath.exceptions.JMESPathError as exc:
+        raise MappingError(f"evaluating {expression!r} failed: {exc}") from exc
 
 
 def _validate_function_names(node: Any) -> None:
@@ -161,8 +186,12 @@ class MappedIndex(IndexMapping):
         if missing:
             raise MappingError(f"index document missing key(s): {sorted(missing)}")
 
-    def references(self, document: dict, start_url: str) -> list[PostingRef]:
-        postings = self._compiled["postings"].search(document, options=_OPTIONS)
+    def references(self, document: dict | list, start_url: str) -> list[PostingRef]:
+        try:
+            postings = self._compiled["postings"].search(document, options=_OPTIONS)
+        except jmespath.exceptions.JMESPathError as exc:
+            logger.error("postings expression raised for %s: %s", start_url, exc)
+            return []
         if not isinstance(postings, list):
             logger.error(
                 "postings expression for %s resolved to %s, not a list",
@@ -173,14 +202,26 @@ class MappedIndex(IndexMapping):
         job_url_expr = self._compiled["job_url"]
         refs = []
         for element in postings:
-            url = job_url_expr.search(element, options=_OPTIONS)
-            if url is None:
+            # One posting's surprise (a raise, or a shape job_url can't resolve
+            # into an identity) is never evidence about the rest of the response.
+            try:
+                url = job_url_expr.search(element, options=_OPTIONS)
+            except jmespath.exceptions.JMESPathError as exc:
                 logger.error(
-                    "job_url expression resolved to no identity for a posting from %s",
+                    "job_url expression raised for a posting from %s: %s",
+                    start_url,
+                    exc,
+                )
+                continue
+            if not isinstance(url, str) or not url:
+                logger.error(
+                    "job_url expression resolved to %r, not a non-empty string,"
+                    " for a posting from %s",
+                    url,
                     start_url,
                 )
                 continue
-            refs.append(PostingRef(url=url, document=element))
+            refs.append(PostingRef(url=urljoin(start_url, url), document=element))
         return refs
 
 
@@ -194,7 +235,7 @@ class MappedDetail(DetailMapping):
         self.domains: list[str] = _validate_domains(document)
         self._compiled = _compile_jmespath_block(document, _SILVER_SCHEMA_KEYS)
 
-    def to_silver(self, document: dict) -> dict:
+    def to_silver(self, document: dict | list) -> dict:
         return {
             key: expr.search(document, options=_OPTIONS)
             for key, expr in self._compiled.items()
