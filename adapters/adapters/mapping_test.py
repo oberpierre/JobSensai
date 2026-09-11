@@ -15,6 +15,7 @@ from adapters.adapters.mapping import (
     MappedDetail,
     MappedIndex,
     MappingError,
+    evaluate_expression,
     load_mapping,
 )
 
@@ -386,6 +387,102 @@ class FetchUrlPreservesEveryOtherCharacterTest(unittest.TestCase):
     def test_valueless_flag_is_not_rewritten_with_a_trailing_equals(self):
         url = "https://boards-api.example.com/jobs?flag&content=true"
         self.assertEqual(self.mapping.fetch_url(url), url)
+
+
+class ReferencesJobUrlGuardTest(unittest.TestCase):
+    """The PostingRef.url guard Shared contracts requires of MappedIndex.references."""
+
+    def setUp(self):
+        self.mapping = MappedIndex(_INDEX_DOCUMENT)
+
+    def test_relative_job_url_is_resolved_against_the_fetched_url(self):
+        document = {"jobs": [{"absolute_url": "/jobs/123"}]}
+        refs = self.mapping.references(document, "https://boards-api.example.com/x")
+        self.assertEqual(refs[0].url, "https://boards-api.example.com/jobs/123")
+
+    def test_empty_string_job_url_is_dropped_and_logged(self):
+        document = {"jobs": [{"absolute_url": ""}]}
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
+            refs = self.mapping.references(
+                document, "https://boards-api.example.com/jobs"
+            )
+        self.assertEqual(refs, [])
+
+    def test_non_string_job_url_is_dropped_and_logged(self):
+        document = {"jobs": [{"absolute_url": 3}]}
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
+            refs = self.mapping.references(
+                document, "https://boards-api.example.com/jobs"
+            )
+        self.assertEqual(refs, [])
+
+    def test_a_raising_job_url_drops_only_that_posting(self):
+        # markdown() is typed to a single string argument, so a posting serving
+        # its own url as a list (this board's real defect, per ADR 0024) raises,
+        # while a second posting with a genuine string sails through unaffected.
+        second_url = "https://x.example/2"
+        document = {
+            "jobs": [
+                {"absolute_url": ["not", "a", "string"]},
+                {"absolute_url": second_url},
+            ]
+        }
+        mapping = MappedIndex(
+            {
+                "version": 1,
+                "type": "index",
+                "domains": ["boards-api.example.com"],
+                "jmespath": {"postings": "jobs[]", "job_url": "markdown(absolute_url)"},
+            }
+        )
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
+            refs = mapping.references(document, "https://boards-api.example.com/jobs")
+        self.assertEqual(len(refs), 1)
+        self.assertEqual(refs[0].url, html_to_markdown(second_url))
+        self.assertEqual(refs[0].document, {"absolute_url": second_url})
+
+
+class EvaluateExpressionTest(unittest.TestCase):
+    """P5 is evaluate_expression's first caller: a filter key shares this vocabulary."""
+
+    def test_plain_path(self):
+        self.assertEqual(
+            evaluate_expression("offices[].name", {"offices": [{"name": "Berlin"}]}),
+            ["Berlin"],
+        )
+
+    def test_unescape_evaluates_correctly(self):
+        result = evaluate_expression("unescape(content)", {"content": "&lt;b&gt;"})
+        self.assertEqual(result, "<b>")
+
+    def test_markdown_evaluates_correctly(self):
+        result = evaluate_expression("markdown(content)", {"content": "<p>Hi</p>"})
+        self.assertEqual(result, html_to_markdown("<p>Hi</p>"))
+
+    def test_absent_path_evaluates_to_none(self):
+        self.assertIsNone(evaluate_expression("missing", {}))
+
+    def test_syntax_error_is_a_mapping_error(self):
+        with self.assertRaises(MappingError):
+            evaluate_expression("a[", {})
+
+    def test_unknown_function_name_is_refused_at_the_same_point_a_document_would_be(
+        self,
+    ):
+        # jmespath.compile alone accepts this, the name only resolving at evaluation,
+        # exactly as a mapping document's own construction-time walk catches it.
+        jmespath.compile("no_such_function(title)")
+        with self.assertRaises(MappingError):
+            evaluate_expression("no_such_function(title)", {"title": "x"})
+
+    def test_custom_function_signature_rejecting_its_argument_is_a_mapping_error(self):
+        with self.assertRaises(MappingError):
+            evaluate_expression(
+                "markdown(content)", {"content": ["not", "a", "string"]}
+            )
+
+    def test_document_may_be_a_bare_list(self):
+        self.assertEqual(evaluate_expression("[0]", [{"a": 1}, {"a": 2}]), {"a": 1})
 
 
 if __name__ == "__main__":

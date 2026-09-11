@@ -15,15 +15,18 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 import redis
 import scrapy
 from scrapy.crawler import Crawler
 
+from adapters.adapters.base import PostingRef, strip_filter_params
+from adapters.adapters.mapping import MappingError, evaluate_expression
 from adapters.registry import AdapterRegistry
 from scraper.database import SessionLocal
 from scraper.items import RawJobItem
-from scraper.models import START_URL_TYPE_HTML_CRAWL, StartUrl
+from scraper.models import START_URL_TYPE_API, START_URL_TYPE_HTML_CRAWL, StartUrl
 from scraper.spiders.base_spider import BaseJobSpider
 
 logger = logging.getLogger(__name__)
@@ -67,42 +70,53 @@ class DiscoverySpider(BaseJobSpider):
         return spider
 
     @classmethod
-    def load_start_urls(cls, session) -> list[tuple[uuid.UUID | None, str]]:
-        """Return (start_url_id, url) pairs to crawl, ordered by name.
+    def load_start_urls(cls, session) -> list[tuple[uuid.UUID | None, str, str]]:
+        """Return (start_url_id, url, type) triples to crawl, ordered by name.
 
-        Reads `html_crawl` rows that are `active`. An empty table and a table holding
-        only `api` or inactive rows are the same situation from an operator's
-        side, namely that the table is not driving this crawl, so all of them are
+        Reads `html_crawl` and `api` rows that are `active`. An empty table and a
+        table holding only inactive rows are the same situation from an operator's
+        side, namely that the table is not driving this crawl, so both are
         covered by the one warning below rather than a separate one per case.
         """
         rows = (
             session.query(StartUrl)
-            .filter(StartUrl.type == START_URL_TYPE_HTML_CRAWL, StartUrl.active)
+            .filter(
+                StartUrl.type.in_([START_URL_TYPE_HTML_CRAWL, START_URL_TYPE_API]),
+                StartUrl.active,
+            )
             .order_by(StartUrl.name)
             .all()
         )
         if not rows:
             total_count = session.query(StartUrl).count()
             logger.warning(
-                "This crawl has nothing to do: no start_urls row is both type %r"
-                " and active, out of %d configured.",
+                "This crawl has nothing to do: no start_urls row is both type"
+                " %r or %r and active, out of %d configured.",
                 START_URL_TYPE_HTML_CRAWL,
+                START_URL_TYPE_API,
                 total_count,
             )
-        return [(row.id, row.url) for row in rows]
+        return [(row.id, row.url, row.type) for row in rows]
 
     def start_requests(self) -> Iterator[scrapy.Request]:
         """Yield one request per configured start URL, tagged with its row id."""
         session = SessionLocal()
         try:
-            pairs = self.load_start_urls(session)
+            rows = self.load_start_urls(session)
         finally:
             session.close()
 
-        for start_url_id, url in pairs:
-            yield scrapy.Request(
-                url, callback=self.parse, meta={"start_url_id": start_url_id}
-            )
+        for start_url_id, url, start_url_type in rows:
+            if start_url_type == START_URL_TYPE_API:
+                yield scrapy.Request(
+                    strip_filter_params(url),
+                    callback=self.parse_api,
+                    meta={"start_url_id": start_url_id, "stored_url": url},
+                )
+            else:
+                yield scrapy.Request(
+                    url, callback=self.parse, meta={"start_url_id": start_url_id}
+                )
 
     def parse(self, response: scrapy.http.Response) -> Iterator[scrapy.Request]:
         """Extract job links from search results page."""
@@ -150,8 +164,6 @@ class DiscoverySpider(BaseJobSpider):
           html      - raw page HTML
           timestamp - ISO-8601 string
         """
-        from urllib.parse import urlsplit
-
         domain = urlsplit(response.url).netloc
         payload = {
             "domain": domain,
@@ -172,6 +184,151 @@ class DiscoverySpider(BaseJobSpider):
             logger.info("Pushed discovery learning task for domain %s", domain)
         except Exception as e:
             logger.error("Failed to push discovery learning task: %s", e)
+
+    def parse_api(
+        self, response: scrapy.http.Response
+    ) -> Iterator[scrapy.Request | RawJobItem]:
+        """Turn an ``api`` board's response into filtered postings.
+
+        Every refusal below logs at error, yields nothing at all from the
+        response, and raises nothing out of this callback.
+        """
+        stored_url: str = response.meta["stored_url"]
+        start_url_id = response.meta.get("start_url_id")
+        hostname = urlsplit(response.url).hostname
+
+        try:
+            # The bytes, never response.text: JSON is UTF-8 by specification,
+            # so decoding by the header's declared charset can silently mangle it.
+            document = json.loads(response.body)
+        except ValueError as exc:
+            logger.error("Body from %s did not parse as JSON: %s", hostname, exc)
+            return
+        if not isinstance(document, (dict, list)):
+            logger.error(
+                "Body from %s parsed to a JSON %s, not an object or array",
+                hostname,
+                type(document).__name__,
+            )
+            return
+
+        bare_media_type = self._bare_media_type(response.headers.get("Content-Type"))
+        if bare_media_type != "application/json":
+            logger.info(
+                "Parsed a JSON body from %s despite Content-Type %r",
+                response.url,
+                bare_media_type,
+            )
+
+        mapping = self.registry.get_index_mapping(response.url)
+        if mapping is None:
+            logger.error("No index mapping registered for %s", hostname)
+            return
+
+        refs = mapping.references(document, response.url)
+        kept_ids = self._apply_filters(refs, stored_url, hostname)
+        if kept_ids is None:
+            return
+
+        for ref in refs:
+            if ref.document is None:
+                yield response.follow(
+                    ref.url,
+                    callback=self.parse_job,
+                    meta={"start_url_id": start_url_id},
+                )
+            elif id(ref) in kept_ids:
+                yield self.create_item(
+                    url=ref.url,
+                    content=json.dumps(ref.document, ensure_ascii=False),
+                    start_url_id=start_url_id,
+                    source_url=response.url,
+                    content_type="application/json",
+                )
+
+    def _apply_filters(
+        self, refs: list[PostingRef], stored_url: str, hostname: str | None
+    ) -> set[int] | None:
+        """Return the ids of the references surviving every ``filter.`` key.
+
+        None means the response is refused outright: an operator error in a
+        filter key was found, either before or during the posting loop.
+        """
+        filters = self._parse_filter_params(stored_url)
+        doc_refs = [ref for ref in refs if ref.document is not None]
+
+        for key in filters:
+            try:
+                evaluate_expression(key, {})
+            except MappingError as exc:
+                logger.error("filter.%s is invalid on %s: %s", key, hostname, exc)
+                return None
+
+        resolved = dict.fromkeys(filters, False)
+        kept_ids: set[int] = set()
+        for ref in doc_refs:
+            raised = False
+            matches = True
+            for key, allowed in filters.items():
+                try:
+                    result = evaluate_expression(key, ref.document)
+                except MappingError as exc:
+                    # Data, not configuration: this one posting's value is odd,
+                    # so it alone is dropped rather than costing the whole board.
+                    logger.error(
+                        "filter.%s raised for the posting at %s: %s",
+                        key,
+                        ref.url,
+                        exc,
+                    )
+                    raised = True
+                    continue
+                if result is not None:
+                    resolved[key] = True
+                if not self._filter_matches(result, allowed):
+                    matches = False
+            if not raised and matches:
+                kept_ids.add(id(ref))
+
+        if doc_refs:
+            unresolved = [key for key, hit in resolved.items() if not hit]
+            for key in unresolved:
+                logger.error("filter.%s matched no posting on %s", key, hostname)
+            if unresolved:
+                return None
+        return kept_ids
+
+    @staticmethod
+    def _parse_filter_params(stored_url: str) -> dict[str, list[str]]:
+        """Return every ``filter.``-prefixed query parameter, keyed by its path."""
+        filters: dict[str, list[str]] = {}
+        for key, value in parse_qsl(urlsplit(stored_url).query, keep_blank_values=True):
+            if key.startswith("filter."):
+                filters.setdefault(key[len("filter.") :], []).append(value)
+        return filters
+
+    @staticmethod
+    def _filter_matches(result: Any, allowed: list[str]) -> bool:
+        """A path resolving to a list matches when any element does."""
+        values = result if isinstance(result, list) else [result]
+        return any(
+            DiscoverySpider._canonical_filter_text(value) in allowed for value in values
+        )
+
+    @staticmethod
+    def _canonical_filter_text(value: Any) -> str | None:
+        """Put an evaluated JSON value in the same terms as a query parameter's text.
+
+        A JSON boolean compares as `true`/`false`, a number as its JSON text form,
+        a string as itself, and `null` as not matching rather than the text "None".
+        """
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return json.dumps(value)
+        if isinstance(value, str):
+            return value
+        return None
 
     def parse_job(self, response: scrapy.http.Response) -> Iterator[RawJobItem]:
         """Extract job details and content."""
@@ -196,13 +353,13 @@ class DiscoverySpider(BaseJobSpider):
 
     @staticmethod
     def _bare_media_type(content_type_header: bytes | None) -> str:
-        """Strip a response's Content-Type header to its media type.
+        """Strip a response's Content-Type header to its media type, lowercased.
 
         A server sends `text/html; charset=utf-8` far more often than not.
-        content_type is a downstream dispatch key, so it drops the parameters
-        rather than storing them verbatim.
+        content_type is a downstream dispatch key compared against a lowercase
+        literal, so it drops the parameters rather than storing them verbatim.
         """
         if not content_type_header:
             return "text/html"
         media_type, _, _params = content_type_header.decode().partition(";")
-        return media_type.strip()
+        return media_type.strip().lower()
