@@ -236,7 +236,7 @@ function BoardRow({
 }) {
   const isApi = board.type === "api";
   return (
-    <div className={isApi ? styles.rowGreyed : styles.row}>
+    <div className={styles.row}>
       <div className={styles.nameCell}>
         <span className={styles.name}>{board.name}</span>
         <span className={styles.url}>{board.url}</span>

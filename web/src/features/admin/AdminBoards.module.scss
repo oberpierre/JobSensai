@@ -58,8 +58,7 @@
 }
 
 .rowHead,
-.row,
-.rowGreyed {
+.row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 8.125rem 6rem 3.625rem 6.5rem;
   gap: var(--space-12);
@@ -77,13 +76,8 @@
   color: var(--faint);
 }
 
-.row,
-.rowGreyed {
+.row {
   border-bottom: var(--border-width) solid var(--rule-xs);
-}
-
-.rowGreyed {
-  color: var(--ghost);
 }
 
 .nameCell {
