@@ -53,6 +53,7 @@ ruff_test(
         "//api:jobs_router_test",
         "//api:boards_router_test",
         "//adapters:adapters",
+        "//adapters:adapters_base",
         "//adapters:adapter_test",
         "//adapters:snapshot_test",
         "//adapters:markdown_test",
