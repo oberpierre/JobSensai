@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
@@ -382,6 +383,8 @@ class TestHandleItemPersistsThroughARealEngine(unittest.TestCase):
             "item": {
                 "url": item_url,
                 "raw_content": "<html></html>",
+                "content_type": "text/html",
+                "source_url": item_url,
                 "metadata": {"spider": "test_spider"},
                 "start_url_id": str(start_url_id),
             },
@@ -405,6 +408,30 @@ class TestHandleItemPersistsThroughARealEngine(unittest.TestCase):
             self.assertEqual(persisted.start_url_id, start_url_id)
         finally:
             read_session.close()
+
+    def test_insert_without_source_url_fails_rather_than_defaulting_to_url(self):
+        # A silent `item.get("source_url") or url` fallback would key a
+        # posting on the wrong netloc if a caller ever forgot the field, per
+        # the wrong-netloc trap this column exists to prevent.
+        run_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        data = {
+            "run_id": str(run_id),
+            "item": {
+                "url": item_url,
+                "raw_content": "<html></html>",
+                "content_type": "text/html",
+                "metadata": {"spider": "test_spider"},
+            },
+        }
+
+        write_session = self.session_factory()
+        try:
+            with self.assertRaises(IntegrityError):
+                self.worker._handle_item(write_session, data)
+        finally:
+            write_session.rollback()
+            write_session.close()
 
     def test_insert_persists_content_type_and_source_url(self):
         run_id = uuid.uuid4()

@@ -51,7 +51,7 @@ class ScraperRun(Base):
 
 class RawJobPosting(Base):
     """
-    Bronze Layer: Raw HTML and metadata of a job posting.
+    Bronze Layer: a job posting's raw fetched content and metadata, HTML or otherwise.
     """
 
     __tablename__ = "raw_job_postings"
