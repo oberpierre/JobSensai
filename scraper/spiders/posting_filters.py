@@ -1,15 +1,14 @@
-"""The ``filter.`` query-parameter convention, applied to an API board's postings.
+"""Applies the ``filter.`` query-parameter convention to an API board's postings.
 
-The convention spans two packages. Its other half is ``strip_filter_params`` in
-``adapters/adapters/base.py``, which removes those parameters from the URL actually
-requested, because ``IndexMapping.fetch_url`` delegates to it.
+The convention itself lives in ``adapters/adapters/filters.py``, imported rather
+than restated here.
 """
 
 import json
 import logging
 from typing import Any
-from urllib.parse import parse_qsl, urlsplit
 
+from adapters.adapters import filters
 from adapters.adapters.base import PostingRef
 from adapters.adapters.mapping import MappingError, evaluate_expression
 
@@ -24,22 +23,22 @@ def apply_filters(
     None means the response is refused outright: an operator error in a
     filter key was found, either before or during the posting loop.
     """
-    filters = _parse_filter_params(stored_url)
+    filter_params = filters.parse_filter_params(stored_url)
     doc_refs = [ref for ref in refs if ref.document is not None]
 
-    for key in filters:
+    for key in filter_params:
         try:
             evaluate_expression(key, {})
         except MappingError as exc:
             logger.error("filter.%s is invalid on %s: %s", key, hostname, exc)
             return None
 
-    resolved = dict.fromkeys(filters, False)
+    resolved = dict.fromkeys(filter_params, False)
     kept_ids: set[int] = set()
     for ref in doc_refs:
         raised = False
         matches = True
-        for key, allowed in filters.items():
+        for key, allowed in filter_params.items():
             try:
                 result = evaluate_expression(key, ref.document)
             except MappingError as exc:
@@ -69,15 +68,6 @@ def apply_filters(
         if unresolved:
             return None
     return kept_ids
-
-
-def _parse_filter_params(stored_url: str) -> dict[str, list[str]]:
-    """Return every ``filter.``-prefixed query parameter, keyed by its path."""
-    filters: dict[str, list[str]] = {}
-    for key, value in parse_qsl(urlsplit(stored_url).query, keep_blank_values=True):
-        if key.startswith("filter."):
-            filters.setdefault(key[len("filter.") :], []).append(value)
-    return filters
 
 
 def _filter_matches(result: Any, allowed: list[str]) -> bool:
