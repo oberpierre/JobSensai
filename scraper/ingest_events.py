@@ -54,4 +54,10 @@ def record_ingest_failure(
         finally:
             db.close()
     except Exception:
-        logger.error("Failed to record ingest failure", exc_info=True)
+        logger.error(
+            "Failed to record ingest failure: reason=%s source_url=%s posting_url=%s",
+            reason,
+            source_url,
+            posting_url,
+            exc_info=True,
+        )

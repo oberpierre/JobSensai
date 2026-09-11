@@ -83,7 +83,7 @@ class TestRecordIngestFailure(unittest.TestCase):
         self.assertEqual(row.detail, "x" * 500)
 
     def test_url_urlsplit_cannot_parse_writes_no_row_and_returns_normally(self):
-        with self.assertLogs("scraper.ingest_events", level="ERROR"):
+        with self.assertLogs("scraper.ingest_events", level="ERROR") as captured:
             record_ingest_failure(
                 stage="detail",
                 reason="no_rule",
@@ -91,6 +91,7 @@ class TestRecordIngestFailure(unittest.TestCase):
             )
 
         self.assertEqual(self._rows(), [])
+        self.assertTrue(any("http://[::1" in message for message in captured.output))
 
     def test_url_with_no_authority_component_stores_unknown_domain(self):
         record_ingest_failure(

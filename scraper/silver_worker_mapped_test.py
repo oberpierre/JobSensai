@@ -66,6 +66,12 @@ class TestSilverWorkerMappedRows(unittest.TestCase):
         )
         self.worker = SilverWorker(self.config)
         self.worker.redis = MagicMock()
+        # record_ingest_failure imports its own SessionLocal, unpatched here, so
+        # block the recorder itself rather than let a reached refusal touch a real
+        # database.
+        patcher = patch("scraper.silver_worker.record_ingest_failure")
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _raw_job(self, raw_content, content_type="application/json"):
         return RawJobPosting(
@@ -154,7 +160,7 @@ class TestSilverWorkerMappedRows(unittest.TestCase):
     def test_html_row_no_extraction_adapter_pushes_to_learning_queue(
         self, mock_session_local
     ):
-        """The control for the JSON tests below that assert lpush was not
+        """The control for the JSON refusal tests that assert lpush was not
         called: an HTML row with no extraction adapter must still reach it."""
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -325,6 +331,7 @@ class TestSilverWorkerIngestEvents(unittest.TestCase):
         self.assertIsNone(
             session.query(JobPosting).filter(JobPosting.url == self.POSTING_URL).first()
         )
+        self.worker.redis.lpush.assert_not_called()
 
     def test_unparseable_raw_content_records_unparseable_content(self):
         self._seed_raw_job("not json at all")
@@ -341,6 +348,7 @@ class TestSilverWorkerIngestEvents(unittest.TestCase):
         self.assertIsNone(
             session.query(JobPosting).filter(JobPosting.url == self.POSTING_URL).first()
         )
+        self.worker.redis.lpush.assert_not_called()
 
     def test_scalar_raw_content_writes_no_silver_row(self):
         """A JSON scalar parses cleanly but is not a dict or list, so it is
@@ -351,9 +359,15 @@ class TestSilverWorkerIngestEvents(unittest.TestCase):
         self._process()
 
         session = self.SessionLocal()
+        (event,) = session.query(IngestEvent).all()
+        self.assertEqual(event.reason, INGEST_REASON_UNPARSEABLE_CONTENT)
+        self.assertEqual(event.start_url_id, self.start_url_id)
+        self.assertEqual(event.domain, self.DOMAIN)
+        self.assertEqual(event.posting_url, self.POSTING_URL)
         self.assertIsNone(
             session.query(JobPosting).filter(JobPosting.url == self.POSTING_URL).first()
         )
+        self.worker.redis.lpush.assert_not_called()
 
     def test_to_silver_raising_records_rule_raised(self):
         self._seed_raw_job(json.dumps({"title": "Engineer"}))
@@ -374,6 +388,7 @@ class TestSilverWorkerIngestEvents(unittest.TestCase):
         self.assertIsNone(
             session.query(JobPosting).filter(JobPosting.url == self.POSTING_URL).first()
         )
+        self.worker.redis.lpush.assert_not_called()
 
     def test_blank_required_field_records_invalid_shape(self):
         self._seed_raw_job(json.dumps({"title": ""}))
@@ -396,6 +411,7 @@ class TestSilverWorkerIngestEvents(unittest.TestCase):
         self.assertIsNone(
             session.query(JobPosting).filter(JobPosting.url == self.POSTING_URL).first()
         )
+        self.worker.redis.lpush.assert_not_called()
 
     def test_locations_as_bare_string_writes_no_silver_row(self):
         self._seed_raw_job(json.dumps({"title": "Engineer"}))
@@ -411,9 +427,15 @@ class TestSilverWorkerIngestEvents(unittest.TestCase):
         self._process()
 
         session = self.SessionLocal()
+        (event,) = session.query(IngestEvent).all()
+        self.assertEqual(event.reason, INGEST_REASON_INVALID_SHAPE)
+        self.assertEqual(event.start_url_id, self.start_url_id)
+        self.assertEqual(event.domain, self.DOMAIN)
+        self.assertEqual(event.posting_url, self.POSTING_URL)
         self.assertIsNone(
             session.query(JobPosting).filter(JobPosting.url == self.POSTING_URL).first()
         )
+        self.worker.redis.lpush.assert_not_called()
 
     def test_successful_mapped_row_writes_no_ingest_event(self):
         self._seed_raw_job(json.dumps({"title": "Engineer"}))
