@@ -67,7 +67,6 @@ py_library(
         ":html_cleaner",
         ":model",
         "//adapters:adapters",
-        "//adapters:adapters_base",
         "//publisher:publisher",
         "@pip//python_dotenv",
         "@pip//redis",
@@ -91,7 +90,6 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],
@@ -103,7 +101,6 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],
@@ -115,7 +112,6 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],
@@ -127,7 +123,6 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],
@@ -147,7 +142,6 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],

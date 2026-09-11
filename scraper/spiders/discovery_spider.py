@@ -21,7 +21,7 @@ import redis
 import scrapy
 from scrapy.crawler import Crawler
 
-from adapters.adapters.base import strip_filter_params
+from adapters.adapters import filters
 from adapters.registry import AdapterRegistry
 from scraper.database import SessionLocal
 from scraper.items import RawJobItem
@@ -109,7 +109,7 @@ class DiscoverySpider(BaseJobSpider):
         for start_url_id, url, start_url_type in rows:
             if start_url_type == START_URL_TYPE_API:
                 yield scrapy.Request(
-                    strip_filter_params(url),
+                    filters.strip_filter_params(url),
                     callback=self.parse_api,
                     meta={"start_url_id": start_url_id, "stored_url": url},
                 )

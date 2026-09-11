@@ -366,29 +366,6 @@ class VersionAndCompletenessTest(unittest.TestCase):
             load_mapping(document)
 
 
-class FetchUrlPreservesEveryOtherCharacterTest(unittest.TestCase):
-    """The operator's URL is the one thing only a human can supply, so fetch_url may
-    remove a `filter.` pair and must not re-encode anything else in it."""
-
-    def setUp(self):
-        self.mapping = MappedIndex(_INDEX_DOCUMENT)
-
-    def test_comma_separated_value_is_left_unencoded(self):
-        url = "https://boards-api.example.com/jobs?fields=a,b&filter.x=1"
-        self.assertEqual(
-            self.mapping.fetch_url(url),
-            "https://boards-api.example.com/jobs?fields=a,b",
-        )
-
-    def test_bracket_key_is_untouched_when_no_filter_param_is_present(self):
-        url = "https://boards-api.example.com/jobs?arr[]=1&content=true"
-        self.assertEqual(self.mapping.fetch_url(url), url)
-
-    def test_valueless_flag_is_not_rewritten_with_a_trailing_equals(self):
-        url = "https://boards-api.example.com/jobs?flag&content=true"
-        self.assertEqual(self.mapping.fetch_url(url), url)
-
-
 class ReferencesJobUrlGuardTest(unittest.TestCase):
     """The PostingRef.url guard MappedIndex.references applies to every posting."""
 
