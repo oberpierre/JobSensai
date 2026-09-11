@@ -9,7 +9,6 @@ import unittest
 
 import jmespath.exceptions
 
-from adapters.adapters import mapping as mapping_module
 from adapters.adapters._markdown import html_to_markdown
 from adapters.adapters.base import PostingRef
 from adapters.adapters.mapping import (
@@ -21,6 +20,7 @@ from adapters.adapters.mapping import (
 
 _DETAIL_DOCUMENT = {
     "version": 1,
+    "type": "detail",
     "domains": ["boards-api.example.com"],
     "jmespath": {
         "title": "title",
@@ -34,6 +34,7 @@ _DETAIL_DOCUMENT = {
 
 _INDEX_DOCUMENT = {
     "version": 1,
+    "type": "index",
     "domains": ["boards-api.example.com", "boards-api.example.org"],
     "jmespath": {
         "postings": "jobs[]",
@@ -141,7 +142,12 @@ class ConstructionRejectionTest(unittest.TestCase):
     def test_syntax_error_is_refused_and_wrapped_as_a_mapping_error(self):
         # jmespath.compile itself raises ParseError, and the engine's one
         # construction gate wraps it so a caller need only catch MappingError.
-        document = {"version": 1, "domains": ["x"], "jmespath": {"title": "a["}}
+        document = {
+            "version": 1,
+            "type": "detail",
+            "domains": ["x"],
+            "jmespath": {"title": "a["},
+        }
         with self.assertRaises(MappingError) as ctx:
             MappedDetail(document)
         self.assertIsInstance(ctx.exception.__cause__, jmespath.exceptions.ParseError)
@@ -149,7 +155,12 @@ class ConstructionRejectionTest(unittest.TestCase):
     def test_non_string_expression_is_refused_and_wrapped_as_a_mapping_error(self):
         # jmespath.compile(["x"]) raises a bare TypeError ("unhashable type: 'list'"),
         # which the same gate wraps.
-        document = {"version": 1, "domains": ["x"], "jmespath": {"title": ["x"]}}
+        document = {
+            "version": 1,
+            "type": "detail",
+            "domains": ["x"],
+            "jmespath": {"title": ["x"]},
+        }
         with self.assertRaises(MappingError) as ctx:
             MappedDetail(document)
         self.assertIsInstance(ctx.exception.__cause__, TypeError)
@@ -157,6 +168,7 @@ class ConstructionRejectionTest(unittest.TestCase):
     def test_unknown_function_name_is_refused_at_construction(self):
         document = {
             "version": 1,
+            "type": "detail",
             "domains": ["x"],
             "jmespath": {"title": "no_such_function(title)"},
         }
@@ -169,6 +181,7 @@ class ConstructionRejectionTest(unittest.TestCase):
     def test_unknown_top_level_key_is_refused(self):
         document = {
             "version": 1,
+            "type": "detail",
             "domains": ["x"],
             "jmespath": {"title": "title"},
             "extra": True,
@@ -176,23 +189,29 @@ class ConstructionRejectionTest(unittest.TestCase):
         with self.assertRaises(MappingError):
             MappedDetail(document)
 
-    def test_unknown_jmespath_key_is_refused_for_a_detail_document(self):
+    def test_detail_document_declaring_postings_is_refused_naming_it(self):
+        # postings is an index key, so this proves the vocabularies are checked
+        # rather than a detail document with it being reclassified as an index one.
         document = {
             "version": 1,
+            "type": "detail",
             "domains": ["x"],
-            "jmespath": {"not_a_silver_field": "title"},
+            "jmespath": {"postings": "jobs[]"},
         }
-        with self.assertRaises(MappingError):
+        with self.assertRaises(MappingError) as ctx:
             MappedDetail(document)
+        self.assertIn("postings", str(ctx.exception))
 
-    def test_unknown_jmespath_key_is_refused_for_an_index_document(self):
+    def test_index_document_declaring_title_is_refused_naming_it(self):
         document = {
             "version": 1,
+            "type": "index",
             "domains": ["x"],
             "jmespath": {"title": "title"},
         }
-        with self.assertRaises(MappingError):
+        with self.assertRaises(MappingError) as ctx:
             MappedIndex(document)
+        self.assertIn("title", str(ctx.exception))
 
 
 class LoadMappingTest(unittest.TestCase):
@@ -201,6 +220,51 @@ class LoadMappingTest(unittest.TestCase):
 
     def test_classifies_an_index_document(self):
         self.assertIsInstance(load_mapping(_INDEX_DOCUMENT), MappedIndex)
+
+    def test_missing_type_is_refused(self):
+        document = {
+            "version": 1,
+            "domains": ["x"],
+            "jmespath": {"title": "title"},
+        }
+        with self.assertRaises(MappingError):
+            load_mapping(document)
+
+    def test_unknown_type_is_refused_naming_it(self):
+        with self.assertRaises(MappingError) as ctx:
+            load_mapping({"type": "listing"})
+        self.assertIn("listing", str(ctx.exception))
+
+    def test_mapped_detail_checks_its_own_declared_kind(self):
+        # The jmespath block holds only a Silver key, which _compile_jmespath_block
+        # would accept on its own, so only the type check can refuse this: a false
+        # pass here would mean the guard, not the key vocabulary, is untested.
+        document = {
+            "version": 1,
+            "type": "index",
+            "domains": ["x.example.com"],
+            "jmespath": {"title": "title"},
+        }
+        with self.assertRaises(MappingError) as ctx:
+            MappedDetail(document)
+        message = str(ctx.exception)
+        self.assertIn("detail", message)
+        self.assertIn("index", message)
+
+    def test_mapped_index_checks_its_own_declared_kind(self):
+        # Symmetric case: the jmespath block holds only index keys, which
+        # _compile_jmespath_block would accept on its own.
+        document = {
+            "version": 1,
+            "type": "detail",
+            "domains": ["x.example.com"],
+            "jmespath": {"postings": "jobs[]", "job_url": "url"},
+        }
+        with self.assertRaises(MappingError) as ctx:
+            MappedIndex(document)
+        message = str(ctx.exception)
+        self.assertIn("index", message)
+        self.assertIn("detail", message)
 
 
 class NonListPostingsTest(unittest.TestCase):
@@ -213,6 +277,7 @@ class NonListPostingsTest(unittest.TestCase):
     def setUp(self):
         document = {
             "version": 1,
+            "type": "index",
             "domains": ["boards-api.example.com"],
             "jmespath": {"postings": "jobs", "job_url": "absolute_url"},
         }
@@ -250,6 +315,7 @@ class NonListDomainsTest(unittest.TestCase):
     def test_string_domains_is_refused_for_a_detail_document(self):
         document = {
             "version": 1,
+            "type": "detail",
             "domains": "example.com",
             "jmespath": {"title": "title"},
         }
@@ -259,6 +325,7 @@ class NonListDomainsTest(unittest.TestCase):
     def test_string_domains_is_refused_for_an_index_document(self):
         document = {
             "version": 1,
+            "type": "index",
             "domains": "example.com",
             "jmespath": {"postings": "jobs[]", "job_url": "url"},
         }
@@ -268,55 +335,34 @@ class NonListDomainsTest(unittest.TestCase):
 
 class VersionAndCompletenessTest(unittest.TestCase):
     def test_unsupported_version_is_refused(self):
-        document = {"version": 7, "domains": ["x"], "jmespath": {"title": "title"}}
+        document = {
+            "version": 7,
+            "type": "detail",
+            "domains": ["x"],
+            "jmespath": {"title": "title"},
+        }
         with self.assertRaises(MappingError):
             MappedDetail(document)
 
     def test_missing_domains_is_refused(self):
-        document = {"version": 1, "jmespath": {"title": "title"}}
+        document = {"version": 1, "type": "detail", "jmespath": {"title": "title"}}
         with self.assertRaises(MappingError):
             MappedDetail(document)
 
     def test_index_document_declaring_only_postings_is_refused(self):
-        document = {"version": 1, "domains": ["x"], "jmespath": {"postings": "jobs[]"}}
+        document = {
+            "version": 1,
+            "type": "index",
+            "domains": ["x"],
+            "jmespath": {"postings": "jobs[]"},
+        }
         with self.assertRaises(MappingError):
             MappedIndex(document)
 
-    def test_empty_jmespath_block_is_refused_rather_than_classified_as_detail(self):
-        document = {"version": 1, "domains": ["x"], "jmespath": {}}
+    def test_empty_jmespath_block_is_refused(self):
+        document = {"version": 1, "type": "detail", "domains": ["x"], "jmespath": {}}
         with self.assertRaises(MappingError):
             load_mapping(document)
-
-
-class MixedDocumentTest(unittest.TestCase):
-    def test_mixed_index_and_detail_keys_names_both_sets(self):
-        document = {
-            "version": 1,
-            "domains": ["x"],
-            "jmespath": {"title": "title", "postings": "jobs[]"},
-        }
-        with self.assertRaises(MappingError) as ctx:
-            load_mapping(document)
-        message = str(ctx.exception)
-        self.assertIn("mixes", message)
-        self.assertIn("postings", message)
-        self.assertIn("title", message)
-
-
-class DisjointVocabulariesGuardTest(unittest.TestCase):
-    """`load_mapping` classifies a document by which vocabulary its keys fall in,
-    which only works while the two vocabularies share no key."""
-
-    def test_guard_raises_on_an_overlapping_pair(self):
-        with self.assertRaises(AssertionError):
-            mapping_module._assert_disjoint_vocabularies(
-                frozenset({"postings"}), frozenset({"postings"})
-            )
-
-    def test_guard_passes_for_the_real_vocabularies(self):
-        mapping_module._assert_disjoint_vocabularies(
-            mapping_module._SILVER_SCHEMA_KEYS, mapping_module._INDEX_JMESPATH_KEYS
-        )
 
 
 class FetchUrlPreservesEveryOtherCharacterTest(unittest.TestCase):
