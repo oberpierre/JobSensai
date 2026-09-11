@@ -10,6 +10,16 @@ Base = declarative_base()
 START_URL_TYPE_HTML_CRAWL = "html_crawl"
 START_URL_TYPE_API = "api"
 
+# ingest_events.stage: which pipeline stage refused a posting.
+INGEST_STAGE_INDEX = "index"
+INGEST_STAGE_DETAIL = "detail"
+
+# ingest_events.reason: the four refusals _process_mapped_row guards against.
+INGEST_REASON_NO_RULE = "no_rule"
+INGEST_REASON_UNPARSEABLE_CONTENT = "unparseable_content"
+INGEST_REASON_RULE_RAISED = "rule_raised"
+INGEST_REASON_INVALID_SHAPE = "invalid_shape"
+
 
 class StartUrl(Base):
     """A crawl entry point an operator manages through the admin screen."""
@@ -126,3 +136,29 @@ class JobPosting(Base):
 
     def __repr__(self):
         return f"<JobPosting(id={self.id}, url='{self.url}', title='{self.title}')>"
+
+
+class IngestEvent(Base):
+    """A posting the pipeline refused, recorded so the fact outlives the log line."""
+
+    __tablename__ = "ingest_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    occurred_at = Column(DateTime, default=func.now(), nullable=False)
+    domain = Column(Text, nullable=False, index=True)
+    start_url_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("start_urls.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_url = Column(Text, nullable=False)
+    posting_url = Column(Text, nullable=True)
+    stage = Column(Text, nullable=False)
+    reason = Column(Text, nullable=False)
+    detail = Column(Text, nullable=True)
+
+    def __repr__(self):
+        return (
+            f"<IngestEvent(id={self.id}, stage='{self.stage}', reason='{self.reason}')>"
+        )

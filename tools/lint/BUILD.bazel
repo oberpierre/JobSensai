@@ -34,6 +34,7 @@ ruff_test(
         "//scraper:silver_worker",
         "//scraper:silver_worker_test",
         "//scraper:silver_worker_mapped_test",
+        "//scraper:ingest_events_test",
         "//scraper:backfill_silver",
         "//scraper:backfill_silver_test",
         "//scraper:migrate",
