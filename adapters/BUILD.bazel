@@ -39,7 +39,11 @@ py_test(
     name = "adapter_test",
     srcs = glob(
         ["adapters/*_test.py"],
-        exclude = ["adapters/snapshot_test.py", "adapters/_markdown_test.py"],
+        exclude = [
+            "adapters/snapshot_test.py",
+            "adapters/_markdown_test.py",
+            "adapters/mapping_test.py",
+        ],
     ),
     # Generated snapshot fixtures (index.html / expected.json) the tests read at runtime.
     data = glob(["adapters/fixtures/**"], allow_empty = True),
@@ -52,6 +56,17 @@ py_test(
 py_test(
     name = "snapshot_test",
     srcs = ["adapters/snapshot_test.py"],
+    deps = [
+        ":adapters",
+    ],
+)
+
+# The mapping engine is tested on its own, not as a generated-adapter test: llm/worker.py
+# runs adapter_test as the gate on every generated adapter, and an engine regression here
+# would otherwise land in a draft PR as though a model wrote it.
+py_test(
+    name = "mapping_test",
+    srcs = ["adapters/mapping_test.py"],
     deps = [
         ":adapters",
     ],

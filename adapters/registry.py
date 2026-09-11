@@ -17,7 +17,12 @@ logger = logging.getLogger(__name__)
 
 _ADAPTER_BASES = (DiscoveryAdapter, ExtractionAdapter, IndexMapping, DetailMapping)
 
-_DEFAULT_MAPPINGS_DIR = Path(__file__).parent / "adapters" / "mappings"
+_DEFAULT_ADAPTERS_DIR = Path(__file__).parent / "adapters"
+_DEFAULT_MAPPINGS_DIR = _DEFAULT_ADAPTERS_DIR / "mappings"
+
+# Modules skipped by the scan: not adapters/mappings themselves. "mapping" is the
+# engine module, whose IndexMapping/DetailMapping subclasses carry no domains.
+_SKIP_MODULES = frozenset({"base", "base_test", "mapping"})
 
 
 class AdapterRegistry:
@@ -31,12 +36,18 @@ class AdapterRegistry:
     *mappings_dir*, registering each under the domains its own ``domains`` key names.
     """
 
-    def __init__(self, mappings_dir: Optional[Path] = None) -> None:
+    def __init__(
+        self,
+        mappings_dir: Optional[Path] = None,
+        adapters_dir: Optional[Path] = None,
+    ) -> None:
         self._discovery_registry: dict[str, type[DiscoveryAdapter]] = {}
         self._extraction_registry: dict[str, type[ExtractionAdapter]] = {}
         self._index_registry: dict[str, Union[type[IndexMapping], IndexMapping]] = {}
         self._detail_registry: dict[str, Union[type[DetailMapping], DetailMapping]] = {}
-        self._auto_discover()
+        self._auto_discover(
+            adapters_dir if adapters_dir is not None else _DEFAULT_ADAPTERS_DIR
+        )
         self._load_mappings(
             mappings_dir if mappings_dir is not None else _DEFAULT_MAPPINGS_DIR
         )
@@ -131,18 +142,15 @@ class AdapterRegistry:
         domain = self._domain_from_url(url)
         return bool(domain and domain in self._extraction_registry)
 
-    def _auto_discover(self) -> None:
-        """Scan adapters and register every class with a non-empty ``domains``."""
-        adapters_dir = Path(__file__).parent / "adapters"
+    def _auto_discover(self, adapters_dir: Path) -> None:
+        """Scan *adapters_dir* and register every class with a non-empty ``domains``."""
         if not adapters_dir.is_dir():
             logger.warning("Adapters sub-directory not found: %s", adapters_dir)
             return
 
-        _SKIP = {"base", "base_test"}
-
         for module_file in sorted(adapters_dir.glob("*.py")):
             stem = module_file.stem
-            if stem.startswith("_") or stem.endswith("_test") or stem in _SKIP:
+            if stem.startswith("_") or stem.endswith("_test") or stem in _SKIP_MODULES:
                 continue
 
             module_name = f"adapters.adapters.{stem}"

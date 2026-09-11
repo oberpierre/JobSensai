@@ -58,6 +58,7 @@ ruff_test(
         "//adapters:adapters_base",
         "//adapters:adapter_test",
         "//adapters:snapshot_test",
+        "//adapters:mapping_test",
         "//adapters:markdown_test",
         "//adapters:registry_test",
         "//publisher:publisher",
