@@ -390,7 +390,7 @@ class FetchUrlPreservesEveryOtherCharacterTest(unittest.TestCase):
 
 
 class ReferencesJobUrlGuardTest(unittest.TestCase):
-    """The PostingRef.url guard Shared contracts requires of MappedIndex.references."""
+    """The PostingRef.url guard MappedIndex.references applies to every posting."""
 
     def setUp(self):
         self.mapping = MappedIndex(_INDEX_DOCUMENT)
@@ -418,8 +418,8 @@ class ReferencesJobUrlGuardTest(unittest.TestCase):
 
     def test_a_raising_job_url_drops_only_that_posting(self):
         # markdown() is typed to a single string argument, so a posting serving
-        # its own url as a list (this board's real defect, per ADR 0024) raises,
-        # while a second posting with a genuine string sails through unaffected.
+        # its own url as a list raises, while a second posting with a genuine
+        # string sails through unaffected.
         second_url = "https://x.example/2"
         document = {
             "jobs": [
@@ -441,9 +441,46 @@ class ReferencesJobUrlGuardTest(unittest.TestCase):
         self.assertEqual(refs[0].url, html_to_markdown(second_url))
         self.assertEqual(refs[0].document, {"absolute_url": second_url})
 
+    def test_a_malformed_job_url_drops_only_that_posting(self):
+        # urljoin raises a bare ValueError on a string like this one, invalid as
+        # an IPv6 host, so this proves that surprise costs only its own posting.
+        second_url = "https://x.example/2"
+        document = {
+            "jobs": [
+                {"absolute_url": "http://[bad"},
+                {"absolute_url": second_url},
+            ]
+        }
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
+            refs = self.mapping.references(
+                document, "https://boards-api.example.com/jobs"
+            )
+        self.assertEqual(
+            refs, [PostingRef(url=second_url, document={"absolute_url": second_url})]
+        )
+
+
+class PostingsExpressionRaisesTest(unittest.TestCase):
+    def test_a_raising_postings_expression_logs_and_returns_no_references(self):
+        # markdown() is typed to a single string argument, so a postings path
+        # resolving to a list raises at search time rather than at construction.
+        document = {
+            "version": 1,
+            "type": "index",
+            "domains": ["boards-api.example.com"],
+            "jmespath": {"postings": "markdown(jobs)", "job_url": "url"},
+        }
+        mapping = MappedIndex(document)
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR") as logs:
+            refs = mapping.references(
+                {"jobs": ["not", "a", "string"]}, "https://boards-api.example.com/jobs"
+            )
+        self.assertEqual(refs, [])
+        self.assertIn("postings expression raised", "\n".join(logs.output))
+
 
 class EvaluateExpressionTest(unittest.TestCase):
-    """P5 is evaluate_expression's first caller: a filter key shares this vocabulary."""
+    """evaluate_expression's first caller is the spider's filter.-key vocabulary."""
 
     def test_plain_path(self):
         self.assertEqual(

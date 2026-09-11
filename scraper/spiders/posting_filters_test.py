@@ -92,7 +92,9 @@ class TestParseApiFilters(unittest.TestCase):
             results = list(self.spider.parse_api(response))
 
         self.assertEqual(results, [])
-        self.assertTrue(any("ofices" in line for line in logs.output))
+        self.assertTrue(
+            any("ofices" in line and "did not resolve" in line for line in logs.output)
+        )
 
     def test_resolved_but_matching_nothing_yields_nothing_and_logs_no_error(self):
         jobs = [{"url": "https://x.example/1", "offices": [{"name": "Berlin"}]}]

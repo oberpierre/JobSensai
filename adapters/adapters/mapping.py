@@ -221,7 +221,17 @@ class MappedIndex(IndexMapping):
                     start_url,
                 )
                 continue
-            refs.append(PostingRef(url=urljoin(start_url, url), document=element))
+            try:
+                resolved_url = urljoin(start_url, url)
+            except ValueError as exc:
+                logger.error(
+                    "job_url %r for a posting from %s did not resolve to a URL: %s",
+                    url,
+                    start_url,
+                    exc,
+                )
+                continue
+            refs.append(PostingRef(url=resolved_url, document=element))
         return refs
 
 
