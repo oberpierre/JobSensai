@@ -12,7 +12,16 @@ from sqlalchemy.orm import Session
 
 from adapters.registry import AdapterRegistry
 from scraper.database import SessionLocal, init_db
-from scraper.models import JobPosting, RawJobPosting
+from scraper.ingest_events import record_ingest_failure
+from scraper.models import (
+    INGEST_REASON_INVALID_SHAPE,
+    INGEST_REASON_NO_RULE,
+    INGEST_REASON_RULE_RAISED,
+    INGEST_REASON_UNPARSEABLE_CONTENT,
+    INGEST_STAGE_DETAIL,
+    JobPosting,
+    RawJobPosting,
+)
 
 # The literal a Bronze row's content_type must equal to route to a detail mapping
 # rather than an extraction adapter. The comparison is exact, so a value with
@@ -195,6 +204,14 @@ class SilverWorker:
                 f"No detail mapping for {hostname} (posting {url}); operator error "
                 "until the mapping is learned"
             )
+            record_ingest_failure(
+                stage=INGEST_STAGE_DETAIL,
+                reason=INGEST_REASON_NO_RULE,
+                source_url=raw_job.source_url,
+                posting_url=url,
+                start_url_id=raw_job.start_url_id,
+                detail=None,
+            )
             return
 
         try:
@@ -204,11 +221,27 @@ class SilverWorker:
                 f"raw_content for {hostname} (posting {url}) does not parse as "
                 f"JSON: {e}"
             )
+            record_ingest_failure(
+                stage=INGEST_STAGE_DETAIL,
+                reason=INGEST_REASON_UNPARSEABLE_CONTENT,
+                source_url=raw_job.source_url,
+                posting_url=url,
+                start_url_id=raw_job.start_url_id,
+                detail=str(e),
+            )
             return
         if not isinstance(document, (dict, list)):
             logger.error(
                 f"raw_content for {hostname} (posting {url}) parsed to "
                 f"{type(document).__name__}, not an object or array"
+            )
+            record_ingest_failure(
+                stage=INGEST_STAGE_DETAIL,
+                reason=INGEST_REASON_UNPARSEABLE_CONTENT,
+                source_url=raw_job.source_url,
+                posting_url=url,
+                start_url_id=raw_job.start_url_id,
+                detail=type(document).__name__,
             )
             return
 
@@ -216,6 +249,14 @@ class SilverWorker:
             mapped = mapping.to_silver(document)
         except Exception as e:
             logger.error(f"detail mapping for {hostname} (posting {url}) raised: {e}")
+            record_ingest_failure(
+                stage=INGEST_STAGE_DETAIL,
+                reason=INGEST_REASON_RULE_RAISED,
+                source_url=raw_job.source_url,
+                posting_url=url,
+                start_url_id=raw_job.start_url_id,
+                detail=str(e),
+            )
             return
 
         # A declared key whose path resolved to None is dropped, so a mapping
@@ -226,6 +267,14 @@ class SilverWorker:
             logger.error(
                 f"mapped row for {hostname} (posting {url}) failed shape check: "
                 f"{violation}"
+            )
+            record_ingest_failure(
+                stage=INGEST_STAGE_DETAIL,
+                reason=INGEST_REASON_INVALID_SHAPE,
+                source_url=raw_job.source_url,
+                posting_url=url,
+                start_url_id=raw_job.start_url_id,
+                detail=violation,
             )
             return
 

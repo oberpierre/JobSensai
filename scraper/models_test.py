@@ -4,6 +4,7 @@ import uuid
 from scraper.models import (
     START_URL_TYPE_API,
     START_URL_TYPE_HTML_CRAWL,
+    IngestEvent,
     JobPosting,
     RawJobPosting,
     StartUrl,
@@ -85,6 +86,29 @@ class TestStartUrlActive(unittest.TestCase):
         self.assertFalse(column.nullable)
         self.assertTrue(column.default.arg)
         self.assertEqual(str(column.server_default.arg), "true")
+
+
+class TestIngestEventColumns(unittest.TestCase):
+    def test_domain_is_not_null_and_indexed(self):
+        column = IngestEvent.__table__.columns["domain"]
+
+        self.assertFalse(column.nullable)
+        self.assertTrue(column.index)
+
+    def test_start_url_id_is_nullable_with_on_delete_set_null(self):
+        column = IngestEvent.__table__.columns["start_url_id"]
+        (foreign_key,) = column.foreign_keys
+
+        self.assertTrue(column.nullable)
+        self.assertEqual(foreign_key.ondelete, "SET NULL")
+
+    def test_required_and_optional_columns(self):
+        columns = IngestEvent.__table__.columns
+
+        for name in ("occurred_at", "source_url", "stage", "reason"):
+            self.assertFalse(columns[name].nullable, name)
+        for name in ("posting_url", "detail"):
+            self.assertTrue(columns[name].nullable, name)
 
 
 if __name__ == "__main__":
