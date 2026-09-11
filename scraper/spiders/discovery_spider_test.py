@@ -3,6 +3,7 @@ import unittest
 import uuid
 from unittest.mock import MagicMock, patch
 
+from scrapy.http import HtmlResponse, Request
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.compiler import compiles
@@ -211,14 +212,25 @@ class TestStartRequests(unittest.TestCase):
         mock_session_local.return_value.close.assert_called_once()
 
 
+def _html_response(url, *, headers=None, meta=None):
+    """A real Response, not a mock, so header normalisation genuinely runs."""
+    request = Request(url=url, meta=meta or {})
+    return HtmlResponse(
+        url=url,
+        body=b"<html>job</html>",
+        encoding="utf-8",
+        headers=headers,
+        request=request,
+    )
+
+
 class TestParseJob(unittest.TestCase):
     def test_carries_start_url_id_from_response_meta_into_the_item(self):
         spider = DiscoverySpider()
         start_url_id = uuid.uuid4()
-        response = MagicMock()
-        response.url = "https://a.example.com/job/1"
-        response.text = "<html>job</html>"
-        response.meta = {"start_url_id": start_url_id}
+        response = _html_response(
+            "https://a.example.com/job/1", meta={"start_url_id": start_url_id}
+        )
 
         items = list(spider.parse_job(response))
 
@@ -226,26 +238,37 @@ class TestParseJob(unittest.TestCase):
 
     def test_absent_start_url_id_stays_none(self):
         spider = DiscoverySpider()
-        response = MagicMock()
-        response.url = "https://a.example.com/job/1"
-        response.text = "<html>job</html>"
-        response.meta = {}
+        response = _html_response("https://a.example.com/job/1")
 
         items = list(spider.parse_job(response))
 
         self.assertIsNone(items[0]["start_url_id"])
 
-    def test_sets_source_url_and_content_type_from_the_response(self):
+    def test_sets_source_url_from_the_response(self):
         spider = DiscoverySpider()
-        response = MagicMock()
-        response.url = "https://a.example.com/job/1"
-        response.text = "<html>job</html>"
-        response.meta = {}
-        response.headers = {"Content-Type": b"text/html"}
+        response = _html_response("https://a.example.com/job/1")
 
         items = list(spider.parse_job(response))
 
         self.assertEqual(items[0]["source_url"], "https://a.example.com/job/1")
+
+    def test_strips_content_type_parameters_off_a_real_header(self):
+        spider = DiscoverySpider()
+        response = _html_response(
+            "https://a.example.com/job/1",
+            headers={"Content-Type": "text/html; charset=UTF-8"},
+        )
+
+        items = list(spider.parse_job(response))
+
+        self.assertEqual(items[0]["content_type"], "text/html")
+
+    def test_defaults_content_type_when_the_response_carries_no_header(self):
+        spider = DiscoverySpider()
+        response = _html_response("https://a.example.com/job/1")
+
+        items = list(spider.parse_job(response))
+
         self.assertEqual(items[0]["content_type"], "text/html")
 
 

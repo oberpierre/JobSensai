@@ -174,7 +174,7 @@ class DiscoverySpider(BaseJobSpider):
             logger.error("Failed to push discovery learning task: %s", e)
 
     def parse_job(self, response: scrapy.http.Response) -> Iterator[RawJobItem]:
-        """Extract job details and HTML content."""
+        """Extract job details and content."""
         logger.info(f"Parsing job: {response.url}")
 
         # Extract relevant HTML section
@@ -185,11 +185,24 @@ class DiscoverySpider(BaseJobSpider):
 
         item = self.create_item(
             url=response.url,
-            html=html_content,
+            content=html_content,
             start_url_id=response.meta.get("start_url_id"),
             source_url=response.url,
-            content_type=response.headers.get("Content-Type", b"text/html").decode(),
+            content_type=self._bare_media_type(response.headers.get("Content-Type")),
             # title=title,  # Additional metadata
         )
 
         yield item
+
+    @staticmethod
+    def _bare_media_type(content_type_header: bytes | None) -> str:
+        """Strip a response's Content-Type header to its media type.
+
+        A server sends `text/html; charset=utf-8` far more often than not.
+        content_type is a downstream dispatch key, so it drops the parameters
+        rather than storing them verbatim.
+        """
+        if not content_type_header:
+            return "text/html"
+        media_type, _, _params = content_type_header.decode().partition(";")
+        return media_type.strip()

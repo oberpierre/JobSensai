@@ -282,8 +282,8 @@ describe("AdminBoards", () => {
       ?.parentElement;
     expect(htmlRow?.className).not.toMatch(/rowGreyed/);
 
-    const jsonRow = screen.getByText("Zebra").parentElement?.parentElement;
-    expect(jsonRow?.className).toMatch(/rowGreyed/);
+    const apiRow = screen.getByText("Zebra").parentElement?.parentElement;
+    expect(apiRow?.className).toMatch(/rowGreyed/);
   });
 
   it("renders the toggle on for an active row and off for an inactive one", async () => {

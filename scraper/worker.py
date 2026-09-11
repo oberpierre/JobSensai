@@ -151,8 +151,8 @@ class JobWorker:
             existing.updated_at = datetime.now(UTC)
             existing.last_seen_run_id = db_run_id
             existing.raw_content = item.get("raw_content")
-            existing.content_type = item.get("content_type") or "text/html"
-            existing.source_url = item.get("source_url") or url
+            existing.content_type = item.get("content_type")
+            existing.source_url = item.get("source_url")
             # Merge or overwrite metadata? Overwriting for now as it's "raw" state
             existing.metadata_ = item.get("metadata") or {}
             # First-writer-wins: a posting reachable from more than one start
@@ -168,8 +168,8 @@ class JobWorker:
             new_posting = RawJobPosting(
                 url=url,
                 raw_content=item.get("raw_content"),
-                content_type=item.get("content_type") or "text/html",
-                source_url=item.get("source_url") or url,
+                content_type=item.get("content_type"),
+                source_url=item.get("source_url"),
                 metadata_=item.get("metadata") or {},
                 last_seen_run_id=db_run_id,
                 start_url_id=start_url_id,

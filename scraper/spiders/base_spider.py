@@ -18,7 +18,7 @@ class BaseJobSpider(scrapy.Spider, ABC):
 
     Subclasses must implement:
     - parse(): Extract job links from entry pages
-    - parse_job(): Extract HTML from individual job postings
+    - parse_job(): Extract the posting's content from individual job postings
     """
 
     name = "base_job_spider"
@@ -26,21 +26,22 @@ class BaseJobSpider(scrapy.Spider, ABC):
     def create_item(
         self,
         url: str,
-        html: str,
+        content: str,
         *,
         start_url_id: uuid.UUID | None = None,
-        source_url: str | None = None,
-        content_type: str | None = None,
+        source_url: str,
+        content_type: str,
         **metadata: Any,
     ) -> RawJobItem:
         """Create a RawJobItem with common metadata.
 
         Args:
             url: Job posting URL
-            html: Raw content fetched for the posting
+            content: Raw content fetched for the posting
             start_url_id: id of the start_urls row whose crawl discovered this page
-            source_url: URL actually fetched, defaulting to url for a crawled posting
-            content_type: what html holds, defaulting to text/html
+            source_url: URL actually fetched, which for an API posting is the feed
+                rather than the posting's own url
+            content_type: bare media type that content holds, e.g. text/html
             **metadata: Additional metadata fields
 
         Returns:
@@ -48,10 +49,10 @@ class BaseJobSpider(scrapy.Spider, ABC):
         """
         item = RawJobItem()
         item["url"] = url
-        item["raw_content"] = html
+        item["raw_content"] = content
         item["start_url_id"] = str(start_url_id) if start_url_id is not None else None
-        item["source_url"] = source_url if source_url is not None else url
-        item["content_type"] = content_type or "text/html"
+        item["source_url"] = source_url
+        item["content_type"] = content_type
         item["metadata"] = {
             "spider_name": self.name,
             **metadata,
@@ -68,8 +69,8 @@ class BaseJobSpider(scrapy.Spider, ABC):
 
     @abstractmethod
     def parse_job(self, response: scrapy.http.Response) -> Iterator[RawJobItem]:
-        """Parse individual job posting page and extract HTML.
+        """Parse individual job posting page and extract its content.
 
-        Should yield RawJobItem with URL and HTML content.
+        Should yield RawJobItem with URL and the posting's content.
         """
         pass

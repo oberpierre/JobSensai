@@ -5,7 +5,7 @@ Bronze no longer holds only HTML: `html_content` is renamed to `raw_content`, an
 came from. The board type column's old value for an API board is rewritten to the new
 one it renamed to. This rename is taken in one step rather than expand-contract: a pod
 still running the previous release selects `html_content`, which this migration has
-already dropped, and fails until it is redeployed onto the image that reads
+already renamed away, and fails until it is redeployed onto the image that reads
 `raw_content`.
 
 Revision ID: 740a787aab69
