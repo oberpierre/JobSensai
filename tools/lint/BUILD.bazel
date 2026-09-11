@@ -43,6 +43,7 @@ ruff_test(
         "//scraper:models_lib",
         "//scraper:models_test",
         "//scraper:base_spider_test",
+        "//scraper:posting_filters_test",
         "//api:app",
         "//api:server",
         "//api:app_test",
