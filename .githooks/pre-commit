@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# pre-commit - formats and lints what this commit touches.
+#
+# Tests are deliberately absent: they are expensive and are executed during CI
+# before merging back. Everything here is cheap, deterministic and file-scoped,
+# so it can block rather than warn.
+#
+# Installed per clone, the directory being committed but the pointer not:
+#   git config core.hooksPath .githooks
+set -uo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT" || exit 1
+
+mapfile -d '' -t STAGED < <(git diff --cached --name-only --diff-filter=ACMR -z)
+[[ ${#STAGED[@]} -eq 0 ]] && exit 0
+
+if ! command -v bazel >/dev/null 2>&1; then
+  echo "pre-commit: bazel is not on PATH, so format and lint were skipped." >&2
+  exit 0
+fi
+
+status=0
+
+# Every check below reads the working tree, whereas the commit records the
+# index. The two differ only when a file was edited after being staged, so
+# name those files rather than silently checking content that is not committed.
+mapfile -t DIVERGED < <(git diff --name-only -- "${STAGED[@]}")
+if [[ ${#DIVERGED[@]} -gt 0 ]]; then
+  echo "pre-commit: checked the working tree, which differs from what is staged:" >&2
+  printf '  %s\n' "${DIVERGED[@]}" >&2
+fi
+
+# Bazel narrates every run on stdout. Drop its lines so a failure shows the
+# tool's own diagnostics alone.
+strip_bazel_noise() {
+  grep -vE '^(INFO|WARNING|Loading|Analyzing|Computing|Target |  bazel-bin|  bazel-out)' || true
+}
+
+# The languages //tools/format:format.check is configured for. A file of any
+# other type is passed to no formatter, so listing it achieves nothing.
+FORMATTABLE=()
+PYTHON=()
+WEB=()
+BUILD_TOUCHED=0
+for file in "${STAGED[@]}"; do
+  [[ -f "$file" ]] || continue
+  case "$file" in
+  *.py)
+    FORMATTABLE+=("$file")
+    PYTHON+=("$ROOT/$file")
+    ;;
+  *.js | *.jsx | *.mjs | *.cjs | *.ts | *.tsx | *.css | *.scss)
+    FORMATTABLE+=("$file")
+    # eslint.config.js scopes its rules to ts and tsx, and //web:eslint_binary
+    # chdir's into web/, so anything else here is passed to no linter.
+    [[ "$file" == web/*.ts || "$file" == web/*.tsx ]] && WEB+=("${file#web/}")
+    ;;
+  esac
+  [[ "$(basename "$file")" == "BUILD.bazel" ]] && BUILD_TOUCHED=1
+done
+
+if [[ ${#FORMATTABLE[@]} -gt 0 ]]; then
+  output="$(bazel run --noshow_progress -- //tools/format:format.check "${FORMATTABLE[@]}" 2>&1)"
+  if [[ $? -ne 0 ]]; then
+    printf '%s\n' "$output" | strip_bazel_noise >&2
+    echo "pre-commit: formatting differs. Fix with:" >&2
+    printf '  bazel run //tools/format -- %s\n' "${FORMATTABLE[*]}" >&2
+    status=1
+  fi
+fi
+
+if [[ ${#PYTHON[@]} -gt 0 ]]; then
+  # Absolute paths throughout: `bazel run` executes from the runfiles tree, so
+  # a path relative to the workspace resolves to nothing there.
+  output="$(bazel run --noshow_progress -- @aspect_rules_lint//format:ruff \
+    check --config "$ROOT/.ruff.toml" "${PYTHON[@]}" 2>&1)"
+  if [[ $? -ne 0 ]]; then
+    printf '%s\n' "$output" | strip_bazel_noise | sed "s|$ROOT/||g" >&2
+    echo "pre-commit: ruff found lint errors." >&2
+    status=1
+  fi
+fi
+
+if [[ ${#WEB[@]} -gt 0 ]]; then
+  output="$(bazel run --noshow_progress -- //web:eslint_binary "${WEB[@]}" 2>&1)"
+  if [[ $? -ne 0 ]]; then
+    # eslint names each file by its runfiles path, which no editor can open.
+    printf '%s\n' "$output" | strip_bazel_noise |
+      sed -E 's|^/.*\.runfiles/_main/|  |' >&2
+    echo "pre-commit: eslint found errors." >&2
+    status=1
+  fi
+fi
+
+# //tools/lint:ruff_test lists its sources explicitly and does not glob, so a
+# Python target absent from that list is silently never linted. Only a commit
+# touching a BUILD file can change the answer.
+if [[ $BUILD_TOUCHED -eq 1 ]]; then
+  targets="$(bazel query --noshow_progress \
+    'kind("py_(library|binary|test) rule", //...) except //tools/...' 2>/dev/null | sort)"
+  srcs="$(bazel query --noshow_progress \
+    'labels(srcs, //tools/lint:ruff_test)' 2>/dev/null | sort)"
+  if [[ -z "$targets" || -z "$srcs" ]]; then
+    echo "pre-commit: could not query the lint graph, so coverage was not checked." >&2
+  else
+    # The pip rules generate these two; neither holds a source file of ours.
+    missing="$(comm -23 <(printf '%s\n' "$targets") <(printf '%s\n' "$srcs") |
+      grep -vE '^//:requirements\.(test|update)$' || true)"
+    if [[ -n "$missing" ]]; then
+      echo "pre-commit: these Python targets are not linted by //tools/lint:ruff_test:" >&2
+      printf '  %s\n' $missing >&2
+      echo "Add each label to that target's srcs list in tools/lint/BUILD.bazel." >&2
+      status=1
+    fi
+  fi
+fi
+
+exit $status
