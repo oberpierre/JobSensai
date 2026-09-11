@@ -15,8 +15,8 @@ from scraper.database import SessionLocal, init_db
 from scraper.models import JobPosting, RawJobPosting
 
 # The literal a Bronze row's content_type must equal to route to a detail mapping
-# rather than an extraction adapter. Shared contracts requires an exact comparison,
-# never a substring or parameter-stripped one.
+# rather than an extraction adapter. The comparison is exact, so a value with
+# parameters, such as "application/json; charset=utf-8", takes the extraction path.
 _MAPPED_CONTENT_TYPE = "application/json"
 
 # Required Silver fields, matching _save_job_posting's own blank check.

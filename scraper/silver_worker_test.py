@@ -288,11 +288,30 @@ class TestSilverWorkerMappedRows(unittest.TestCase):
         self.worker.registry.get_detail_mapping.assert_not_called()
 
     @patch("scraper.silver_worker.SessionLocal")
+    def test_html_row_no_extraction_adapter_pushes_to_learning_queue(
+        self, mock_session_local
+    ):
+        """The control for the four JSON tests below that assert lpush was not
+        called: an HTML row with no extraction adapter must still reach it."""
+        mock_db = MagicMock()
+        mock_session_local.return_value = mock_db
+        self.worker.registry.get_extraction_adapter = MagicMock(return_value=None)
+
+        self._process(mock_db, self._raw_job("<html></html>", content_type="text/html"))
+
+        self.worker.redis.lpush.assert_called_once_with(
+            "extraction_learning_tasks",
+            json.dumps({"url": self.POSTING_URL, "html_content": "<html></html>"}),
+        )
+        mock_db.commit.assert_not_called()
+
+    @patch("scraper.silver_worker.SessionLocal")
     def test_html_extraction_employment_type_none_still_writes_row(
         self, mock_session_local
     ):
-        """Proves the shape check P6 adds stayed on the JSON side: the committed
-        Google adapter returns employment_type: None unconditionally today."""
+        """The mapped-row shape check never runs on this path: the committed
+        Google adapter returns employment_type: None unconditionally today, and
+        extraction only enforces title, company_name and description."""
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
         mock_adapter = MagicMock()
@@ -339,8 +358,8 @@ class TestSilverWorkerMappedRows(unittest.TestCase):
 
     @patch("scraper.silver_worker.SessionLocal")
     def test_json_row_scalar_raw_content_writes_nothing(self, mock_session_local):
-        """A JSON scalar parses cleanly but is not dict | list, Shared contracts'
-        document type, so it is the same outcome as raw_content failing to parse."""
+        """A JSON scalar parses cleanly but is not a dict or list, so it is
+        rejected the same way raw_content that fails to parse is."""
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
         self.worker.registry.get_detail_mapping = MagicMock(return_value=MagicMock())
@@ -444,6 +463,9 @@ class TestSilverWorkerMappedRows(unittest.TestCase):
             self._process(mock_db, self._raw_job(json.dumps({"title": "Engineer"})))
 
         self.worker._handle_missing_or_failed_adapter.assert_not_called()
+        # The row is added to the session but never persisted, which a mocked
+        # db can only show through rollback having been called.
+        mock_db.rollback.assert_called_once()
         mapping_failure_phrases = (
             "No detail mapping",
             "does not parse as",
