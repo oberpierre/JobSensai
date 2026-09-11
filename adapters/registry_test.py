@@ -1,9 +1,33 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
+from adapters.adapters.base import DetailMapping, IndexMapping
 from adapters.adapters.google_discovery_v1 import GoogleDiscoveryAdapter
 from adapters.adapters.greenhouse_discovery_v1 import GreenhouseIOAdapter
+from adapters.adapters.mapping import MappedIndex
 from adapters.adapters.www_google_com_extraction_v1 import WwwGoogleComExtractionAdapter
 from adapters.registry import AdapterRegistry
+
+
+class _StubIndexMapping(IndexMapping):
+    """A hand-written escape-hatch mapping, for exercising manual registration."""
+
+    domains = ["stub-index.example.com"]
+
+    def fetch_url(self, start_url: str) -> str:
+        return start_url
+
+    def references(self, document: dict, start_url: str) -> list:
+        return []
+
+
+class _StubDetailMapping(DetailMapping):
+    domains = ["stub-detail.example.com"]
+
+    def to_silver(self, document: dict) -> dict:
+        return {}
 
 
 class TestAdapterRegistry(unittest.TestCase):
@@ -87,6 +111,49 @@ class TestAdapterRegistry(unittest.TestCase):
         self.registry.register("quiet.io", GoogleDiscoveryAdapter)
         with self.assertNoLogs("adapters.registry", level="WARNING"):
             self.registry.register("quiet.io", GoogleDiscoveryAdapter)
+
+    def test_manual_register_index_mapping(self):
+        self.registry.register("custom-index.io", _StubIndexMapping)
+        mapping = self.registry.get_index_mapping("https://custom-index.io/jobs")
+        self.assertIsInstance(mapping, _StubIndexMapping)
+
+    def test_manual_register_detail_mapping(self):
+        self.registry.register("custom-detail.io", _StubDetailMapping)
+        mapping = self.registry.get_detail_mapping("https://custom-detail.io/jobs")
+        self.assertIsInstance(mapping, _StubDetailMapping)
+
+    def test_unregistered_domain_has_no_mapping(self):
+        self.assertIsNone(self.registry.get_index_mapping("https://www.example.com"))
+        self.assertIsNone(self.registry.get_detail_mapping("https://www.example.com"))
+
+
+class MappingDocumentDiscoveryTest(unittest.TestCase):
+    """A mapping document is registered from a directory the test itself wrote.
+
+    ``adapters/adapters/mappings/`` ships empty, so nothing here relies on a
+    committed document.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        document = {
+            "version": 1,
+            "domains": ["mapped-a.example.com", "mapped-b.example.com"],
+            "jmespath": {"postings": "jobs[]", "job_url": "url"},
+        }
+        (Path(self._tmp.name) / "mapped_index_v1.json").write_text(json.dumps(document))
+        self.registry = AdapterRegistry(mappings_dir=Path(self._tmp.name))
+
+    def test_mapping_is_served_for_each_declared_domain(self):
+        for domain in ("mapped-a.example.com", "mapped-b.example.com"):
+            mapping = self.registry.get_index_mapping(f"https://{domain}/jobs")
+            self.assertIsInstance(mapping, MappedIndex)
+
+    def test_mapping_is_not_returned_as_a_discovery_or_extraction_adapter(self):
+        url = "https://mapped-a.example.com/jobs"
+        self.assertIsNone(self.registry.get_discovery_adapter(url))
+        self.assertIsNone(self.registry.get_extraction_adapter(url))
 
 
 if __name__ == "__main__":
