@@ -281,6 +281,14 @@ describe("AdminBoards", () => {
     const htmlRow = (await screen.findByText("Alpha")).parentElement
       ?.parentElement;
     const apiRow = screen.getByText("Zebra").parentElement?.parentElement;
+
+    // Each side must resolve to a real element with a real className before their
+    // equality means anything, since optional chaining otherwise lets both sides
+    // fall through to undefined and pass vacuously.
+    expect(htmlRow).toBeInstanceOf(HTMLElement);
+    expect(apiRow).toBeInstanceOf(HTMLElement);
+    expect(htmlRow?.className).not.toBe("");
+    expect(apiRow?.className).not.toBe("");
     expect(apiRow?.className).toEqual(htmlRow?.className);
   });
 
