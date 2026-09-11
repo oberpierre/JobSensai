@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 
 class DiscoveryAdapter(ABC):
@@ -48,6 +49,22 @@ class PostingRef:
     document: dict | None  # the posting in hand, or None when it must be fetched
 
 
+def strip_filter_params(url: str) -> str:
+    """Remove every ``filter.``-prefixed query parameter from *url*, textually.
+
+    Every other character is left exactly as it was: the operator's URL is the one
+    thing only a human can supply, so a round trip through ``parse_qsl``/``urlencode``
+    that re-encodes what it keeps is not an option.
+    """
+    parts = urlsplit(url)
+    kept = [
+        pair
+        for pair in parts.query.split("&")
+        if pair and not pair.split("=", 1)[0].startswith("filter.")
+    ]
+    return urlunsplit(parts._replace(query="&".join(kept)))
+
+
 class IndexMapping(ABC):
     """Finds postings in an API response and the URL each one is identified by.
 
@@ -58,10 +75,14 @@ class IndexMapping(ABC):
 
     domains: list[str] = []
 
-    @abstractmethod
     def fetch_url(self, start_url: str) -> str:
-        """Return *start_url* with every ``filter.``-prefixed parameter removed."""
-        pass
+        """Return *start_url* with every ``filter.``-prefixed parameter removed.
+
+        Concrete rather than abstract: the spider needs this before it has looked up
+        a mapping, and an abstract method would make every escape-hatch mapping
+        responsible for remembering the convention on its own.
+        """
+        return strip_filter_params(start_url)
 
     @abstractmethod
     def references(self, document: dict, start_url: str) -> list[PostingRef]:

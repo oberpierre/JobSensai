@@ -9,6 +9,7 @@ import unittest
 
 import jmespath.exceptions
 
+from adapters.adapters import mapping as mapping_module
 from adapters.adapters._markdown import html_to_markdown
 from adapters.adapters.base import PostingRef
 from adapters.adapters.mapping import (
@@ -137,10 +138,21 @@ class MappedIndexTest(unittest.TestCase):
 class ConstructionRejectionTest(unittest.TestCase):
     """Each rejection is a distinct construction-time gate, proven separately."""
 
-    def test_syntax_error_is_refused_by_jmespath_compile_itself(self):
+    def test_syntax_error_is_refused_and_wrapped_as_a_mapping_error(self):
+        # jmespath.compile itself raises ParseError, and the engine's one
+        # construction gate wraps it so a caller need only catch MappingError.
         document = {"version": 1, "domains": ["x"], "jmespath": {"title": "a["}}
-        with self.assertRaises(jmespath.exceptions.JMESPathError):
+        with self.assertRaises(MappingError) as ctx:
             MappedDetail(document)
+        self.assertIsInstance(ctx.exception.__cause__, jmespath.exceptions.ParseError)
+
+    def test_non_string_expression_is_refused_and_wrapped_as_a_mapping_error(self):
+        # jmespath.compile(["x"]) raises a bare TypeError ("unhashable type: 'list'"),
+        # which the same gate wraps.
+        document = {"version": 1, "domains": ["x"], "jmespath": {"title": ["x"]}}
+        with self.assertRaises(MappingError) as ctx:
+            MappedDetail(document)
+        self.assertIsInstance(ctx.exception.__cause__, TypeError)
 
     def test_unknown_function_name_is_refused_at_construction(self):
         document = {
@@ -189,6 +201,145 @@ class LoadMappingTest(unittest.TestCase):
 
     def test_classifies_an_index_document(self):
         self.assertIsInstance(load_mapping(_INDEX_DOCUMENT), MappedIndex)
+
+
+class NonListPostingsTest(unittest.TestCase):
+    """A postings expression resolving to a string or an object, not a list.
+
+    Uses a plain path (`jobs`, no `[]` projection) so a non-list value passes
+    through unchanged rather than a projection turning it into None first.
+    """
+
+    def setUp(self):
+        document = {
+            "version": 1,
+            "domains": ["boards-api.example.com"],
+            "jmespath": {"postings": "jobs", "job_url": "absolute_url"},
+        }
+        self.mapping = MappedIndex(document)
+
+    def test_string_postings_yields_no_references_and_logs_the_type(self):
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR") as logs:
+            refs = self.mapping.references(
+                {"jobs": "no jobs"}, "https://boards-api.example.com/jobs"
+            )
+        self.assertEqual(refs, [])
+        self.assertIn("str", "\n".join(logs.output))
+
+    def test_object_postings_yields_no_references(self):
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
+            refs = self.mapping.references(
+                {"jobs": {"a": 1}}, "https://boards-api.example.com/jobs"
+            )
+        self.assertEqual(refs, [])
+
+
+class NullJobUrlTest(unittest.TestCase):
+    def test_a_posting_with_no_resolvable_job_url_is_skipped_and_logged(self):
+        mapping = MappedIndex(_INDEX_DOCUMENT)
+        surviving = {"absolute_url": "https://x.example/1"}
+        document = {"jobs": [surviving, {"title": "no url here"}]}
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
+            refs = mapping.references(document, "https://boards-api.example.com/jobs")
+        self.assertEqual(
+            refs, [PostingRef(url="https://x.example/1", document=surviving)]
+        )
+
+
+class NonListDomainsTest(unittest.TestCase):
+    def test_string_domains_is_refused_for_a_detail_document(self):
+        document = {
+            "version": 1,
+            "domains": "example.com",
+            "jmespath": {"title": "title"},
+        }
+        with self.assertRaises(MappingError):
+            MappedDetail(document)
+
+    def test_string_domains_is_refused_for_an_index_document(self):
+        document = {
+            "version": 1,
+            "domains": "example.com",
+            "jmespath": {"postings": "jobs[]", "job_url": "url"},
+        }
+        with self.assertRaises(MappingError):
+            MappedIndex(document)
+
+
+class VersionAndCompletenessTest(unittest.TestCase):
+    def test_unsupported_version_is_refused(self):
+        document = {"version": 7, "domains": ["x"], "jmespath": {"title": "title"}}
+        with self.assertRaises(MappingError):
+            MappedDetail(document)
+
+    def test_missing_domains_is_refused(self):
+        document = {"version": 1, "jmespath": {"title": "title"}}
+        with self.assertRaises(MappingError):
+            MappedDetail(document)
+
+    def test_index_document_declaring_only_postings_is_refused(self):
+        document = {"version": 1, "domains": ["x"], "jmespath": {"postings": "jobs[]"}}
+        with self.assertRaises(MappingError):
+            MappedIndex(document)
+
+    def test_empty_jmespath_block_is_refused_rather_than_classified_as_detail(self):
+        document = {"version": 1, "domains": ["x"], "jmespath": {}}
+        with self.assertRaises(MappingError):
+            load_mapping(document)
+
+
+class MixedDocumentTest(unittest.TestCase):
+    def test_mixed_index_and_detail_keys_names_both_sets(self):
+        document = {
+            "version": 1,
+            "domains": ["x"],
+            "jmespath": {"title": "title", "postings": "jobs[]"},
+        }
+        with self.assertRaises(MappingError) as ctx:
+            load_mapping(document)
+        message = str(ctx.exception)
+        self.assertIn("mixes", message)
+        self.assertIn("postings", message)
+        self.assertIn("title", message)
+
+
+class DisjointVocabulariesGuardTest(unittest.TestCase):
+    """`load_mapping` classifies a document by which vocabulary its keys fall in,
+    which only works while the two vocabularies share no key."""
+
+    def test_guard_raises_on_an_overlapping_pair(self):
+        with self.assertRaises(AssertionError):
+            mapping_module._assert_disjoint_vocabularies(
+                frozenset({"postings"}), frozenset({"postings"})
+            )
+
+    def test_guard_passes_for_the_real_vocabularies(self):
+        mapping_module._assert_disjoint_vocabularies(
+            mapping_module._SILVER_SCHEMA_KEYS, mapping_module._INDEX_JMESPATH_KEYS
+        )
+
+
+class FetchUrlPreservesEveryOtherCharacterTest(unittest.TestCase):
+    """The operator's URL is the one thing only a human can supply, so fetch_url may
+    remove a `filter.` pair and must not re-encode anything else in it."""
+
+    def setUp(self):
+        self.mapping = MappedIndex(_INDEX_DOCUMENT)
+
+    def test_comma_separated_value_is_left_unencoded(self):
+        url = "https://boards-api.example.com/jobs?fields=a,b&filter.x=1"
+        self.assertEqual(
+            self.mapping.fetch_url(url),
+            "https://boards-api.example.com/jobs?fields=a,b",
+        )
+
+    def test_bracket_key_is_untouched_when_no_filter_param_is_present(self):
+        url = "https://boards-api.example.com/jobs?arr[]=1&content=true"
+        self.assertEqual(self.mapping.fetch_url(url), url)
+
+    def test_valueless_flag_is_not_rewritten_with_a_trailing_equals(self):
+        url = "https://boards-api.example.com/jobs?flag&content=true"
+        self.assertEqual(self.mapping.fetch_url(url), url)
 
 
 if __name__ == "__main__":

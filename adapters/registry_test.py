@@ -1,4 +1,5 @@
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -126,6 +127,14 @@ class TestAdapterRegistry(unittest.TestCase):
         self.assertIsNone(self.registry.get_index_mapping("https://www.example.com"))
         self.assertIsNone(self.registry.get_detail_mapping("https://www.example.com"))
 
+    def test_construction_names_no_class_as_missing_domains(self):
+        # The mapping engine's own MappedIndex/MappedDetail carry no class-level
+        # domains, so scanning that module previously logged this warning twice on
+        # every construction.
+        with self.assertLogs("adapters.registry", level="DEBUG") as logs:
+            AdapterRegistry()
+        self.assertNotIn("has no declared domains", "\n".join(logs.output))
+
 
 class MappingDocumentDiscoveryTest(unittest.TestCase):
     """A mapping document is registered from a directory the test itself wrote.
@@ -154,6 +163,37 @@ class MappingDocumentDiscoveryTest(unittest.TestCase):
         url = "https://mapped-a.example.com/jobs"
         self.assertIsNone(self.registry.get_discovery_adapter(url))
         self.assertIsNone(self.registry.get_extraction_adapter(url))
+
+
+class EscapeHatchDiscoveryTest(unittest.TestCase):
+    """A platform the mapping language cannot express falls back to a Python
+    subclass of IndexMapping/DetailMapping, dropped into the scanned directory like
+    any hand-written adapter. Nothing else here exercises that path: the other
+    registry tests reach a class only through register() or a mapping document.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        module_name = "adapters.adapters.escape_hatch_index_v1"
+        (Path(self._tmp.name) / "escape_hatch_index_v1.py").write_text(
+            "from adapters.adapters.base import IndexMapping\n\n\n"
+            "class EscapeHatchIndexMapping(IndexMapping):\n"
+            '    domains = ["escape-hatch.example.com"]\n\n'
+            "    def references(self, document, start_url):\n"
+            "        return []\n"
+        )
+        import adapters.adapters as adapters_pkg
+
+        adapters_pkg.__path__.insert(0, self._tmp.name)
+        self.addCleanup(adapters_pkg.__path__.remove, self._tmp.name)
+        self.addCleanup(sys.modules.pop, module_name, None)
+
+    def test_python_index_mapping_dropped_into_the_directory_is_served(self):
+        registry = AdapterRegistry(adapters_dir=Path(self._tmp.name))
+        mapping = registry.get_index_mapping("https://escape-hatch.example.com/jobs")
+        self.assertIsInstance(mapping, IndexMapping)
+        self.assertEqual(type(mapping).__name__, "EscapeHatchIndexMapping")
 
 
 if __name__ == "__main__":
