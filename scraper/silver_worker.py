@@ -5,6 +5,7 @@ import signal
 import time
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlsplit
 
 import redis
 from sqlalchemy.orm import Session
@@ -12,6 +13,39 @@ from sqlalchemy.orm import Session
 from adapters.registry import AdapterRegistry
 from scraper.database import SessionLocal, init_db
 from scraper.models import JobPosting, RawJobPosting
+
+# The literal a Bronze row's content_type must equal to route to a detail mapping
+# rather than an extraction adapter. Shared contracts requires an exact comparison,
+# never a substring or parameter-stripped one.
+_MAPPED_CONTENT_TYPE = "application/json"
+
+# Required Silver fields, matching _save_job_posting's own blank check.
+_REQUIRED_STRING_FIELDS = ("title", "company_name", "description")
+_LIST_FIELDS = ("locations", "categories")
+
+
+def _mapped_shape_violation(data: dict) -> Optional[str]:
+    """Return what is wrong with a mapped Silver dict, or None if it is well-shaped.
+
+    Called only after keys whose path resolved to None have been dropped, so an
+    honestly absent optional field is never flagged here.
+    """
+    for field in _REQUIRED_STRING_FIELDS:
+        value = data.get(field)
+        if not isinstance(value, str) or not value:
+            return f"{field!r} must be a non-blank string"
+    for field in _LIST_FIELDS:
+        if field in data:
+            value = data[field]
+            if not isinstance(value, list) or not all(
+                isinstance(item, str) for item in value
+            ):
+                return f"{field!r} must be a list of strings"
+    if "metadata" in data and not isinstance(data["metadata"], dict):
+        return "'metadata' must be an object"
+    if "employment_type" in data and not isinstance(data["employment_type"], str):
+        return "'employment_type' must be a string"
+    return None
 
 
 # Configuration
@@ -114,6 +148,10 @@ class SilverWorker:
                     logger.warning(f"RawJobPosting not found for URL: {url}")
                     return
 
+                if raw_job.content_type == _MAPPED_CONTENT_TYPE:
+                    self._process_mapped_row(db, url, raw_job)
+                    return
+
                 adapter = self.registry.get_extraction_adapter(url)
                 if not adapter:
                     self._handle_missing_or_failed_adapter(url, raw_job.raw_content)
@@ -138,6 +176,60 @@ class SilverWorker:
             logger.error(f"Failed to decode message: {message[:100]}...")
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
+
+    def _process_mapped_row(
+        self, db: Session, url: str, raw_job: RawJobPosting
+    ) -> None:
+        """Map a Bronze row whose content_type is JSON, validating its own output.
+
+        Keyed on source_url rather than the posting's own url: an API posting's url
+        is on the board's public host, whose extraction adapter (if any) would read
+        a description fragment as a whole page. None of the four outcomes below
+        shares process_message's HTML try/except, so a check failure here can never
+        land in the same except as a database write failure.
+        """
+        hostname = urlsplit(raw_job.source_url).hostname
+        mapping = self.registry.get_detail_mapping(raw_job.source_url)
+        if mapping is None:
+            logger.error(
+                f"No detail mapping for {hostname} (posting {url}); operator error "
+                "until the mapping is learned"
+            )
+            return
+
+        try:
+            document = json.loads(raw_job.raw_content)
+        except ValueError as e:
+            logger.error(
+                f"raw_content for {hostname} (posting {url}) does not parse as "
+                f"JSON: {e}"
+            )
+            return
+        if not isinstance(document, (dict, list)):
+            logger.error(
+                f"raw_content for {hostname} (posting {url}) parsed to "
+                f"{type(document).__name__}, not an object or array"
+            )
+            return
+
+        try:
+            mapped = mapping.to_silver(document)
+        except Exception as e:
+            logger.error(f"detail mapping for {hostname} (posting {url}) raised: {e}")
+            return
+
+        # A declared key whose path resolved to None is dropped, so a mapping
+        # honestly silent about a field fails the same way an absent one does.
+        cleaned = {k: v for k, v in mapped.items() if v is not None}
+        violation = _mapped_shape_violation(cleaned)
+        if violation is not None:
+            logger.error(
+                f"mapped row for {hostname} (posting {url}) failed shape check: "
+                f"{violation}"
+            )
+            return
+
+        self._save_job_posting(db, url, cleaned)
 
     def _save_job_posting(self, db: Session, url: str, data: dict):
         # title, company_name and description back NOT NULL columns. A missing one is a
