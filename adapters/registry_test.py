@@ -148,6 +148,7 @@ class MappingDocumentDiscoveryTest(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         document = {
             "version": 1,
+            "type": "index",
             "domains": ["mapped-a.example.com", "mapped-b.example.com"],
             "jmespath": {"postings": "jobs[]", "job_url": "url"},
         }

@@ -1,8 +1,10 @@
 """The mapping engine: interprets a parsing rule expressed as a JMESPath document.
 
-A document declares `version` (must be 1), a non-empty `domains` list and a
-`jmespath` block of one expression string per key: `postings` and `job_url` for an
-index document, a subset of the Silver schema for a detail one. Every expression is
+A document declares `version` (must be 1), `type` (`index` or `detail`), a non-empty
+`domains` list and a `jmespath` block of one expression string per key: `postings` and
+`job_url` for an index document, a subset of the Silver schema for a detail one. The
+declared `type` selects which of those two key vocabularies the block is checked
+against, rather than the keys themselves selecting the type. Every expression is
 compiled once at construction, so a typo in a document fails loudly there rather
 than the first time a posting reaches it.
 """
@@ -38,7 +40,10 @@ _SILVER_SCHEMA_KEYS = frozenset(
 # The two jmespath keys an index document may declare.
 _INDEX_JMESPATH_KEYS = frozenset({"postings", "job_url"})
 
-_TOP_LEVEL_KEYS = frozenset({"version", "domains", "jmespath"})
+_TOP_LEVEL_KEYS = frozenset({"version", "type", "domains", "jmespath"})
+
+_KIND_INDEX = "index"
+_KIND_DETAIL = "detail"
 
 _SUPPORTED_VERSION = 1
 
@@ -71,22 +76,6 @@ _KNOWN_FUNCTION_NAMES = _BUILTIN_FUNCTION_NAMES | _CUSTOM_FUNCTION_NAMES
 _OPTIONS = jmespath.Options(custom_functions=_MappingFunctions())
 
 
-def _assert_disjoint_vocabularies(
-    silver_keys: frozenset, index_keys: frozenset
-) -> None:
-    """Guard the assumption ``load_mapping`` classifies a document by key vocabulary.
-
-    That classification holds only while the two vocabularies never share a key,
-    because a Silver field named e.g. ``postings`` would otherwise silently
-    misclassify every index document.
-    """
-    overlap = silver_keys & index_keys
-    assert not overlap, f"index and Silver vocabularies overlap: {sorted(overlap)}"
-
-
-_assert_disjoint_vocabularies(_SILVER_SCHEMA_KEYS, _INDEX_JMESPATH_KEYS)
-
-
 def _validate_function_names(node: Any) -> None:
     """Walk a compiled expression's parsed tree, refusing any unknown function call.
 
@@ -113,6 +102,14 @@ def _validate_top_level(document: dict) -> None:
 def _validate_version(document: dict) -> None:
     if document.get("version") != _SUPPORTED_VERSION:
         raise MappingError(f"unsupported version: {document.get('version')!r}")
+
+
+def _validate_type(document: dict, expected: str) -> None:
+    # Checked by the class itself, not only by load_mapping, so constructing
+    # MappedIndex/MappedDetail directly cannot get round the declaration.
+    kind = document.get("type")
+    if kind != expected:
+        raise MappingError(f"expected type {expected!r}, found {kind!r}")
 
 
 def _validate_domains(document: dict) -> list[str]:
@@ -157,6 +154,7 @@ class MappedIndex(IndexMapping):
     def __init__(self, document: dict) -> None:
         _validate_top_level(document)
         _validate_version(document)
+        _validate_type(document, _KIND_INDEX)
         self.domains: list[str] = _validate_domains(document)
         self._compiled = _compile_jmespath_block(document, _INDEX_JMESPATH_KEYS)
         missing = _INDEX_JMESPATH_KEYS - self._compiled.keys()
@@ -192,6 +190,7 @@ class MappedDetail(DetailMapping):
     def __init__(self, document: dict) -> None:
         _validate_top_level(document)
         _validate_version(document)
+        _validate_type(document, _KIND_DETAIL)
         self.domains: list[str] = _validate_domains(document)
         self._compiled = _compile_jmespath_block(document, _SILVER_SCHEMA_KEYS)
 
@@ -203,29 +202,14 @@ class MappedDetail(DetailMapping):
 
 
 def load_mapping(document: dict) -> IndexMapping | DetailMapping:
-    """Build the mapping *document* describes, classified by its own ``jmespath`` keys.
-
-    An index document's keys are a subset of ``{postings, job_url}``, whereas a
-    detail document's are a subset of the Silver schema. The two vocabularies are
-    disjoint, so a well-formed document is unambiguous.
-    """
+    """Build the mapping *document* describes, dispatched on its own ``type``."""
     _validate_top_level(document)
-    block = document.get("jmespath")
-    if not isinstance(block, dict):
-        raise MappingError("'jmespath' must be an object")
-    keys = set(block)
-    if keys <= _INDEX_JMESPATH_KEYS:
+    kind = document.get("type")
+    if kind == _KIND_INDEX:
         return MappedIndex(document)
-    if keys <= _SILVER_SCHEMA_KEYS:
+    if kind == _KIND_DETAIL:
         return MappedDetail(document)
-    index_keys = sorted(keys & _INDEX_JMESPATH_KEYS)
-    detail_keys = sorted(keys & _SILVER_SCHEMA_KEYS)
-    if index_keys and detail_keys:
-        raise MappingError(
-            f"document mixes index key(s) {index_keys} and detail key(s) {detail_keys}"
-        )
-    unknown = sorted(keys - _SILVER_SCHEMA_KEYS - _INDEX_JMESPATH_KEYS)
-    raise MappingError(f"unknown jmespath key(s): {unknown}")
+    raise MappingError(f"unknown mapping type: {kind!r}")
 
 
 def load_mapping_file(path: Path) -> IndexMapping | DetailMapping:
