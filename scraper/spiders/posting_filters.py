@@ -63,7 +63,9 @@ def apply_filters(
     if doc_refs:
         unresolved = [key for key, hit in resolved.items() if not hit]
         for key in unresolved:
-            logger.error("filter.%s matched no posting on %s", key, hostname)
+            logger.error(
+                "filter.%s did not resolve on any posting on %s", key, hostname
+            )
         if unresolved:
             return None
     return kept_ids

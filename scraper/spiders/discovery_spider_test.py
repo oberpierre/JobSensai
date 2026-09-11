@@ -4,7 +4,7 @@ import unittest
 import uuid
 from unittest.mock import MagicMock, patch
 
-from scrapy.http import HtmlResponse, Request, Response
+from scrapy.http import HtmlResponse, Request, TextResponse
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.compiler import compiles
@@ -299,9 +299,10 @@ class TestParseJob(unittest.TestCase):
 
 
 def _api_response(url, body: bytes, *, headers=None, meta=None):
-    """A real Response, not a mock, so header/body handling genuinely runs."""
+    """A real TextResponse, not a mock, so a `response.text` implementation
+    genuinely decodes the body rather than raising."""
     request = Request(url=url, meta=meta or {})
-    return Response(url=url, body=body, headers=headers, request=request)
+    return TextResponse(url=url, body=body, headers=headers, request=request)
 
 
 def _json_body(payload) -> bytes:
