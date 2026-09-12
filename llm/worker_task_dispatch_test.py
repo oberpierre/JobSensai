@@ -263,8 +263,6 @@ class TestProcessTask(unittest.TestCase):
         )
 
     def test_publish_receives_kind_adapter(self):
-        """Checked apart from has_existing_pr's kind so a mutation to this call
-        site alone is caught."""
         self._run_extraction_task(passed=True)
 
         self.assertEqual(
@@ -272,9 +270,11 @@ class TestProcessTask(unittest.TestCase):
         )
 
     def test_has_existing_pr_and_publish_receive_the_same_kind(self):
-        """Pins the shared-binding property itself: two literals kept in sync by
-        hand could pass the two assertions above while still drifting from each
-        other."""
+        """Pins that both calls read one binding rather than agreeing by hand.
+
+        The two assertions above pin today's value at each site separately, so
+        they stop covering this the moment either site takes a second value.
+        """
         self._run_extraction_task(passed=True)
 
         self.assertEqual(
