@@ -377,6 +377,26 @@ class TestParseApiBasics(ParseApiTestCase):
         self.assertIsInstance(results[0], Request)
         self.assertEqual(results[0].callback, self.spider.parse_job)
 
+    def test_bare_id_feed_yields_requests_and_no_items(self):
+        self.spider.registry.get_index_mapping = lambda url: MappedIndex(
+            {
+                "version": 1,
+                "type": "index",
+                "domains": ["api.example.com"],
+                "jmespath": {
+                    "postings": "jobs[]",
+                    "job_url": "join('', ['https://api.example.com/jobs/', @])",
+                },
+            }
+        )
+        response = self._response(["1234", "1345"])
+
+        results = list(self.spider.parse_api(response))
+
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(isinstance(r, Request) for r in results))
+        self.assertTrue(all(r.callback == self.spider.parse_job for r in results))
+
     def test_bare_json_array_body_yields_one_item_per_element(self):
         response = _api_response(
             "https://api.example.com/jobs",
