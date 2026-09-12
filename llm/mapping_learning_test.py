@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 import io
 import json
@@ -24,6 +25,16 @@ class TestBudgetChars(unittest.TestCase):
             self.assertEqual(budget_chars(), (8192 - 4096) * 2)
 
 
+class TestLearnMappingRejectsDetail(unittest.TestCase):
+    def test_detail_type_raises_rather_than_writing_an_index_fixture(self):
+        # The body hardcodes index.json and IndexMappingSnapshotTest, so a detail
+        # caller would store a detail response under an index base and grade it with
+        # the wrong one.
+        with self.assertRaises(ValueError) as caught:
+            learn_mapping(MagicMock(), "acme.com", "https://acme.com/j", {}, "detail")
+        self.assertIn("detail", str(caught.exception))
+
+
 class TestTrimToBudget(unittest.TestCase):
     def test_already_within_budget_returns_unchanged(self):
         document = {"jobs": [{"id": 1}, {"id": 2}]}
@@ -41,6 +52,22 @@ class TestTrimToBudget(unittest.TestCase):
         # The smaller array is untouched: only the longest array is ever dropped.
         self.assertEqual(len(trimmed["offices"]), 2)
         self.assertLessEqual(len(text), 400)
+
+    def test_alternates_between_arrays_of_comparable_size(self):
+        document = {
+            "a": [{"id": i, "pad": "A" * 20} for i in range(10)],
+            "b": [{"id": i, "pad": "B" * 20} for i in range(10)],
+        }
+        original = copy.deepcopy(document)
+        trimmed, text = _trim_to_budget(document, 600)
+
+        # Both shrink: once one array is shorter than the other the search switches,
+        # so a trimmer holding a stale reference would empty one and never touch the
+        # other.
+        self.assertLess(len(trimmed["a"]), 10)
+        self.assertLess(len(trimmed["b"]), 10)
+        self.assertLessEqual(len(text), 600)
+        self.assertEqual(document, original)
 
     def test_refuses_when_only_singleton_arrays_remain(self):
         document = {"a": [1], "b": [2]}

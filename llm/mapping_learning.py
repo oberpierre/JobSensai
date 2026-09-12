@@ -89,6 +89,11 @@ def learn_mapping(
     Takes an already-parsed *document*, never a raw string: parsing and
     validating the body is `process_task`'s, before the lease.
     """
+    if mapping_type != "index":
+        raise ValueError(
+            f"learn_mapping writes an index fixture and an index snapshot base, so it "
+            f"cannot serve mapping_type={mapping_type!r}"
+        )
     names = _mapping_names(domain, mapping_type)
     trimmed, trimmed_text = _trim_to_budget(document, budget_chars())
 

@@ -22,7 +22,7 @@ Every value under `jmespath` is a JMESPath expression. `postings` is evaluated a
 
 ## Requirements
 
-- `postings` and `job_url` are both required, and they are the only keys your reply may hold.
+- `postings` and `job_url` are both required, and they are the only keys the `jmespath` object may hold. Your reply itself is the `jmespath` wrapper shown under Output, and nothing else.
 - `version`, `type` and `domains` are written by the orchestrator, not by you. Do not include them. Anything you put there is discarded.
 - The domains this mapping will serve: $domains
 
