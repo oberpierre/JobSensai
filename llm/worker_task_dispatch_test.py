@@ -135,6 +135,14 @@ class TestProcessTask(unittest.TestCase):
         # The suite's output travels to the publisher so it can land in the PR body.
         self.assertEqual(kwargs["test_output"], "TEST LOG")
         self.assertEqual(kwargs["model_name"], "acme-test-model")
+        self.assertEqual(
+            kwargs["paths"],
+            [
+                "adapters/adapters/newboard_com_extraction_v1.py",
+                "adapters/adapters/newboard_com_extraction_v1_test.py",
+                "adapters/adapters/fixtures/newboard_com_extraction_v1",
+            ],
+        )
         self._assert_lease_released()
 
     def test_red_run_still_publishes_for_review(self):
