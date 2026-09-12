@@ -114,6 +114,33 @@ def _detail_case(
     return _Case
 
 
+class TestUnsetBasename(unittest.TestCase):
+    """A subclass that never set basename fails naming it, on both bases.
+
+    These are the only cases that let the bases derive their own paths; every other
+    case here overrides both seams, so none of them reaches the guard.
+    """
+
+    def _assert_names_basename(self, base, method: str):
+        class _Case(base, unittest.TestCase):
+            pass
+
+        outcome = _run_one(_Case, method)
+        self.assertEqual(outcome.errors, [])
+        self.assertEqual(len(outcome.failures), 1)
+        self.assertIn("basename", outcome.failures[0][1])
+
+    def test_index_base_names_basename(self):
+        self._assert_names_basename(
+            IndexMappingSnapshotTest, "test_document_is_an_index_mapping"
+        )
+
+    def test_detail_base_names_basename(self):
+        self._assert_names_basename(
+            DetailMappingSnapshotTest, "test_document_is_a_detail_mapping"
+        )
+
+
 class TestIndexMappingSnapshotTest(unittest.TestCase):
     def test_passes_when_mapping_reproduces_snapshot(self):
         response = {
@@ -398,6 +425,8 @@ class TestDetailMappingSnapshotTest(unittest.TestCase):
             )
             outcome = _run_one(case, "test_document_is_a_detail_mapping")
         self.assertFalse(outcome.wasSuccessful())
+        self.assertEqual(outcome.errors, [])
+        self.assertEqual(len(outcome.failures), 1)
 
     def test_guard_fails_when_snapshot_pins_no_title_or_description(self):
         snapshot = {**_DETAIL_SNAPSHOT, "title": "", "description": "   "}

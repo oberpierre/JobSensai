@@ -21,8 +21,13 @@ def html_char_budget() -> int:
 # Discovery feeds a pruned link-only skeleton that stays small. Detail pages carry the
 # full posting body (a 1 MB page cleans to ~120k chars) and need a wider window, else
 # Ollama truncates the tail holding the content. Overridable per box for tuning.
-DISCOVERY_NUM_CTX = int(os.getenv("DISCOVERY_NUM_CTX", "32768"))
-EXTRACTION_NUM_CTX = int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
+# Read per call for the same reason the budget above is.
+def discovery_num_ctx() -> int:
+    return int(os.getenv("DISCOVERY_NUM_CTX", "32768"))
+
+
+def extraction_num_ctx() -> int:
+    return int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
 
 
 _PROMPT_DIR = Path(__file__).parent / "prompts"
@@ -115,7 +120,7 @@ _EXPECTED = {
 def build_expected_prompt(adapter_type: str, cleaned_html: str, url: str) -> str:
     """Render the truth-agent prompt asking for a grounded expected.json.
 
-    ``cleaned_html`` is substituted verbatim; sizing it is the caller's job.
+    ``cleaned_html`` is substituted verbatim, so sizing it is the caller's job.
     """
     role = _EXPECTED[adapter_type]
     template = Template(_load_template("expected_agent.md"))
@@ -138,8 +143,8 @@ def build_code_prompt(
     """Render the code-agent prompt.
 
     The code agent never sees ``expected.json`` — only the base class and the HTML — so
-    it must parse rather than hardcode. ``cleaned_html`` is substituted verbatim; sizing
-    it is the caller's job.
+    it must parse rather than hardcode. ``cleaned_html`` is substituted verbatim, so
+    sizing it is the caller's job.
     """
     role = _ROLE[adapter_type]
     return Template(_load_template("code_agent.md")).safe_substitute(

@@ -22,7 +22,12 @@ from llm.adapter_files import (
 from llm.dom import prune_to_links, resolve_hrefs
 from llm.html_cleaner import clean_html
 from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
-from llm.model import DISCOVERY_NUM_CTX, EXTRACTION_NUM_CTX, LLMModel, html_char_budget
+from llm.model import (
+    LLMModel,
+    discovery_num_ctx,
+    extraction_num_ctx,
+    html_char_budget,
+)
 from publisher.publisher import Publisher
 
 load_dotenv()
@@ -151,7 +156,7 @@ class LLMWorker:
         names = _adapter_names(domain, "discovery")
         cleaned = clean_html(resolve_hrefs(html, url))
         lean = prune_to_links(cleaned)[: html_char_budget()]
-        llm = LLMModel(base_url=self.llm_url, num_ctx=DISCOVERY_NUM_CTX)
+        llm = LLMModel(base_url=self.llm_url, num_ctx=discovery_num_ctx())
 
         truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
@@ -188,7 +193,7 @@ class LLMWorker:
         names = _adapter_names(domain, "extraction")
         cleaned = clean_html(html)
         sized = cleaned[: html_char_budget()]
-        llm = LLMModel(base_url=self.llm_url, num_ctx=EXTRACTION_NUM_CTX)
+        llm = LLMModel(base_url=self.llm_url, num_ctx=extraction_num_ctx())
 
         truth = _parse_json_object(llm.generate_expected("extraction", sized, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
