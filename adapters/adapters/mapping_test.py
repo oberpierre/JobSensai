@@ -312,6 +312,50 @@ class NullJobUrlTest(unittest.TestCase):
         )
 
 
+class BareElementReferencesTest(unittest.TestCase):
+    """A postings expression selecting bare ids rather than objects."""
+
+    def setUp(self):
+        document = {
+            "version": 1,
+            "type": "index",
+            "domains": ["boards-api.example.com"],
+            "jmespath": {
+                # A plain path, not a `[]` projection: a projection would itself
+                # drop a null element before it ever reaches references().
+                "postings": "jobs",
+                "job_url": "join('', ['https://boards-api.example.com/jobs/', @])",
+            },
+        }
+        self.mapping = MappedIndex(document)
+
+    def test_bare_string_elements_yield_a_reference_with_no_document(self):
+        document = {"jobs": ["1234", "1345"]}
+        refs = self.mapping.references(document, "https://boards-api.example.com/jobs")
+        self.assertEqual(
+            refs,
+            [
+                PostingRef(
+                    url="https://boards-api.example.com/jobs/1234", document=None
+                ),
+                PostingRef(
+                    url="https://boards-api.example.com/jobs/1345", document=None
+                ),
+            ],
+        )
+
+    def test_null_element_yields_no_reference(self):
+        document = {"jobs": ["1234", None]}
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
+            refs = self.mapping.references(
+                document, "https://boards-api.example.com/jobs"
+            )
+        self.assertEqual(
+            refs,
+            [PostingRef(url="https://boards-api.example.com/jobs/1234", document=None)],
+        )
+
+
 class NonListDomainsTest(unittest.TestCase):
     def test_string_domains_is_refused_for_a_detail_document(self):
         document = {
