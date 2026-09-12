@@ -346,7 +346,7 @@ class BareElementReferencesTest(unittest.TestCase):
 
     def test_null_element_yields_no_reference(self):
         document = {"jobs": ["1234", None]}
-        with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
+        with self.assertLogs("adapters.adapters.mapping", level="ERROR") as logs:
             refs = self.mapping.references(
                 document, "https://boards-api.example.com/jobs"
             )
@@ -354,6 +354,7 @@ class BareElementReferencesTest(unittest.TestCase):
             refs,
             [PostingRef(url="https://boards-api.example.com/jobs/1234", document=None)],
         )
+        self.assertIn("job_url expression raised", "\n".join(logs.output))
 
 
 class NonListDomainsTest(unittest.TestCase):

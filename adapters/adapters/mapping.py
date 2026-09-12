@@ -231,8 +231,8 @@ class MappedIndex(IndexMapping):
                     exc,
                 )
                 continue
-            document = element if isinstance(element, (dict, list)) else None
-            refs.append(PostingRef(url=resolved_url, document=document))
+            posting_document = element if isinstance(element, (dict, list)) else None
+            refs.append(PostingRef(url=resolved_url, document=posting_document))
         return refs
 
 

@@ -47,7 +47,7 @@ class PostingRef:
     """One posting the index stage found."""
 
     url: str  # canonical URL, and the posting's identity in Bronze
-    document: dict | None  # the posting in hand, or None when it must be fetched
+    document: dict | list | None  # the posting in hand, or None when it must be fetched
 
 
 class IndexMapping(ABC):
