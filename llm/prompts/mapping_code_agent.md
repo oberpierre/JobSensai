@@ -13,16 +13,16 @@ A finished mapping document looks like this:
   "domains": ["boards-api.example.com"],
   "jmespath": {
     "postings": "jobs[]",
-    "job_url": "absolute_url"
+    "posting_url": "absolute_url"
   }
 }
 ```
 
-Every value under `jmespath` is a JMESPath expression. `postings` is evaluated against the whole response and must select the list of posting elements. `job_url` is evaluated against one posting element and must select that posting's URL.
+Every value under `jmespath` is a JMESPath expression. `postings` is evaluated against the whole response and must select the list of posting elements. `posting_url` is evaluated against one posting element and must select that posting's URL.
 
 ## Requirements
 
-- `postings` and `job_url` are both required, and they are the only keys the `jmespath` object may hold. Your reply itself is the `jmespath` wrapper shown under Output, and nothing else.
+- `postings` and `posting_url` are both required, and they are the only keys the `jmespath` object may hold. Your reply itself is the `jmespath` wrapper shown under Output, and nothing else.
 - `version`, `type` and `domains` are written by the orchestrator, not by you. Do not include them. Anything you put there is discarded.
 - The domains this mapping will serve: $domains
 
@@ -30,7 +30,7 @@ Every value under `jmespath` is a JMESPath expression. `postings` is evaluated a
 
 Return **only** a JSON object, in exactly this shape, with no prose and no markdown fences:
 
-{"jmespath": {"postings": "...", "job_url": "..."}}
+{"jmespath": {"postings": "...", "posting_url": "..."}}
 
 ## Response
 

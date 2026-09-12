@@ -118,7 +118,7 @@ class TestPromptBuilders(unittest.TestCase):
         self.assertIn("MARKER_BODY", prompt)
         self.assertIn("boards.acme.com", prompt)
         self.assertIn("postings", prompt)
-        self.assertIn("job_url", prompt)
+        self.assertIn("posting_url", prompt)
         self.assertIn("jmespath", prompt)
         self.assertNotIn("$body", prompt)
 

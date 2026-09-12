@@ -313,7 +313,7 @@ _SIMPLE_INDEX_DOCUMENT = {
     "version": 1,
     "type": "index",
     "domains": ["api.example.com"],
-    "jmespath": {"postings": "jobs[]", "job_url": "url"},
+    "jmespath": {"postings": "jobs[]", "posting_url": "url"},
 }
 
 
@@ -385,7 +385,7 @@ class TestParseApiBasics(ParseApiTestCase):
                 "domains": ["api.example.com"],
                 "jmespath": {
                     "postings": "jobs[]",
-                    "job_url": "join('', ['https://api.example.com/jobs/', @])",
+                    "posting_url": "join('', ['https://api.example.com/jobs/', @])",
                 },
             }
         )
@@ -410,7 +410,7 @@ class TestParseApiBasics(ParseApiTestCase):
                 "version": 1,
                 "type": "index",
                 "domains": ["api.example.com"],
-                "jmespath": {"postings": "[]", "job_url": "url"},
+                "jmespath": {"postings": "[]", "posting_url": "url"},
             }
         )
 

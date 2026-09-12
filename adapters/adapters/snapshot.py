@@ -209,7 +209,7 @@ class IndexMappingSnapshotTest:
             f"{self.basename}: snapshot names no URL to resolve references against",
         )
 
-    def test_job_urls_match_snapshot(self):
+    def test_posting_urls_match_snapshot(self):
         refs = self.mapping.references(self.document, self.snapshot["url"])
         found = {ref.url for ref in refs}
         expected = set(self.snapshot.get("job_links", []))
@@ -221,7 +221,7 @@ class IndexMappingSnapshotTest:
         )
 
     def test_reference_documents_come_from_the_response(self):
-        # The base URL only resolves relative job_url values, so a placeholder is
+        # The base URL only resolves relative posting_url values, so a placeholder is
         # enough: a reference document's identity does not depend on it.
         refs = self.mapping.references(self.document, "https://example.com")
         for ref in refs:

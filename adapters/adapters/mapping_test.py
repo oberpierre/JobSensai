@@ -39,7 +39,7 @@ _INDEX_DOCUMENT = {
     "domains": ["boards-api.example.com", "boards-api.example.org"],
     "jmespath": {
         "postings": "jobs[]",
-        "job_url": "absolute_url",
+        "posting_url": "absolute_url",
     },
 }
 
@@ -100,7 +100,7 @@ class MappedIndexTest(unittest.TestCase):
             ["boards-api.example.com", "boards-api.example.org"],
         )
 
-    def test_references_pairs_each_posting_with_its_job_url(self):
+    def test_references_pairs_each_posting_with_its_posting_url(self):
         document = {
             "jobs": [
                 {"absolute_url": "https://x.example/1"},
@@ -259,7 +259,7 @@ class LoadMappingTest(unittest.TestCase):
             "version": 1,
             "type": "detail",
             "domains": ["x.example.com"],
-            "jmespath": {"postings": "jobs[]", "job_url": "url"},
+            "jmespath": {"postings": "jobs[]", "posting_url": "url"},
         }
         with self.assertRaises(MappingError) as ctx:
             MappedIndex(document)
@@ -280,7 +280,7 @@ class NonListPostingsTest(unittest.TestCase):
             "version": 1,
             "type": "index",
             "domains": ["boards-api.example.com"],
-            "jmespath": {"postings": "jobs", "job_url": "absolute_url"},
+            "jmespath": {"postings": "jobs", "posting_url": "absolute_url"},
         }
         self.mapping = MappedIndex(document)
 
@@ -301,7 +301,7 @@ class NonListPostingsTest(unittest.TestCase):
 
 
 class NullJobUrlTest(unittest.TestCase):
-    def test_a_posting_with_no_resolvable_job_url_is_skipped_and_logged(self):
+    def test_a_posting_with_no_resolvable_posting_url_is_skipped_and_logged(self):
         mapping = MappedIndex(_INDEX_DOCUMENT)
         surviving = {"absolute_url": "https://x.example/1"}
         document = {"jobs": [surviving, {"title": "no url here"}]}
@@ -324,7 +324,7 @@ class BareElementReferencesTest(unittest.TestCase):
                 # A plain path, not a `[]` projection: a projection would itself
                 # drop a null element before it ever reaches references().
                 "postings": "jobs",
-                "job_url": "join('', ['https://boards-api.example.com/jobs/', @])",
+                "posting_url": "join('', ['https://boards-api.example.com/jobs/', @])",
             },
         }
         self.mapping = MappedIndex(document)
@@ -354,7 +354,7 @@ class BareElementReferencesTest(unittest.TestCase):
             refs,
             [PostingRef(url="https://boards-api.example.com/jobs/1234", document=None)],
         )
-        self.assertIn("job_url expression raised", "\n".join(logs.output))
+        self.assertIn("posting_url expression raised", "\n".join(logs.output))
 
 
 class NonListDomainsTest(unittest.TestCase):
@@ -373,7 +373,7 @@ class NonListDomainsTest(unittest.TestCase):
             "version": 1,
             "type": "index",
             "domains": "example.com",
-            "jmespath": {"postings": "jobs[]", "job_url": "url"},
+            "jmespath": {"postings": "jobs[]", "posting_url": "url"},
         }
         with self.assertRaises(MappingError):
             MappedIndex(document)
@@ -417,12 +417,12 @@ class ReferencesJobUrlGuardTest(unittest.TestCase):
     def setUp(self):
         self.mapping = MappedIndex(_INDEX_DOCUMENT)
 
-    def test_relative_job_url_is_resolved_against_the_fetched_url(self):
+    def test_relative_posting_url_is_resolved_against_the_fetched_url(self):
         document = {"jobs": [{"absolute_url": "/jobs/123"}]}
         refs = self.mapping.references(document, "https://boards-api.example.com/x")
         self.assertEqual(refs[0].url, "https://boards-api.example.com/jobs/123")
 
-    def test_empty_string_job_url_is_dropped_and_logged(self):
+    def test_empty_string_posting_url_is_dropped_and_logged(self):
         document = {"jobs": [{"absolute_url": ""}]}
         with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
             refs = self.mapping.references(
@@ -430,7 +430,7 @@ class ReferencesJobUrlGuardTest(unittest.TestCase):
             )
         self.assertEqual(refs, [])
 
-    def test_non_string_job_url_is_dropped_and_logged(self):
+    def test_non_string_posting_url_is_dropped_and_logged(self):
         document = {"jobs": [{"absolute_url": 3}]}
         with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
             refs = self.mapping.references(
@@ -438,7 +438,7 @@ class ReferencesJobUrlGuardTest(unittest.TestCase):
             )
         self.assertEqual(refs, [])
 
-    def test_a_raising_job_url_drops_only_that_posting(self):
+    def test_a_raising_posting_url_drops_only_that_posting(self):
         # markdown() is typed to a single string argument, so a posting serving
         # its own url as a list raises, while a second posting with a genuine
         # string sails through unaffected.
@@ -454,7 +454,10 @@ class ReferencesJobUrlGuardTest(unittest.TestCase):
                 "version": 1,
                 "type": "index",
                 "domains": ["boards-api.example.com"],
-                "jmespath": {"postings": "jobs[]", "job_url": "markdown(absolute_url)"},
+                "jmespath": {
+                    "postings": "jobs[]",
+                    "posting_url": "markdown(absolute_url)",
+                },
             }
         )
         with self.assertLogs("adapters.adapters.mapping", level="ERROR"):
@@ -463,7 +466,7 @@ class ReferencesJobUrlGuardTest(unittest.TestCase):
         self.assertEqual(refs[0].url, html_to_markdown(second_url))
         self.assertEqual(refs[0].document, {"absolute_url": second_url})
 
-    def test_a_malformed_job_url_drops_only_that_posting(self):
+    def test_a_malformed_posting_url_drops_only_that_posting(self):
         # urljoin raises a bare ValueError on a string like this one, invalid as
         # an IPv6 host, so this proves that surprise costs only its own posting.
         second_url = "https://x.example/2"
@@ -490,7 +493,7 @@ class PostingsExpressionRaisesTest(unittest.TestCase):
             "version": 1,
             "type": "index",
             "domains": ["boards-api.example.com"],
-            "jmespath": {"postings": "markdown(jobs)", "job_url": "url"},
+            "jmespath": {"postings": "markdown(jobs)", "posting_url": "url"},
         }
         mapping = MappedIndex(document)
         with self.assertLogs("adapters.adapters.mapping", level="ERROR") as logs:

@@ -101,7 +101,7 @@ class TestLearnMapping(unittest.TestCase):
     def test_writes_index_fixture_and_snapshot_test(self):
         model = _stub_model(
             ["https://acme.com/jobs/1"],
-            {"jmespath": {"postings": "jobs[]", "job_url": "absolute_url"}},
+            {"jmespath": {"postings": "jobs[]", "posting_url": "absolute_url"}},
         )
         document = {"jobs": [{"id": 1, "absolute_url": "https://acme.com/jobs/1"}]}
 
@@ -138,7 +138,7 @@ class TestLearnMapping(unittest.TestCase):
         model = _stub_model(
             ["https://acme.com/jobs/1"],
             {
-                "jmespath": {"postings": "jobs[]", "job_url": "absolute_url"},
+                "jmespath": {"postings": "jobs[]", "posting_url": "absolute_url"},
                 "version": 99,
                 "type": "detail",
                 "domains": ["evil.example"],
@@ -164,7 +164,7 @@ class TestLearnMapping(unittest.TestCase):
     def test_budget_is_cut_once_and_shared_by_both_agents(self):
         model = _stub_model(
             ["https://acme.com/jobs/1"],
-            {"jmespath": {"postings": "jobs[]", "job_url": "absolute_url"}},
+            {"jmespath": {"postings": "jobs[]", "posting_url": "absolute_url"}},
         )
         document = {
             "jobs": [
@@ -192,7 +192,7 @@ class TestLearnMapping(unittest.TestCase):
         # still pass every other case here, so this grades the artifact directly.
         model = _stub_model(
             ["https://acme.com/jobs/1"],
-            {"jmespath": {"postings": "jobs[]", "job_url": "absolute_url"}},
+            {"jmespath": {"postings": "jobs[]", "posting_url": "absolute_url"}},
         )
         document = {
             "jobs": [
@@ -304,13 +304,13 @@ class TestLearnMappingArtifactSet(unittest.TestCase):
 
     def test_generated_suite_passes_for_a_correct_mapping(self):
         result = self._generated_suite_result(
-            {"postings": "jobs[]", "job_url": "absolute_url"}
+            {"postings": "jobs[]", "posting_url": "absolute_url"}
         )
         self.assertTrue(result.wasSuccessful())
 
     def test_generated_suite_fails_for_an_unknown_jmespath_key(self):
         result = self._generated_suite_result(
-            {"postings": "jobs[]", "job_url": "absolute_url", "extra": "nope"}
+            {"postings": "jobs[]", "posting_url": "absolute_url", "extra": "nope"}
         )
         self.assertFalse(result.wasSuccessful())
 
