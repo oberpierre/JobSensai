@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from pathlib import Path
@@ -6,6 +7,32 @@ from string import Template
 from langchain_ollama import OllamaLLM
 
 logger = logging.getLogger(__name__)
+
+
+def strip_code_fences(text: str) -> str:
+    """Drop a leading/trailing markdown code fence if the model wrapped its output."""
+    lines = text.strip().splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip() + "\n"
+
+
+def parse_json_object(raw: str) -> dict:
+    """Parse an LLM JSON reply into a dict, tolerating stray prose or code fences."""
+    candidates = [raw]
+    start, end = raw.find("{"), raw.rfind("}")
+    if start != -1 and end != -1:
+        candidates.append(raw[start : end + 1])
+    for candidate in candidates:
+        try:
+            result = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(result, dict):
+            return result
+    return {}
 
 
 # How much cleaned HTML to put in a prompt. The old 8k cap dropped everything on real
@@ -28,6 +55,10 @@ def discovery_num_ctx() -> int:
 
 def extraction_num_ctx() -> int:
     return int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
+
+
+def index_num_ctx() -> int:
+    return int(os.getenv("INDEX_NUM_CTX", "65536"))
 
 
 _PROMPT_DIR = Path(__file__).parent / "prompts"
@@ -160,6 +191,29 @@ def build_code_prompt(
     )
 
 
+def build_mapping_expected_prompt(mapping_type: str, body: str, url: str) -> str:
+    """Render the mapping truth-agent prompt asking for a grounded expected.json.
+
+    Its own template rather than ``expected_agent.md``: that one ends under a
+    "Cleaned page HTML" heading, which would hand a JSON response to the agent
+    under a heading calling it HTML. ``body`` is substituted verbatim, so sizing
+    it is the caller's job.
+    """
+    template = Template(_load_template("mapping_expected_agent.md"))
+    return template.safe_substitute(mapping_type=mapping_type, url=url, body=body)
+
+
+def build_mapping_code_prompt(mapping_type: str, body: str, domains: list[str]) -> str:
+    """Render the mapping code-agent prompt asking for a ``jmespath`` block.
+
+    ``body`` is substituted verbatim, so sizing it is the caller's job.
+    """
+    template = Template(_load_template("mapping_code_agent.md"))
+    return template.safe_substitute(
+        mapping_type=mapping_type, domains=list(domains), body=body
+    )
+
+
 class LLMModel:
     def __init__(
         self,
@@ -215,4 +269,16 @@ class LLMModel:
             build_code_prompt(
                 adapter_type, cleaned_html, adapter_class, domains, base_code
             )
+        )
+
+    def generate_mapping_expected(self, mapping_type: str, body: str, url: str) -> str:
+        """Generate the grounded snapshot (expected.json body) for a mapping."""
+        return self.generate_response(
+            build_mapping_expected_prompt(mapping_type, body, url)
+        )
+
+    def generate_mapping(self, mapping_type: str, body: str, domains: list[str]) -> str:
+        """Generate the mapping document's ``jmespath`` block."""
+        return self.generate_response(
+            build_mapping_code_prompt(mapping_type, body, domains)
         )

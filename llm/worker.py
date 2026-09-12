@@ -1,6 +1,5 @@
 """LLM worker: consumes adapter-learning tasks from Redis and generates new adapters."""
 
-import json
 import logging
 import os
 import subprocess
@@ -26,6 +25,8 @@ from llm.model import (
     discovery_num_ctx,
     extraction_num_ctx,
     html_char_budget,
+    parse_json_object,
+    strip_code_fences,
 )
 from publisher.publisher import Publisher
 
@@ -41,32 +42,6 @@ _REQUEUE_BACKOFF_SECONDS = int(os.getenv("REQUEUE_BACKOFF_SECONDS", "30"))
 # A dense model reasoning over a wide context can outlive the default lease, letting a
 # second learning run start on the same domain before the first releases it.
 _LEASE_TTL_SECONDS = int(os.getenv("LEARNING_LEASE_TTL_SECONDS", "1800"))
-
-
-def _strip_code_fences(text: str) -> str:
-    """Drop a leading/trailing markdown code fence if the model wrapped its output."""
-    lines = text.strip().splitlines()
-    if lines and lines[0].startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].startswith("```"):
-        lines = lines[:-1]
-    return "\n".join(lines).strip() + "\n"
-
-
-def _parse_json_object(raw: str) -> dict:
-    """Parse an LLM JSON reply into a dict, tolerating stray prose or code fences."""
-    candidates = [raw]
-    start, end = raw.find("{"), raw.rfind("}")
-    if start != -1 and end != -1:
-        candidates.append(raw[start : end + 1])
-    for candidate in candidates:
-        try:
-            result = json.loads(candidate)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        if isinstance(result, dict):
-            return result
-    return {}
 
 
 def _is_grounded_text(value: object) -> bool:
@@ -157,7 +132,7 @@ class LLMWorker(LearningTaskRunner):
         lean = prune_to_links(cleaned)[: html_char_budget()]
         llm = LLMModel(base_url=self.llm_url, num_ctx=discovery_num_ctx())
 
-        truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
+        truth = parse_json_object(llm.generate_expected("discovery", lean, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
         if truth == {}:
             raise TruthAgentUnreadable("truth agent reply could not be parsed")
@@ -170,7 +145,7 @@ class LLMWorker(LearningTaskRunner):
             "next_page_links": truth.get("next_page_links", []),
         }
         _write_snapshot(names, "index.html", cleaned, expected, "DiscoverySnapshotTest")
-        adapter_src = _strip_code_fences(
+        adapter_src = strip_code_fences(
             llm.generate_code(
                 "discovery", lean, names.adapter_class, [domain], _read_base_code()
             )
@@ -194,7 +169,7 @@ class LLMWorker(LearningTaskRunner):
         sized = cleaned[: html_char_budget()]
         llm = LLMModel(base_url=self.llm_url, num_ctx=extraction_num_ctx())
 
-        truth = _parse_json_object(llm.generate_expected("extraction", sized, url))
+        truth = parse_json_object(llm.generate_expected("extraction", sized, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
         if truth == {}:
             raise TruthAgentUnreadable("truth agent reply could not be parsed")
@@ -209,7 +184,7 @@ class LLMWorker(LearningTaskRunner):
         _write_snapshot(
             names, "detail.html", cleaned, expected, "ExtractionSnapshotTest"
         )
-        adapter_src = _strip_code_fences(
+        adapter_src = strip_code_fences(
             llm.generate_code(
                 "extraction", sized, names.adapter_class, [domain], _read_base_code()
             )

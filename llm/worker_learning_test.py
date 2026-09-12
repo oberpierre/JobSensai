@@ -6,20 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
-from llm.worker import LLMWorker, _parse_json_object
-
-
-class TestParseJsonObject(unittest.TestCase):
-    def test_plain_json(self):
-        self.assertEqual(_parse_json_object('{"a": 1}'), {"a": 1})
-
-    def test_json_wrapped_in_fence_and_prose(self):
-        raw = 'Here you go:\n```json\n{"a": 1}\n```'
-        self.assertEqual(_parse_json_object(raw), {"a": 1})
-
-    def test_non_object_returns_empty(self):
-        self.assertEqual(_parse_json_object("not json at all"), {})
-        self.assertEqual(_parse_json_object("[1, 2]"), {})
+from llm.worker import LLMWorker
 
 
 class TestLearnDiscovery(unittest.TestCase):
@@ -32,7 +19,7 @@ class TestLearnDiscovery(unittest.TestCase):
                 "next_page_links": ["https://acme.com/jobs?page=2"],
             }
         )
-        # Wrapped in a markdown fence to prove _strip_code_fences runs.
+        # Wrapped in a markdown fence to prove strip_code_fences runs.
         llm.generate_code.return_value = (
             "```python\nclass AcmeComDiscoveryAdapter: pass\n```"
         )
@@ -143,7 +130,7 @@ class TestLearnDiscoveryUnlearnable(unittest.TestCase):
 
 
 class TestLearnDiscoveryTruthAgentUnreadable(unittest.TestCase):
-    """A reply _parse_json_object cannot read is not a page with no links on it."""
+    """A reply parse_json_object cannot read is not a page with no links on it."""
 
     @patch("llm.worker.LLMModel")
     def test_unparseable_reply_raises_before_writing_anything(self, mock_llm_cls):
@@ -204,7 +191,7 @@ class TestLearnExtraction(unittest.TestCase):
                 "metadata": {},
             }
         )
-        # Wrapped in a fence to prove _strip_code_fences runs on the adapter source.
+        # Wrapped in a fence to prove strip_code_fences runs on the adapter source.
         llm.generate_code.return_value = (
             "```python\nclass AcmeComExtractionAdapter: pass\n```"
         )
@@ -326,7 +313,7 @@ class TestLearnExtractionUnlearnable(unittest.TestCase):
 
 
 class TestLearnExtractionTruthAgentUnreadable(unittest.TestCase):
-    """A reply _parse_json_object cannot read is not a page with no title on it."""
+    """A reply parse_json_object cannot read is not a page with no title on it."""
 
     @patch("llm.worker.LLMModel")
     def test_unparseable_reply_raises_before_writing_anything(self, mock_llm_cls):
