@@ -8,6 +8,9 @@ import inspect
 import json
 from pathlib import Path
 
+from adapters.adapters.base import DetailMapping, IndexMapping
+from adapters.adapters.mapping import load_mapping_file
+
 
 class DiscoverySnapshotTest:
     """Assert a DiscoveryAdapter reproduces a captured listing snapshot.
@@ -146,5 +149,171 @@ class ExtractionSnapshotTest:
         self.assertTrue(
             title_text and description_text,
             f"{self.fixture_dir}: snapshot pins no title or no description, so this "
+            "suite proves nothing an adapter could get wrong",
+        )
+
+
+def _contains_node(haystack, needle) -> bool:
+    """Return whether *needle* occurs as a node of *haystack*, by recursive walk.
+
+    Structural equality against a node, never a substring of serialised text: a
+    projection's serialisation can appear in the response's text without any node of
+    the response equalling the projection's shape.
+    """
+    if haystack == needle:
+        return True
+    if isinstance(haystack, dict):
+        return any(_contains_node(value, needle) for value in haystack.values())
+    if isinstance(haystack, list):
+        return any(_contains_node(item, needle) for item in haystack)
+    return False
+
+
+class IndexMappingSnapshotTest:
+    """Assert an index mapping reproduces a captured API response's snapshot.
+
+    Combine with ``unittest.TestCase``. Subclasses set ``basename``, from which both
+    the fixture directory and the mapping document path are derived. Fixtures live at
+    ``<test dir>/fixtures/<basename>/`` as ``index.json`` (the captured response,
+    parsed) and ``expected.json`` (``{"url", "job_links"}``); the mapping document
+    lives at ``<test dir>/mappings/<basename>.json``.
+    """
+
+    basename = None
+
+    def _fixtures_dir(self) -> Path:
+        return Path(inspect.getfile(type(self))).parent / "fixtures" / self.basename
+
+    def _mapping_path(self) -> Path:
+        return (
+            Path(inspect.getfile(type(self))).parent
+            / "mappings"
+            / f"{self.basename}.json"
+        )
+
+    def setUp(self):
+        if self.basename is None:
+            self.fail("basename is not set")
+        fixtures = self._fixtures_dir()
+        self.document = json.loads((fixtures / "index.json").read_text())
+        self.snapshot = json.loads((fixtures / "expected.json").read_text())
+        self.mapping = load_mapping_file(self._mapping_path())
+
+    def test_document_is_an_index_mapping(self):
+        self.assertIsInstance(self.mapping, IndexMapping)
+
+    def test_snapshot_names_its_url(self):
+        url = self.snapshot.get("url")
+        self.assertTrue(
+            isinstance(url, str) and url,
+            f"{self.basename}: snapshot names no URL to resolve references against",
+        )
+
+    def test_job_urls_match_snapshot(self):
+        refs = self.mapping.references(self.document, self.snapshot["url"])
+        found = {ref.url for ref in refs}
+        expected = set(self.snapshot.get("job_links", []))
+        self.assertEqual(
+            found,
+            expected,
+            f"job links — missing: {sorted(expected - found)}; "
+            f"extra: {sorted(found - expected)}",
+        )
+
+    def test_reference_documents_come_from_the_response(self):
+        # The base URL only resolves relative job_url values; the identity of a
+        # reference's document does not depend on it, so a placeholder is enough.
+        refs = self.mapping.references(self.document, "https://example.com")
+        for ref in refs:
+            if ref.document is None:
+                continue
+            self.assertTrue(
+                _contains_node(self.document, ref.document),
+                f"reference document for {ref.url} is not a node of the captured "
+                "response",
+            )
+
+    def test_snapshot_pins_at_least_one_job_link(self):
+        self.assertTrue(
+            self.snapshot.get("job_links"),
+            f"{self.basename}: snapshot pins no job links, so this suite proves "
+            "nothing an adapter could get wrong",
+        )
+
+
+class DetailMappingSnapshotTest:
+    """Assert a detail mapping reproduces a captured posting's snapshot.
+
+    Combine with ``unittest.TestCase``. Subclasses set ``basename``, from which both
+    the fixture directory and the mapping document path are derived. Fixtures live at
+    ``<test dir>/fixtures/<basename>/`` as ``detail.json`` (the captured posting,
+    parsed) and ``expected.json`` (the Silver dict); the mapping document lives at
+    ``<test dir>/mappings/<basename>.json``. Field comparison rules mirror
+    ExtractionSnapshotTest's exactly, decorrelating the truth agent (which grounds
+    what the posting states) from the document (which declares what its author could
+    express).
+    """
+
+    basename = None
+
+    _SCALAR_FIELDS = ("title", "company_name", "employment_type")
+    _LIST_FIELDS = ("locations", "categories")
+    _REQUIRED_FIELDS = ("title", "company_name", "description")
+
+    def _fixtures_dir(self) -> Path:
+        return Path(inspect.getfile(type(self))).parent / "fixtures" / self.basename
+
+    def _mapping_path(self) -> Path:
+        return (
+            Path(inspect.getfile(type(self))).parent
+            / "mappings"
+            / f"{self.basename}.json"
+        )
+
+    def setUp(self):
+        if self.basename is None:
+            self.fail("basename is not set")
+        fixtures = self._fixtures_dir()
+        self.document = json.loads((fixtures / "detail.json").read_text())
+        self.snapshot = json.loads((fixtures / "expected.json").read_text())
+        self.mapping = load_mapping_file(self._mapping_path())
+        self.data = self.mapping.to_silver(self.document)
+
+    def test_document_is_a_detail_mapping(self):
+        self.assertIsInstance(self.mapping, DetailMapping)
+
+    def test_returns_a_dict(self):
+        self.assertIsInstance(self.data, dict)
+
+    def test_returns_every_required_field(self):
+        missing = [f for f in self._REQUIRED_FIELDS if f not in self.data]
+        self.assertEqual(missing, [], f"dropped required Silver fields: {missing}")
+
+    def test_scalar_fields_match(self):
+        for field in self._SCALAR_FIELDS:
+            if field in self.snapshot:
+                self.assertEqual(self.data.get(field), self.snapshot[field], field)
+
+    def test_list_fields_match(self):
+        for field in self._LIST_FIELDS:
+            if field in self.snapshot:
+                self.assertEqual(
+                    set(self.data.get(field) or []), set(self.snapshot[field]), field
+                )
+
+    def test_description_matches_snapshot(self):
+        expected = self.snapshot.get("description")
+        if isinstance(expected, str) and expected.strip():
+            actual = (self.data.get("description") or "").strip()
+            self.assertEqual(actual, expected.strip(), "description")
+
+    def test_snapshot_pins_a_title_and_a_description(self):
+        title = self.snapshot.get("title")
+        description = self.snapshot.get("description")
+        title_text = title.strip() if isinstance(title, str) else ""
+        description_text = description.strip() if isinstance(description, str) else ""
+        self.assertTrue(
+            title_text and description_text,
+            f"{self.basename}: snapshot pins no title or no description, so this "
             "suite proves nothing an adapter could get wrong",
         )
