@@ -92,30 +92,31 @@ class LLMWorker(LearningTaskRunner):
         # publish" even once self.running gains other, unrelated reasons to go False.
         self._publish_unavailable = False
 
-    def is_learning_in_progress(self, domain: str, adapter_type: str) -> bool:
+    def is_learning_in_progress(self, domain: str, lease_type: str) -> bool:
         return (
-            self.redis_client.get(f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}")
+            self.redis_client.get(f"LEARNING_IN_PROGRESS:{lease_type}:{domain}")
             is not None
         )
 
     def start_learning(
-        self, domain: str, adapter_type: str, ttl: int = _LEASE_TTL_SECONDS
+        self, domain: str, lease_type: str, ttl: int = _LEASE_TTL_SECONDS
     ) -> bool:
-        """Acquire a learning lock for *domain* + *adapter_type*.
+        """Acquire a learning lock for *domain* + *lease_type*.
 
-        Discovery and extraction learn independently, so the lock is namespaced by
-        adapter type to stop one type's task from blocking the other's for the same
-        domain. Returns True if the lock was acquired.
+        Each stage learns independently, so the lock is namespaced by the stage being
+        learned — discovery or extraction for an adapter, index or detail for a
+        mapping — to stop one from blocking another for the same domain. Returns True
+        if the lock was acquired.
         """
         return bool(
             self.redis_client.set(
-                f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}", "1", nx=True, ex=ttl
+                f"LEARNING_IN_PROGRESS:{lease_type}:{domain}", "1", nx=True, ex=ttl
             )
         )
 
-    def release_learning(self, domain: str, adapter_type: str) -> None:
+    def release_learning(self, domain: str, lease_type: str) -> None:
         """Release the lease once the task is finished."""
-        self.redis_client.delete(f"LEARNING_IN_PROGRESS:{adapter_type}:{domain}")
+        self.redis_client.delete(f"LEARNING_IN_PROGRESS:{lease_type}:{domain}")
 
     def _learn_discovery(
         self, domain: str, url: str, html: str

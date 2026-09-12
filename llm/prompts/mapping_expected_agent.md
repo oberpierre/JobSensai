@@ -17,6 +17,8 @@ Rules:
 - URLs must be **absolute**. Resolve relative URLs against the response URL: `$url`.
 - Return JSON only. No markdown fences.
 - Report only what the response actually contains. Do not invent or guess values.
+- Use an empty list when the response carries no posting URLs at all. Reply
+  `{"job_links": []}`, never `{}` and never prose saying there are none.
 
 ## Response
 
