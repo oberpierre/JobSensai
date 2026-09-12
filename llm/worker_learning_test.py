@@ -101,13 +101,21 @@ class TestLearnDiscoveryHtmlBudget(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
-            patch.dict(os.environ, {"LLM_HTML_CHARS": "40"}),
+            patch.dict(
+                os.environ, {"LLM_HTML_CHARS": "40", "DISCOVERY_NUM_CTX": "4096"}
+            ),
         ):
             (Path(tmp) / "base.py").write_text("class DiscoveryAdapter: pass\n")
             worker._learn_discovery("acme.com", "https://acme.com/jobs", html)
 
-        self.assertEqual(len(llm.generate_expected.call_args.args[1]), 40)
-        self.assertEqual(len(llm.generate_code.call_args.args[1]), 40)
+        truth_body = llm.generate_expected.call_args.args[1]
+        code_body = llm.generate_code.call_args.args[1]
+        self.assertEqual(len(truth_body), 40)
+        # One cut, not two of the same length: a snapshot is graded against the string
+        # both agents were shown.
+        self.assertEqual(truth_body, code_body)
+        # Set after this module imported llm.model, the ordering every caller has.
+        self.assertEqual(mock_llm_cls.call_args.kwargs["num_ctx"], 4096)
 
 
 class TestLearnDiscoveryUnlearnable(unittest.TestCase):
@@ -257,13 +265,18 @@ class TestLearnExtractionHtmlBudget(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
-            patch.dict(os.environ, {"LLM_HTML_CHARS": "40"}),
+            patch.dict(
+                os.environ, {"LLM_HTML_CHARS": "40", "EXTRACTION_NUM_CTX": "8192"}
+            ),
         ):
             (Path(tmp) / "base.py").write_text("class ExtractionAdapter: pass\n")
             worker._learn_extraction("acme.com", "https://acme.com/job/1", html)
 
-        self.assertEqual(len(llm.generate_expected.call_args.args[1]), 40)
-        self.assertEqual(len(llm.generate_code.call_args.args[1]), 40)
+        truth_body = llm.generate_expected.call_args.args[1]
+        code_body = llm.generate_code.call_args.args[1]
+        self.assertEqual(len(truth_body), 40)
+        self.assertEqual(truth_body, code_body)
+        self.assertEqual(mock_llm_cls.call_args.kwargs["num_ctx"], 8192)
 
 
 class TestLearnExtractionUnlearnable(unittest.TestCase):

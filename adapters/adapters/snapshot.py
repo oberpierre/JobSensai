@@ -153,12 +153,12 @@ class ExtractionSnapshotTest:
         )
 
 
-def _contains_node(haystack, needle) -> bool:
+def _contains_node(haystack: object, needle: object) -> bool:
     """Return whether *needle* occurs as a node of *haystack*, by recursive walk.
 
-    Structural equality against a node, never a substring of serialised text: a
-    projection's serialisation can appear in the response's text without any node of
-    the response equalling the projection's shape.
+    Structural equality against a node, never a substring of serialised text,
+    because a projection's serialisation can appear in the response's text without any
+    node of the response equalling the projection's shape.
     """
     if haystack == needle:
         return True
@@ -221,8 +221,8 @@ class IndexMappingSnapshotTest:
         )
 
     def test_reference_documents_come_from_the_response(self):
-        # The base URL only resolves relative job_url values; the identity of a
-        # reference's document does not depend on it, so a placeholder is enough.
+        # The base URL only resolves relative job_url values, so a placeholder is
+        # enough: a reference document's identity does not depend on it.
         refs = self.mapping.references(self.document, "https://example.com")
         for ref in refs:
             if ref.document is None:
@@ -277,7 +277,13 @@ class DetailMappingSnapshotTest:
         self.document = json.loads((fixtures / "detail.json").read_text())
         self.snapshot = json.loads((fixtures / "expected.json").read_text())
         self.mapping = load_mapping_file(self._mapping_path())
-        self.data = self.mapping.to_silver(self.document)
+        # An index document has no to_silver, and erroring here would report an
+        # AttributeError for every test instead of the one that names the kind.
+        self.data = (
+            self.mapping.to_silver(self.document)
+            if isinstance(self.mapping, DetailMapping)
+            else {}
+        )
 
     def test_document_is_a_detail_mapping(self):
         self.assertIsInstance(self.mapping, DetailMapping)
