@@ -356,8 +356,8 @@ class TestParseApiBasics(ParseApiTestCase):
         self.assertFalse(any(isinstance(r, Request) for r in results))
 
     def test_reference_without_document_yields_a_request_and_no_item(self):
-        # A hand-written escape-hatch mapping would build a document-less
-        # PostingRef; MappedIndex never does, so this simulates one directly.
+        # Builds the PostingRef directly to exercise the spider's branch in
+        # isolation; the test below covers the same branch end to end.
         from adapters.adapters.base import PostingRef
 
         self.spider.registry.get_index_mapping = lambda url: type(
