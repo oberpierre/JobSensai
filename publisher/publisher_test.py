@@ -28,6 +28,7 @@ def _publish(passed: bool, model_name: str = "qwen3-coder:30b", paths=_PATHS):
         test_output="TEST LOG OUTPUT",
         model_name=model_name,
         paths=paths,
+        kind="adapter",
     )
 
 
@@ -153,7 +154,7 @@ class TestHasExistingPr(unittest.TestCase):
     @patch("publisher.publisher.subprocess.run")
     def test_true_when_gh_reports_a_pr(self, mock_run):
         mock_run.return_value = _ok('[{"number":7}]\n')
-        self.assertIs(self.pub.has_existing_pr(_BASENAME), True)
+        self.assertIs(self.pub.has_existing_pr(_BASENAME, kind="adapter"), True)
 
         cmd = _commands(mock_run)[0]
         self.assertEqual(cmd[:2], ("gh", "pr"))
@@ -164,26 +165,89 @@ class TestHasExistingPr(unittest.TestCase):
     @patch("publisher.publisher.subprocess.run")
     def test_false_on_an_empty_list(self, mock_run):
         mock_run.return_value = _ok("[]\n")
-        self.assertIs(self.pub.has_existing_pr(_BASENAME), False)
+        self.assertIs(self.pub.has_existing_pr(_BASENAME, kind="adapter"), False)
 
     @patch("publisher.publisher.subprocess.run")
     def test_none_when_gh_fails(self, mock_run):
         """Undeterminable must be distinct from absent so the caller can fail closed."""
         mock_run.side_effect = subprocess.CalledProcessError(1, ["gh"])
-        self.assertIsNone(self.pub.has_existing_pr(_BASENAME))
+        self.assertIsNone(self.pub.has_existing_pr(_BASENAME, kind="adapter"))
 
     @patch("publisher.publisher.subprocess.run")
     def test_none_when_gh_is_not_installed(self, mock_run):
         mock_run.side_effect = FileNotFoundError("gh")
-        self.assertIsNone(self.pub.has_existing_pr(_BASENAME))
+        self.assertIsNone(self.pub.has_existing_pr(_BASENAME, kind="adapter"))
 
     def test_branch_name_is_derived_from_the_basename(self):
         """The branch is the idempotency key, so it must match what publish() pushes."""
-        self.assertEqual(self.pub.branch_for(_BASENAME), f"feature/adapter-{_BASENAME}")
+        self.assertEqual(
+            self.pub.branch_for(_BASENAME, kind="adapter"),
+            f"feature/adapter-{_BASENAME}",
+        )
 
     def test_branch_name_takes_the_kind_it_is_given(self):
         self.assertEqual(self.pub.branch_for("x", kind="mapping"), "feature/mapping-x")
-        self.assertEqual(self.pub.branch_for("x"), "feature/adapter-x")
+        self.assertEqual(self.pub.branch_for("x", kind="adapter"), "feature/adapter-x")
+
+    def test_branch_for_requires_kind(self):
+        """A defaulted kind fails silently: it would publish to one namespace and
+        check another."""
+        with self.assertRaises(TypeError):
+            self.pub.branch_for("x")
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_has_existing_pr_requires_kind(self, mock_run):
+        with self.assertRaises(TypeError):
+            self.pub.has_existing_pr(_BASENAME)
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_publish_requires_kind(self, mock_run):
+        mock_run.return_value = _ok()
+        pub = Publisher(repo_root=Path("/repo"))
+        with self.assertRaises(TypeError):
+            pub.publish(
+                basename=_BASENAME,
+                domain="acme.com",
+                adapter_type="extraction",
+                passed=True,
+                test_output="TEST LOG OUTPUT",
+                model_name="qwen3-coder:30b",
+                paths=_PATHS,
+            )
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_has_existing_pr_checks_the_branch_for_its_own_kind(self, mock_run):
+        """A mapping check must look at the mapping branch, not the adapter one."""
+        mock_run.return_value = _ok("[]\n")
+        self.pub.has_existing_pr(_BASENAME, kind="mapping")
+
+        cmd = _commands(mock_run)[0]
+        self.assertIn(f"feature/mapping-{_BASENAME}", cmd)
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_check_and_publish_name_the_same_branch_for_one_kind(self, mock_run):
+        """The already-published check and the publish that follows it must name
+        one branch for a given kind, since the branch is the idempotency key."""
+        mock_run.return_value = _ok()
+        pub = Publisher(repo_root=Path("/repo"))
+        pub.has_existing_pr(_BASENAME, kind="mapping")
+        pub.publish(
+            basename=_BASENAME,
+            domain="acme.com",
+            adapter_type="extraction",
+            passed=True,
+            test_output="TEST LOG OUTPUT",
+            model_name="qwen3-coder:30b",
+            paths=_PATHS,
+            kind="mapping",
+        )
+
+        cmds = _commands(mock_run)
+        check_cmd = next(c for c in cmds if c[:2] == ("gh", "pr"))
+        push_cmd = next(c for c in cmds if c[:2] == ("git", "push"))
+        check_branch = check_cmd[check_cmd.index("--head") + 1]
+        push_branch = push_cmd[-1]
+        self.assertEqual(check_branch, push_branch)
 
 
 class TestCanPublish(unittest.TestCase):

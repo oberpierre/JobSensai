@@ -271,6 +271,9 @@ class LLMWorker:
         # Resolve the adapter type up-front so the learning lock is namespaced by it
         # and stays reachable for cleanup in the except blocks below.
         adapter_type = "discovery" if "discovery" in queue_name else "extraction"
+        # One binding feeds both the already-published check and the publish that
+        # follows it, so the two branch names cannot drift apart.
+        kind = "adapter"
         domain: str | None = None
         lock_key: str | None = None
         # Bound early like domain and lock_key: the UnlearnablePage except clause
@@ -309,7 +312,7 @@ class LLMWorker:
             # so every crawl re-enqueues, because GitHub is what knows the work
             # is already done.
             names = _adapter_names(domain, adapter_type)
-            pr_state = self.publisher.has_existing_pr(names.basename)
+            pr_state = self.publisher.has_existing_pr(names.basename, kind=kind)
             if pr_state is None:
                 # Undeterminable is not "already published": the task would be lost
                 # for good, so it goes back on the queue instead of being dropped.
@@ -358,6 +361,7 @@ class LLMWorker:
                 test_output=test_output,
                 model_name=model_name,
                 paths=staged_paths(names.basename),
+                kind=kind,
             )
             if pr_url:
                 logger.info("Opened PR for %s: %s", names.basename, pr_url)

@@ -246,12 +246,41 @@ class TestProcessTask(unittest.TestCase):
         self._run_extraction_task(passed=True)
 
         self.mock_publisher.has_existing_pr.assert_called_once_with(
-            "newboard_com_extraction_v1"
+            "newboard_com_extraction_v1", kind="adapter"
         )
         self.worker._learn_extraction.assert_not_called()
         self.mock_publisher.publish.assert_not_called()
         # The lease is dropped, not held: it means "learning", not "recently checked".
         self._assert_lease_released()
+
+    def test_has_existing_pr_receives_kind_adapter(self):
+        """Checked apart from publish's kind so a mutation to this call site alone
+        is caught."""
+        self._run_extraction_task(passed=True)
+
+        self.assertEqual(
+            self.mock_publisher.has_existing_pr.call_args.kwargs["kind"], "adapter"
+        )
+
+    def test_publish_receives_kind_adapter(self):
+        """Checked apart from has_existing_pr's kind so a mutation to this call
+        site alone is caught."""
+        self._run_extraction_task(passed=True)
+
+        self.assertEqual(
+            self.mock_publisher.publish.call_args.kwargs["kind"], "adapter"
+        )
+
+    def test_has_existing_pr_and_publish_receive_the_same_kind(self):
+        """Pins the shared-binding property itself: two literals kept in sync by
+        hand could pass the two assertions above while still drifting from each
+        other."""
+        self._run_extraction_task(passed=True)
+
+        self.assertEqual(
+            self.mock_publisher.has_existing_pr.call_args.kwargs["kind"],
+            self.mock_publisher.publish.call_args.kwargs["kind"],
+        )
 
     def test_unknown_pr_state_requeues_the_task(self):
         """A skip would lose the task entirely, whereas a requeue only delays it."""
