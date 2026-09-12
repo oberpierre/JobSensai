@@ -4,12 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from llm.worker import (
-    LLMWorker,
-    TruthAgentUnreadable,
-    UnlearnablePage,
-    _parse_json_object,
-)
+from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
+from llm.worker import LLMWorker, _parse_json_object
 
 
 class TestParseJsonObject(unittest.TestCase):

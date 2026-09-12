@@ -22,7 +22,6 @@ def _publish(passed: bool, model_name: str = "qwen3-coder:30b", paths=_PATHS):
     pub = Publisher(repo_root=Path("/repo"))
     return pub.publish(
         basename=_BASENAME,
-        adapter_class="AcmeComExtractionAdapter",
         domain="acme.com",
         adapter_type="extraction",
         passed=passed,

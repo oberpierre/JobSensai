@@ -78,7 +78,6 @@ class Publisher:
         self,
         *,
         basename: str,
-        adapter_class: str,
         domain: str,
         adapter_type: str,
         passed: bool,
