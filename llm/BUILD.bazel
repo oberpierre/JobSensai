@@ -60,12 +60,26 @@ py_library(
 )
 
 py_library(
+    name = "mapping_learning",
+    srcs = ["mapping_learning.py"],
+    imports = [".."],
+    deps = [
+        ":adapter_files",
+        ":learning_errors",
+        ":model",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
     name = "learning_task",
     srcs = ["learning_task.py"],
     imports = [".."],
     deps = [
         ":adapter_files",
         ":learning_errors",
+        ":mapping_learning",
+        ":model",
     ],
     visibility = ["//visibility:public"],
 )
@@ -122,6 +136,28 @@ py_test(
     deps = [
         ":worker_lib",
         "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_mapping_dispatch_test",
+    srcs = ["worker_mapping_dispatch_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker_lib",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "mapping_learning_test",
+    srcs = ["mapping_learning_test.py"],
+    imports = [".."],
+    deps = [
+        ":mapping_learning",
+        "//adapters:adapters",
     ],
     visibility = ["//visibility:public"],
 )
