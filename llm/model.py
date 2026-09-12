@@ -11,10 +11,18 @@ logger = logging.getLogger(__name__)
 # How much cleaned HTML to put in a prompt. The old 8k cap dropped everything on real
 # pages: a listing's job links can start ~70k chars in — so the model saw only the
 # header/nav. Keep within the model's context window (see OLLAMA_NUM_CTX).
-def _html_char_budget() -> int:
+def html_char_budget() -> int:
     # Read per call, not at import: every caller imports this module before its own
     # load_dotenv() runs, so an import-time read never sees a .env value.
     return int(os.getenv("LLM_HTML_CHARS", "120000"))
+
+
+# Ollama sizes its KV cache from num_ctx, so the window is set per adapter type.
+# Discovery feeds a pruned link-only skeleton that stays small. Detail pages carry the
+# full posting body (a 1 MB page cleans to ~120k chars) and need a wider window, else
+# Ollama truncates the tail holding the content. Overridable per box for tuning.
+DISCOVERY_NUM_CTX = int(os.getenv("DISCOVERY_NUM_CTX", "32768"))
+EXTRACTION_NUM_CTX = int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
 
 
 _PROMPT_DIR = Path(__file__).parent / "prompts"
@@ -105,7 +113,10 @@ _EXPECTED = {
 
 
 def build_expected_prompt(adapter_type: str, cleaned_html: str, url: str) -> str:
-    """Render the truth-agent prompt asking for a grounded expected.json."""
+    """Render the truth-agent prompt asking for a grounded expected.json.
+
+    ``cleaned_html`` is substituted verbatim; sizing it is the caller's job.
+    """
     role = _EXPECTED[adapter_type]
     template = Template(_load_template("expected_agent.md"))
     return template.safe_substitute(
@@ -113,7 +124,7 @@ def build_expected_prompt(adapter_type: str, cleaned_html: str, url: str) -> str
         role_instructions=role["instructions"],
         output_shape=role["output_shape"],
         url=url,
-        cleaned_html=cleaned_html[: _html_char_budget()],
+        cleaned_html=cleaned_html,
     )
 
 
@@ -127,7 +138,8 @@ def build_code_prompt(
     """Render the code-agent prompt.
 
     The code agent never sees ``expected.json`` — only the base class and the HTML — so
-    it must parse rather than hardcode.
+    it must parse rather than hardcode. ``cleaned_html`` is substituted verbatim; sizing
+    it is the caller's job.
     """
     role = _ROLE[adapter_type]
     return Template(_load_template("code_agent.md")).safe_substitute(
@@ -139,7 +151,7 @@ def build_code_prompt(
         test_contract=role["test_contract"],
         domains=list(domains),
         base_code=base_code,
-        cleaned_html=cleaned_html[: _html_char_budget()],
+        cleaned_html=cleaned_html,
     )
 
 
