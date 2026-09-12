@@ -154,7 +154,7 @@ class TestProcessTask(unittest.TestCase):
         self.assertEqual(kwargs["test_output"], "FAILED: 1 test")
         self._assert_lease_released()
 
-    @patch("llm.worker.logger")
+    @patch("llm.learning_task.logger")
     def test_unlearnable_page_drops_the_task_without_publishing_or_requeueing(
         self, mock_logger
     ):
@@ -182,7 +182,7 @@ class TestProcessTask(unittest.TestCase):
             exc,
         )
 
-    @patch("llm.worker.logger")
+    @patch("llm.learning_task.logger")
     def test_truth_agent_unreadable_requeues_releases_and_backs_off(self, mock_logger):
         """Unlike UnlearnablePage, an unreadable reply is a transient model failure,
         not a fact about the page, so it goes back on the queue instead of being
@@ -341,7 +341,7 @@ class TestProcessTask(unittest.TestCase):
 
         self.mock_publisher.has_existing_pr.assert_not_called()
 
-    @patch("llm.worker.logger")
+    @patch("llm.learning_task.logger")
     def test_process_task_no_domain_or_url(self, mock_logger):
         """Task with neither domain nor url must log an error and not touch Redis."""
         task_payload = json.dumps({}).encode("utf-8")
@@ -363,7 +363,7 @@ class TestProcessTask(unittest.TestCase):
             "LEARNING_IN_PROGRESS:extraction:newboard.com", "1", nx=True, ex=1800
         )
 
-    @patch("llm.worker.logger")
+    @patch("llm.learning_task.logger")
     def test_process_task_already_learning(self, mock_logger):
         self.mock_redis.set.return_value = None
 

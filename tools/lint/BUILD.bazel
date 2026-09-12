@@ -23,6 +23,7 @@ ruff_test(
         "//llm:adapter_files",
         "//llm:adapter_files_naming_test",
         "//llm:learning_errors",
+        "//llm:learning_task",
         "//llm:worker_startup_test",
         "//llm:model_test",
         "//llm:html_cleaner_test",
