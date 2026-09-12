@@ -150,7 +150,7 @@ class MappingDocumentDiscoveryTest(unittest.TestCase):
             "version": 1,
             "type": "index",
             "domains": ["mapped-a.example.com", "mapped-b.example.com"],
-            "jmespath": {"postings": "jobs[]", "job_url": "url"},
+            "jmespath": {"postings": "jobs[]", "posting_url": "url"},
         }
         (Path(self._tmp.name) / "mapped_index_v1.json").write_text(json.dumps(document))
         self.registry = AdapterRegistry(mappings_dir=Path(self._tmp.name))

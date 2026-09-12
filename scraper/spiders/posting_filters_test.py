@@ -22,7 +22,7 @@ _SIMPLE_INDEX_DOCUMENT = {
     "version": 1,
     "type": "index",
     "domains": ["api.example.com"],
-    "jmespath": {"postings": "jobs[]", "job_url": "url"},
+    "jmespath": {"postings": "jobs[]", "posting_url": "url"},
 }
 
 

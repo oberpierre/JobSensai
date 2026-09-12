@@ -2,7 +2,7 @@
 
 A document declares `version` (must be 1), `type` (`index` or `detail`), a non-empty
 `domains` list and a `jmespath` block of one expression string per key: `postings` and
-`job_url` for an index document, a subset of the Silver schema for a detail one. The
+`posting_url` for an index document, a subset of the Silver schema for a detail one. The
 declared `type` selects which of those two key vocabularies the block is checked
 against, rather than the keys themselves selecting the type. Every expression is
 compiled once at construction, so a typo in a document fails loudly there rather
@@ -39,7 +39,7 @@ _SILVER_SCHEMA_KEYS = frozenset(
 )
 
 # The two jmespath keys an index document may declare.
-_INDEX_JMESPATH_KEYS = frozenset({"postings", "job_url"})
+_INDEX_JMESPATH_KEYS = frozenset({"postings", "posting_url"})
 
 _TOP_LEVEL_KEYS = frozenset({"version", "type", "domains", "jmespath"})
 
@@ -199,23 +199,23 @@ class MappedIndex(IndexMapping):
                 type(postings).__name__,
             )
             return []
-        job_url_expr = self._compiled["job_url"]
+        posting_url_expr = self._compiled["posting_url"]
         refs = []
         for element in postings:
-            # One posting's surprise (a raise, or a shape job_url can't resolve
+            # One posting's surprise (a raise, or a shape posting_url can't resolve
             # into an identity) is never evidence about the rest of the response.
             try:
-                url = job_url_expr.search(element, options=_OPTIONS)
+                url = posting_url_expr.search(element, options=_OPTIONS)
             except jmespath.exceptions.JMESPathError as exc:
                 logger.error(
-                    "job_url expression raised for a posting from %s: %s",
+                    "posting_url expression raised for a posting from %s: %s",
                     start_url,
                     exc,
                 )
                 continue
             if not isinstance(url, str) or not url:
                 logger.error(
-                    "job_url expression resolved to %r, not a non-empty string,"
+                    "posting_url expression resolved to %r, not a non-empty string,"
                     " for a posting from %s",
                     url,
                     start_url,
@@ -225,7 +225,7 @@ class MappedIndex(IndexMapping):
                 resolved_url = urljoin(start_url, url)
             except ValueError as exc:
                 logger.error(
-                    "job_url %r for a posting from %s did not resolve to a URL: %s",
+                    "posting_url %r for a posting from %s did not resolve to a URL: %s",
                     url,
                     start_url,
                     exc,

@@ -22,7 +22,7 @@ _BASE_INDEX_MAPPING = {
     "version": 1,
     "type": "index",
     "domains": ["example.com"],
-    "jmespath": {"postings": "jobs[]", "job_url": "absolute_url"},
+    "jmespath": {"postings": "jobs[]", "posting_url": "absolute_url"},
 }
 
 _BASE_DETAIL_MAPPING = {
@@ -213,7 +213,7 @@ class TestIndexMappingSnapshotTest(unittest.TestCase):
             "version": 1,
             "type": "index",
             "domains": ["example.com"],
-            "jmespath": {"postings": "jobs[]", "job_url": "@"},
+            "jmespath": {"postings": "jobs[]", "posting_url": "@"},
         }
         response = {
             "jobs": ["https://example.com/jobs/1", "https://example.com/jobs/2"]
@@ -239,7 +239,7 @@ class TestIndexMappingSnapshotTest(unittest.TestCase):
             "domains": ["example.com"],
             "jmespath": {
                 "postings": "jobs[].{url: absolute_url, title: title}",
-                "job_url": "url",
+                "posting_url": "url",
             },
         }
         response = {
@@ -256,12 +256,14 @@ class TestIndexMappingSnapshotTest(unittest.TestCase):
             outcome = _run_one(case, "test_reference_documents_come_from_the_response")
         self.assertFalse(outcome.wasSuccessful())
 
-    def test_job_urls_match_snapshot_resolves_relative_url_against_snapshot_url(self):
+    def test_posting_urls_match_snapshot_resolves_relative_url_against_snapshot_url(
+        self,
+    ):
         mapping = {
             "version": 1,
             "type": "index",
             "domains": ["boards.example.org"],
-            "jmespath": {"postings": "jobs[]", "job_url": "path"},
+            "jmespath": {"postings": "jobs[]", "posting_url": "path"},
         }
         response = {"jobs": [{"path": "/jobs/1"}, {"path": "/jobs/2"}]}
         snapshot = {
@@ -273,9 +275,9 @@ class TestIndexMappingSnapshotTest(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp:
             case = _index_case(
-                Path(tmp), "relative_job_url", mapping, response, snapshot
+                Path(tmp), "relative_posting_url", mapping, response, snapshot
             )
-            outcome = _run_one(case, "test_job_urls_match_snapshot")
+            outcome = _run_one(case, "test_posting_urls_match_snapshot")
         self.assertTrue(outcome.wasSuccessful(), outcome.failures)
 
     def test_guard_fails_with_a_message_when_url_key_is_absent(self):
@@ -310,7 +312,7 @@ class TestIndexMappingSnapshotTest(unittest.TestCase):
             "domains": ["example.com"],
             "jmespath": {
                 "postings": "jobs[]",
-                "job_url": "absolute_url",
+                "posting_url": "absolute_url",
                 "bogus_key": "foo",
             },
         }
