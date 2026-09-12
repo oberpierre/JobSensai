@@ -35,6 +35,7 @@ py_test(
             "adapters/snapshot_test.py",
             "adapters/_markdown_test.py",
             "adapters/mapping_test.py",
+            "adapters/mapping_snapshot_test.py",
             "adapters/filters_test.py",
         ],
     ),
@@ -60,6 +61,17 @@ py_test(
 py_test(
     name = "mapping_test",
     srcs = ["adapters/mapping_test.py"],
+    deps = [
+        ":adapters",
+    ],
+)
+
+# The mapping snapshot bases are tested on their own, not as a generated-adapter
+# test, for the same reason mapping_test.py is: llm/worker.py runs adapter_test as
+# the gate on every generated adapter.
+py_test(
+    name = "mapping_snapshot_test",
+    srcs = ["adapters/mapping_snapshot_test.py"],
     deps = [
         ":adapters",
     ],
