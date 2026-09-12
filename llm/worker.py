@@ -22,7 +22,7 @@ from llm.adapter_files import (
 from llm.dom import prune_to_links, resolve_hrefs
 from llm.html_cleaner import clean_html
 from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
-from llm.model import LLMModel
+from llm.model import DISCOVERY_NUM_CTX, EXTRACTION_NUM_CTX, LLMModel, html_char_budget
 from publisher.publisher import Publisher
 
 load_dotenv()
@@ -30,13 +30,6 @@ logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-# Ollama sizes its KV cache from num_ctx, so the window is set per adapter type.
-# Discovery feeds a pruned link-only skeleton that stays small. Detail pages carry the
-# full posting body (a 1 MB page cleans to ~120k chars) and need a wider window, else
-# Ollama truncates the tail holding the content. Overridable per box for tuning.
-_DISCOVERY_NUM_CTX = int(os.getenv("DISCOVERY_NUM_CTX", "32768"))
-_EXTRACTION_NUM_CTX = int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
 
 # A requeue with nothing else in the queue would otherwise spin on the same task.
 _REQUEUE_BACKOFF_SECONDS = int(os.getenv("REQUEUE_BACKOFF_SECONDS", "30"))
@@ -157,8 +150,8 @@ class LLMWorker:
         """
         names = _adapter_names(domain, "discovery")
         cleaned = clean_html(resolve_hrefs(html, url))
-        lean = prune_to_links(cleaned)
-        llm = LLMModel(base_url=self.llm_url, num_ctx=_DISCOVERY_NUM_CTX)
+        lean = prune_to_links(cleaned)[: html_char_budget()]
+        llm = LLMModel(base_url=self.llm_url, num_ctx=DISCOVERY_NUM_CTX)
 
         truth = _parse_json_object(llm.generate_expected("discovery", lean, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
@@ -194,9 +187,10 @@ class LLMWorker:
         """
         names = _adapter_names(domain, "extraction")
         cleaned = clean_html(html)
-        llm = LLMModel(base_url=self.llm_url, num_ctx=_EXTRACTION_NUM_CTX)
+        sized = cleaned[: html_char_budget()]
+        llm = LLMModel(base_url=self.llm_url, num_ctx=EXTRACTION_NUM_CTX)
 
-        truth = _parse_json_object(llm.generate_expected("extraction", cleaned, url))
+        truth = _parse_json_object(llm.generate_expected("extraction", sized, url))
         logger.debug("Truth agent output for %s:\n%s\n", names.basename, truth)
         if truth == {}:
             raise TruthAgentUnreadable("truth agent reply could not be parsed")
@@ -213,7 +207,7 @@ class LLMWorker:
         )
         adapter_src = _strip_code_fences(
             llm.generate_code(
-                "extraction", cleaned, names.adapter_class, [domain], _read_base_code()
+                "extraction", sized, names.adapter_class, [domain], _read_base_code()
             )
         )
         _write_adapter(names, adapter_src)

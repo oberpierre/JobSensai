@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -77,6 +78,36 @@ class TestLearnDiscovery(unittest.TestCase):
         self.assertNotIn("prose, no links", lean_truth)
         self.assertNotIn("prose, no links", lean_code)
         self.assertIn("/jobs/1", lean_code)
+
+
+class TestLearnDiscoveryHtmlBudget(unittest.TestCase):
+    @patch("llm.worker.LLMModel")
+    def test_budget_is_cut_once_and_shared_by_both_agents(self, mock_llm_cls):
+        # Set after llm.worker imported llm.model, matching load_dotenv()'s ordering
+        # relative to every caller's imports.
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = json.dumps(
+            {"job_links": ["https://acme.com/jobs/1"], "next_page_links": []}
+        )
+        llm.generate_code.return_value = "class AcmeComDiscoveryAdapter: pass"
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        html = (
+            "<html><body>"
+            + "".join(f"<a href='/jobs/{i}'>Job {i}</a>" for i in range(50))
+            + "</body></html>"
+        )
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
+            patch.dict(os.environ, {"LLM_HTML_CHARS": "40"}),
+        ):
+            (Path(tmp) / "base.py").write_text("class DiscoveryAdapter: pass\n")
+            worker._learn_discovery("acme.com", "https://acme.com/jobs", html)
+
+        self.assertEqual(len(llm.generate_expected.call_args.args[1]), 40)
+        self.assertEqual(len(llm.generate_code.call_args.args[1]), 40)
 
 
 class TestLearnDiscoveryUnlearnable(unittest.TestCase):
@@ -207,6 +238,32 @@ class TestLearnExtraction(unittest.TestCase):
         self.assertIn("Staff Engineer", llm.generate_expected.call_args.args[1])
         self.assertEqual(llm.generate_code.call_args.args[0], "extraction")
         self.assertIn("Staff Engineer", llm.generate_code.call_args.args[1])
+
+
+class TestLearnExtractionHtmlBudget(unittest.TestCase):
+    @patch("llm.worker.LLMModel")
+    def test_budget_is_cut_once_and_shared_by_both_agents(self, mock_llm_cls):
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = json.dumps(
+            {"title": "Staff Engineer", "description": "We build things."}
+        )
+        llm.generate_code.return_value = "class AcmeComExtractionAdapter: pass"
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        html = (
+            "<html><body><h1>Staff Engineer</h1><p>" + "A" * 200 + "</p></body></html>"
+        )
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
+            patch.dict(os.environ, {"LLM_HTML_CHARS": "40"}),
+        ):
+            (Path(tmp) / "base.py").write_text("class ExtractionAdapter: pass\n")
+            worker._learn_extraction("acme.com", "https://acme.com/job/1", html)
+
+        self.assertEqual(len(llm.generate_expected.call_args.args[1]), 40)
+        self.assertEqual(len(llm.generate_code.call_args.args[1]), 40)
 
 
 class TestLearnExtractionUnlearnable(unittest.TestCase):

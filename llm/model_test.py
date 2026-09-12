@@ -17,16 +17,23 @@ class TestPromptBuilders(unittest.TestCase):
         # $-placeholders must all be substituted.
         self.assertNotIn("$cleaned_html", prompt)
 
-    def test_html_budget_is_read_when_the_prompt_is_built(self):
-        # Set after this module imported llm.model, which is the ordering every caller
-        # has, because load_dotenv() runs after its imports. An import-time read of the
-        # budget would ignore this.
+    def test_prompt_builders_substitute_the_body_verbatim(self):
+        # Both builders substitute cleaned_html verbatim: sizing it is the caller's
+        # job, so a low LLM_HTML_CHARS here must not truncate either rendered prompt.
+        body = "A" * 490 + "TAIL"
         with patch.dict(os.environ, {"LLM_HTML_CHARS": "10"}):
-            prompt = build_expected_prompt(
-                "discovery", "X" * 500, "https://acme.com/jobs"
+            expected_prompt = build_expected_prompt(
+                "discovery", body, "https://acme.com/jobs"
             )
-        self.assertIn("X" * 10, prompt)
-        self.assertNotIn("X" * 11, prompt)
+            code_prompt = build_code_prompt(
+                "discovery",
+                body,
+                "AcmeDiscoveryAdapter",
+                ["acme.com"],
+                "class BaseX: pass",
+            )
+        self.assertIn("TAIL", expected_prompt)
+        self.assertIn("TAIL", code_prompt)
 
     def test_build_expected_prompt_extraction_shape(self):
         prompt = build_expected_prompt(
