@@ -224,6 +224,16 @@ py_test(
 )
 
 py_test(
+    name = "discovery_spider_api_test",
+    srcs = ["spiders/discovery_spider_api_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
     name = "posting_filters_test",
     srcs = ["spiders/posting_filters_test.py"],
     imports = ["."],
