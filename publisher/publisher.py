@@ -32,11 +32,11 @@ class Publisher:
         self.remote = remote
         self.trailer = trailer
 
-    def branch_for(self, basename: str, kind: str = "adapter") -> str:
+    def branch_for(self, basename: str, kind: str) -> str:
         """The branch one artifact publishes on."""
         return f"feature/{kind}-{basename}"
 
-    def has_existing_pr(self, basename: str) -> bool | None:
+    def has_existing_pr(self, basename: str, kind: str) -> bool | None:
         """Whether a PR was ever opened for *basename*, None when undeterminable.
 
         Closed PRs count. A human closing a generated adapter is a decision not to take
@@ -47,7 +47,7 @@ class Publisher:
         distinct from False: unknown fails open, so the caller requeues the task
         rather than dropping it.
         """
-        branch = self.branch_for(basename)
+        branch = self.branch_for(basename, kind)
         try:
             result = self._gh(
                 "pr",
@@ -84,7 +84,7 @@ class Publisher:
         test_output: str,
         model_name: str,
         paths: list[str],
-        kind: str = "adapter",
+        kind: str,
     ) -> str | None:
         """Branch, commit the given paths, push, and open a PR, returning its URL.
 
