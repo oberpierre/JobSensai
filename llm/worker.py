@@ -356,6 +356,11 @@ class LLMWorker:
                 "passed" if passed else "FAILED (left for review)",
             )
 
+            paths = [
+                f"adapters/adapters/{names.basename}.py",
+                f"adapters/adapters/{names.basename}_test.py",
+                f"adapters/adapters/fixtures/{names.basename}",
+            ]
             # Red runs publish too as a draft PR carrying the failure for manual fixing.
             pr_url = self.publisher.publish(
                 basename=names.basename,
@@ -365,6 +370,7 @@ class LLMWorker:
                 passed=passed,
                 test_output=test_output,
                 model_name=model_name,
+                paths=paths,
             )
             if pr_url:
                 logger.info("Opened PR for %s: %s", names.basename, pr_url)
