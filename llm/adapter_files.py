@@ -64,6 +64,19 @@ def _adapter_names(domain: str, adapter_type: str, version: int = 1) -> AdapterN
     )
 
 
+def staged_paths(basename: str) -> list[str]:
+    """The three paths one generated adapter's artifacts are staged at for a PR.
+
+    Mirrors the write destinations below, both keyed off the same *basename*, so a
+    pathspec that ``git add`` is given always matches what was actually written.
+    """
+    return [
+        f"adapters/adapters/{basename}.py",
+        f"adapters/adapters/{basename}_test.py",
+        f"adapters/adapters/fixtures/{basename}",
+    ]
+
+
 def _write_fixture(basename: str, filename: str, content: str) -> Path:
     fixture_dir = _ADAPTERS_DIR / "fixtures" / basename
     fixture_dir.mkdir(parents=True, exist_ok=True)

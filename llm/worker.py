@@ -17,9 +17,11 @@ from llm.adapter_files import (
     _read_base_code,
     _write_adapter,
     _write_snapshot,
+    staged_paths,
 )
 from llm.dom import prune_to_links, resolve_hrefs
 from llm.html_cleaner import clean_html
+from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
 from llm.model import LLMModel
 from publisher.publisher import Publisher
 
@@ -78,14 +80,6 @@ def _is_grounded_text(value: object) -> bool:
     passing.
     """
     return isinstance(value, str) and bool(value.strip())
-
-
-class UnlearnablePage(Exception):
-    """The truth agent grounded nothing on the page, so there is no adapter to write."""
-
-
-class TruthAgentUnreadable(Exception):
-    """The truth agent's reply could not be parsed, so the page was never assessed."""
 
 
 # The Silver-schema keys the extraction truth agent enumerates into expected.json.
@@ -356,21 +350,15 @@ class LLMWorker:
                 "passed" if passed else "FAILED (left for review)",
             )
 
-            paths = [
-                f"adapters/adapters/{names.basename}.py",
-                f"adapters/adapters/{names.basename}_test.py",
-                f"adapters/adapters/fixtures/{names.basename}",
-            ]
             # Red runs publish too as a draft PR carrying the failure for manual fixing.
             pr_url = self.publisher.publish(
                 basename=names.basename,
-                adapter_class=names.adapter_class,
                 domain=domain,
                 adapter_type=adapter_type,
                 passed=passed,
                 test_output=test_output,
                 model_name=model_name,
-                paths=paths,
+                paths=staged_paths(names.basename),
             )
             if pr_url:
                 logger.info("Opened PR for %s: %s", names.basename, pr_url)

@@ -52,6 +52,13 @@ py_library(
     visibility = ["//visibility:public"],
 )
 
+py_library(
+    name = "learning_errors",
+    srcs = ["learning_errors.py"],
+    imports = [".."],
+    visibility = ["//visibility:public"],
+)
+
 # A library rather than the binary's own srcs, so a test depends on worker.py without
 # also inheriting //:env. A developer's .env reaching the test runfiles decides the
 # defaults those tests assert, which passes in CI, where there is none, and fails on
@@ -65,6 +72,7 @@ py_library(
         ":adapter_files",
         ":dom",
         ":html_cleaner",
+        ":learning_errors",
         ":model",
         "//adapters:adapters",
         "//publisher:publisher",

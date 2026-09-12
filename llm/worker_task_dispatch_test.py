@@ -6,7 +6,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from llm.adapter_files import _adapter_names
-from llm.worker import LLMWorker, TruthAgentUnreadable, UnlearnablePage
+from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
+from llm.worker import LLMWorker
 
 
 class TestProcessTask(unittest.TestCase):
@@ -128,7 +129,6 @@ class TestProcessTask(unittest.TestCase):
 
         kwargs = self.mock_publisher.publish.call_args.kwargs
         self.assertEqual(kwargs["basename"], "newboard_com_extraction_v1")
-        self.assertEqual(kwargs["adapter_class"], "NewboardComExtractionAdapter")
         self.assertEqual(kwargs["domain"], "newboard.com")
         self.assertEqual(kwargs["adapter_type"], "extraction")
         self.assertTrue(kwargs["passed"])
