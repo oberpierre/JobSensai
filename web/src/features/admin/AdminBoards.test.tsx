@@ -330,14 +330,14 @@ describe("AdminBoards", () => {
     );
   });
 
-  it("toggling a row's switch PUTs its existing name and url with active flipped", async () => {
+  it("toggling a row's switch PUTs its existing name, url and company with active flipped", async () => {
     const updateBoard = vi
       .fn<BoardsApi["updateBoard"]>()
       .mockResolvedValue(board({ active: false }));
     renderAdminBoardsWithProviders({
-      listBoards: vi
-        .fn<BoardsApi["listBoards"]>()
-        .mockResolvedValue({ items: [board({ active: true })] }),
+      listBoards: vi.fn<BoardsApi["listBoards"]>().mockResolvedValue({
+        items: [board({ active: true, company_name: "Acme Corp" })],
+      }),
       updateBoard,
     });
 
@@ -349,6 +349,7 @@ describe("AdminBoards", () => {
         name: "Google · all roles",
         url: "https://www.google.com/careers",
         active: false,
+        company_name: "Acme Corp",
       }),
     );
   });

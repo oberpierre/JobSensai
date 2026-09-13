@@ -48,6 +48,7 @@ export function AdminBoards() {
       url: string;
       type: BoardType;
       active: boolean;
+      company_name: string | null;
     }) => api.createBoard(params),
     onSuccess: async () => {
       setAdding(false);
@@ -64,11 +65,13 @@ export function AdminBoards() {
       name: string;
       url: string;
       active: boolean;
+      company_name: string | null;
     }) =>
       api.updateBoard(args.boardId, {
         name: args.name,
         url: args.url,
         active: args.active,
+        company_name: args.company_name,
       }),
     onSuccess: async () => {
       setEditingId(null);
@@ -97,6 +100,7 @@ export function AdminBoards() {
         name: board.name,
         url: board.url,
         active: !board.active,
+        company_name: board.company_name,
       }),
     onSuccess: async () => {
       setRowError(null);
@@ -182,6 +186,7 @@ export function AdminBoards() {
                 initialName={board.name}
                 initialUrl={board.url}
                 initialActive={board.active}
+                initialCompanyName={board.company_name}
                 submitting={updateMutation.isPending}
                 error={formError}
                 onCancel={cancelForm}
