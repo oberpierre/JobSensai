@@ -9,7 +9,6 @@ function board(overrides: Record<string, unknown> = {}) {
     url: "https://example.com",
     type: "html_crawl",
     active: true,
-    company_name: null,
     posting_count: null,
     health: null,
     created_at: "2026-01-01T00:00:00+00:00",
@@ -51,7 +50,6 @@ describe("createHttpBoardsApi", () => {
       url: "https://example.com",
       type: "html_crawl",
       active: true,
-      company_name: "Acme Corp",
     });
 
     const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -62,7 +60,6 @@ describe("createHttpBoardsApi", () => {
       url: "https://example.com",
       type: "html_crawl",
       active: true,
-      company_name: "Acme Corp",
     });
   });
 
@@ -77,7 +74,6 @@ describe("createHttpBoardsApi", () => {
       name: "Renamed",
       url: "https://renamed.example.com",
       active: false,
-      company_name: "Acme Corp",
     });
 
     const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -87,7 +83,6 @@ describe("createHttpBoardsApi", () => {
       name: "Renamed",
       url: "https://renamed.example.com",
       active: false,
-      company_name: "Acme Corp",
     });
   });
 
@@ -121,7 +116,6 @@ describe("createHttpBoardsApi", () => {
         url: "https://example.com",
         type: "html_crawl",
         active: true,
-        company_name: null,
       }),
     ).rejects.toMatchObject({
       status: 409,

@@ -10,7 +10,6 @@ export function board(overrides: Partial<Board> = {}): Board {
     url: "https://www.google.com/careers",
     type: "html_crawl",
     active: true,
-    company_name: null,
     posting_count: 12,
     health: null,
     created_at: new Date().toISOString(),

@@ -10,7 +10,6 @@ export function BoardForm({
   initialName = "",
   initialUrl = "",
   initialActive = true,
-  initialCompanyName = null,
   submitting,
   error,
   onCancel,
@@ -20,7 +19,6 @@ export function BoardForm({
   initialName?: string;
   initialUrl?: string;
   initialActive?: boolean;
-  initialCompanyName?: string | null;
   submitting: boolean;
   error: string | null;
   onCancel: () => void;
@@ -28,7 +26,6 @@ export function BoardForm({
     name: string;
     url: string;
     active: boolean;
-    company_name: string | null;
     type?: BoardType;
   }) => void;
 }) {
@@ -36,20 +33,17 @@ export function BoardForm({
   const [url, setUrl] = useState(initialUrl);
   const [type, setType] = useState<BoardType>("html_crawl");
   const [active, setActive] = useState(initialActive);
-  const [companyName, setCompanyName] = useState(initialCompanyName ?? "");
 
   return (
     <form
       className={styles.form}
       onSubmit={(event) => {
         event.preventDefault();
-        const values = {
-          name,
-          url,
-          active,
-          company_name: companyName.trim() === "" ? null : companyName,
-        };
-        onSubmit(mode === "create" ? { ...values, type } : values);
+        onSubmit(
+          mode === "create"
+            ? { name, url, active, type }
+            : { name, url, active },
+        );
       }}
     >
       <MicroLabel>{mode === "create" ? "New board" : "Edit board"}</MicroLabel>
@@ -72,15 +66,6 @@ export function BoardForm({
             value={url}
             onChange={(event) => setUrl(event.target.value)}
             placeholder="https://…"
-          />
-        </label>
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Company</span>
-          <input
-            type="text"
-            value={companyName}
-            onChange={(event) => setCompanyName(event.target.value)}
-            placeholder="Blank: each posting's own"
           />
         </label>
       </div>
