@@ -27,6 +27,7 @@ ruff_test(
         "//llm:learning_task",
         "//llm:mapping_learning",
         "//llm:mapping_learning_test",
+        "//llm:mapping_detail_learning_test",
         "//llm:worker_startup_test",
         "//llm:model_test",
         "//llm:html_cleaner_test",

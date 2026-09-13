@@ -191,15 +191,30 @@ def build_code_prompt(
     )
 
 
+_MAPPING_EXPECTED_TEMPLATES = {
+    "index": "mapping_expected_agent.md",
+    "detail": "mapping_detail_expected_agent.md",
+}
+
+_MAPPING_CODE_TEMPLATES = {
+    "index": "mapping_code_agent.md",
+    "detail": "mapping_detail_code_agent.md",
+}
+
+
 def build_mapping_expected_prompt(mapping_type: str, body: str, url: str) -> str:
     """Render the mapping truth-agent prompt asking for a grounded expected.json.
 
-    Its own template rather than ``expected_agent.md``: that one ends under a
+    Neither mapping template reuses ``expected_agent.md``: that one ends under a
     "Cleaned page HTML" heading, which would hand a JSON response to the agent
-    under a heading calling it HTML. ``body`` is substituted verbatim, so sizing
-    it is the caller's job.
+    under a heading calling it HTML. The detail template's markdown-transcription
+    wording is copied from ``_EXPECTED["extraction"]`` on purpose, so the HTML and
+    API detail paths agree on one description convention. ``body`` is substituted
+    verbatim, so sizing it is the caller's job.
     """
-    template = Template(_load_template("mapping_expected_agent.md"))
+    if mapping_type not in _MAPPING_EXPECTED_TEMPLATES:
+        raise ValueError(f"unknown mapping type: {mapping_type!r}")
+    template = Template(_load_template(_MAPPING_EXPECTED_TEMPLATES[mapping_type]))
     return template.safe_substitute(mapping_type=mapping_type, url=url, body=body)
 
 
@@ -208,7 +223,9 @@ def build_mapping_code_prompt(mapping_type: str, body: str, domains: list[str]) 
 
     ``body`` is substituted verbatim, so sizing it is the caller's job.
     """
-    template = Template(_load_template("mapping_code_agent.md"))
+    if mapping_type not in _MAPPING_CODE_TEMPLATES:
+        raise ValueError(f"unknown mapping type: {mapping_type!r}")
+    template = Template(_load_template(_MAPPING_CODE_TEMPLATES[mapping_type]))
     return template.safe_substitute(
         mapping_type=mapping_type, domains=list(domains), body=body
     )

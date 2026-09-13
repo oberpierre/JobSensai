@@ -39,6 +39,29 @@ class {test_class}({snapshot_base}, unittest.TestCase):
 """
 
 
+def _is_grounded_text(value: object) -> bool:
+    """True when *value* is non-blank text, matching ExtractionSnapshotTest's rule.
+
+    A list or other non-string survives ``str(...).strip()`` as truthy, so this check
+    has to reject it the same way the snapshot base does rather than stringify it into
+    passing.
+    """
+    return isinstance(value, str) and bool(value.strip())
+
+
+# The Silver-schema keys the extraction and detail-mapping truth agents enumerate
+# into expected.json.
+_SILVER_FIELDS = (
+    "title",
+    "company_name",
+    "employment_type",
+    "locations",
+    "categories",
+    "description",
+    "metadata",
+)
+
+
 def _domain_slug(domain: str) -> str:
     """Turn a domain into a valid Python module-name fragment.
 

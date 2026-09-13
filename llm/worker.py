@@ -9,9 +9,11 @@ import redis
 from dotenv import load_dotenv
 
 from llm.adapter_files import (
+    _SILVER_FIELDS,
     _WORKSPACE_ROOT,
     AdapterNames,
     _adapter_names,
+    _is_grounded_text,
     _read_base_code,
     _write_adapter,
     _write_snapshot,
@@ -42,28 +44,6 @@ _REQUEUE_BACKOFF_SECONDS = int(os.getenv("REQUEUE_BACKOFF_SECONDS", "30"))
 # A dense model reasoning over a wide context can outlive the default lease, letting a
 # second learning run start on the same domain before the first releases it.
 _LEASE_TTL_SECONDS = int(os.getenv("LEARNING_LEASE_TTL_SECONDS", "1800"))
-
-
-def _is_grounded_text(value: object) -> bool:
-    """True when *value* is non-blank text, matching ExtractionSnapshotTest's rule.
-
-    A list or other non-string survives ``str(...).strip()`` as truthy, so this check
-    has to reject it the same way the snapshot base does rather than stringify it into
-    passing.
-    """
-    return isinstance(value, str) and bool(value.strip())
-
-
-# The Silver-schema keys the extraction truth agent enumerates into expected.json.
-_SILVER_FIELDS = (
-    "title",
-    "company_name",
-    "employment_type",
-    "locations",
-    "categories",
-    "description",
-    "metadata",
-)
 
 
 class LLMWorker(LearningTaskRunner):
