@@ -6,12 +6,14 @@ export interface CreateBoardParams {
   url: string;
   type: BoardType;
   active: boolean;
+  company_name: string | null;
 }
 
 export interface UpdateBoardParams {
   name: string;
   url: string;
   active: boolean;
+  company_name: string | null;
 }
 
 export interface BoardsApi {
