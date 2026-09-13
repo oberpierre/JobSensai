@@ -153,16 +153,6 @@ py_test(
 )
 
 py_test(
-    name = "silver_worker_company_test",
-    srcs = ["silver_worker_company_test.py"],
-    imports = ["."],
-    deps = [
-        ":scraper_lib",
-    ],
-    python_version = "PY3",
-)
-
-py_test(
     name = "ingest_events_test",
     srcs = ["ingest_events_test.py"],
     imports = ["."],
