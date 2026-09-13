@@ -190,8 +190,9 @@ class DiscoverySpider(BaseJobSpider):
     ) -> Iterator[scrapy.Request | RawJobItem]:
         """Turn an ``api`` board's response into filtered postings.
 
-        Every refusal below logs at error, yields nothing at all from the
-        response, and raises nothing out of this callback.
+        Every refusal below logs at error and yields nothing, except a
+        missing index mapping, which logs at warning and requests one
+        instead of refusing. Raises nothing out of this callback.
         """
         stored_url: str = response.meta["stored_url"]
         start_url_id = response.meta.get("start_url_id")
@@ -222,7 +223,11 @@ class DiscoverySpider(BaseJobSpider):
 
         mapping = self.registry.get_index_mapping(response.url)
         if mapping is None:
-            logger.error("No index mapping registered for %s", hostname)
+            logger.warning(
+                "No index mapping found for: %s. Triggering mapping learning pipeline.",
+                response.url,
+            )
+            self._trigger_mapping_learning(response, hostname)
             return
 
         refs = mapping.references(document, response.url)
@@ -245,6 +250,43 @@ class DiscoverySpider(BaseJobSpider):
                     source_url=response.url,
                     content_type="application/json",
                 )
+
+    def _trigger_mapping_learning(
+        self, response: scrapy.http.Response, hostname: str
+    ) -> None:
+        """Push an API board's response to discovery_learning_tasks as a mapping task.
+
+        Payload schema (consumed by the LLM worker):
+          artifact  - the literal "mapping"
+          domain    - the registry's lookup key
+          url       - the URL actually fetched
+          body      - the response body decoded the same way json.loads already did
+          timestamp - ISO-8601 string
+        """
+        if not self.redis_client:
+            logger.error(
+                "Redis client is not initialized; mapping learning task for"
+                " %s was not enqueued",
+                hostname,
+            )
+            return
+
+        try:
+            payload = {
+                "artifact": "mapping",
+                "domain": hostname,
+                "url": response.url,
+                "body": response.body.decode(
+                    json.detect_encoding(response.body), "surrogatepass"
+                ),
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+            self.redis_client.lpush("discovery_learning_tasks", json.dumps(payload))
+            logger.info("Pushed mapping learning task for domain %s", hostname)
+        except Exception as e:
+            logger.error(
+                "Mapping learning task for %s was not enqueued: %s", hostname, e
+            )
 
     def parse_job(self, response: scrapy.http.Response) -> Iterator[RawJobItem]:
         """Extract job details and content."""

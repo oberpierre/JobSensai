@@ -1,5 +1,7 @@
 import json
+import logging
 import unittest
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from scrapy.http import Request, TextResponse
@@ -139,16 +141,6 @@ class TestParseApiBasics(ParseApiTestCase):
 
         self.assertEqual(items[0]["content_type"], "application/json")
 
-    def test_no_index_mapping_logs_error_and_enqueues_nothing(self):
-        self.spider.registry.get_index_mapping = lambda url: None
-        response = self._response([{"url": "https://x.example/1"}])
-
-        with self.assertLogs("scraper.spiders.discovery_spider", level="ERROR"):
-            results = list(self.spider.parse_api(response))
-
-        self.assertEqual(results, [])
-        self.spider.redis_client.lpush.assert_not_called()
-
     def test_body_that_does_not_parse_as_json_logs_and_yields_nothing(self):
         response = _api_response(
             "https://api.example.com/jobs",
@@ -161,6 +153,7 @@ class TestParseApiBasics(ParseApiTestCase):
             results = list(self.spider.parse_api(response))
 
         self.assertEqual(results, [])
+        self.spider.redis_client.lpush.assert_not_called()
 
     def test_a_json_scalar_body_is_refused(self):
         response = _api_response(
@@ -173,6 +166,7 @@ class TestParseApiBasics(ParseApiTestCase):
             results = list(self.spider.parse_api(response))
 
         self.assertEqual(results, [])
+        self.spider.redis_client.lpush.assert_not_called()
 
     def test_mismatched_content_type_over_a_json_body_yields_items_and_logs_info(self):
         response = self._response(
@@ -195,6 +189,122 @@ class TestParseApiBasics(ParseApiTestCase):
 
         self.assertIn("Zürich", items[0]["raw_content"])
         self.assertNotIn("Ã¼", items[0]["raw_content"])
+
+
+class TestMappingLearningTrigger(ParseApiTestCase):
+    """A hostname with no index mapping requests one via discovery_learning_tasks."""
+
+    def test_no_index_mapping_warns_and_enqueues_one_mapping_task(self):
+        self.spider.registry.get_index_mapping = lambda url: None
+        response = self._response([{"url": "https://x.example/1"}])
+
+        with self.assertLogs(
+            "scraper.spiders.discovery_spider", level="WARNING"
+        ) as logs:
+            results = list(self.spider.parse_api(response))
+
+        self.assertEqual(results, [])
+        self.spider.redis_client.lpush.assert_called_once()
+        mapping_records = [r for r in logs.records if "index mapping" in r.getMessage()]
+        self.assertEqual(len(mapping_records), 1)
+        self.assertEqual(mapping_records[0].levelno, logging.WARNING)
+        self.assertFalse(any(r.levelno == logging.ERROR for r in logs.records))
+
+        queue, raw_payload = self.spider.redis_client.lpush.call_args.args
+        self.assertEqual(queue, "discovery_learning_tasks")
+        payload = json.loads(raw_payload)
+        self.assertEqual(
+            set(payload.keys()), {"artifact", "domain", "url", "body", "timestamp"}
+        )
+        datetime.fromisoformat(payload["timestamp"])
+
+    def test_mixed_case_hostname_with_port_enqueues_lowercase_portless_domain(self):
+        self.spider.registry.get_index_mapping = lambda url: None
+        response = _api_response(
+            "https://API.Example.com:8443/jobs",
+            _json_body({"jobs": []}),
+            meta={
+                "stored_url": "https://API.Example.com:8443/jobs",
+                "start_url_id": None,
+            },
+        )
+
+        with self.assertLogs("scraper.spiders.discovery_spider", level="WARNING"):
+            list(self.spider.parse_api(response))
+
+        payload = json.loads(self.spider.redis_client.lpush.call_args.args[1])
+        self.assertEqual(payload["domain"], "api.example.com")
+
+    def test_enqueued_url_is_the_stripped_response_url_not_the_stored_url(self):
+        self.spider.registry.get_index_mapping = lambda url: None
+        stored_url = "https://api.example.com/jobs?filter.remote=true"
+        response = self._response([], stored_url=stored_url)
+
+        with self.assertLogs("scraper.spiders.discovery_spider", level="WARNING"):
+            list(self.spider.parse_api(response))
+
+        payload = json.loads(self.spider.redis_client.lpush.call_args.args[1])
+        self.assertEqual(payload["url"], response.url)
+        self.assertNotIn("filter.", payload["url"])
+
+    def test_charset_lie_body_is_decoded_from_bytes_and_round_trips(self):
+        self.spider.registry.get_index_mapping = lambda url: None
+        posting = {"url": "https://x.example/1", "title": "Zürich"}
+        response = self._response(
+            [posting], headers={"Content-Type": "text/plain; charset=iso-8859-1"}
+        )
+
+        with self.assertLogs("scraper.spiders.discovery_spider", level="WARNING"):
+            list(self.spider.parse_api(response))
+
+        payload = json.loads(self.spider.redis_client.lpush.call_args.args[1])
+        self.assertIn("Zürich", payload["body"])
+        self.assertEqual(json.loads(payload["body"]), {"jobs": [posting]})
+
+    def test_utf16_body_with_byte_order_mark_round_trips(self):
+        self.spider.registry.get_index_mapping = lambda url: None
+        doc = {"jobs": [{"url": "https://x.example/1", "title": "note"}]}
+        body = json.dumps(doc, ensure_ascii=False).encode("utf-16")
+        response = _api_response(
+            "https://api.example.com/jobs",
+            body,
+            meta={"stored_url": "https://api.example.com/jobs", "start_url_id": None},
+        )
+
+        with self.assertLogs("scraper.spiders.discovery_spider", level="WARNING"):
+            list(self.spider.parse_api(response))
+
+        payload = json.loads(self.spider.redis_client.lpush.call_args.args[1])
+        self.assertEqual(json.loads(payload["body"]), doc)
+
+    def test_hostname_with_a_mapping_enqueues_no_mapping_task(self):
+        response = self._response([{"url": "https://x.example/1"}])
+
+        list(self.spider.parse_api(response))
+
+        self.spider.redis_client.lpush.assert_not_called()
+
+    def test_no_redis_client_logs_error_and_yields_nothing(self):
+        self.spider.registry.get_index_mapping = lambda url: None
+        self.spider.redis_client = None
+        response = self._response([{"url": "https://x.example/1"}])
+
+        with self.assertLogs("scraper.spiders.discovery_spider", level="ERROR") as logs:
+            results = list(self.spider.parse_api(response))
+
+        self.assertEqual(results, [])
+        self.assertTrue(any("api.example.com" in r.getMessage() for r in logs.records))
+
+    def test_lpush_raising_logs_error_and_yields_nothing(self):
+        self.spider.registry.get_index_mapping = lambda url: None
+        self.spider.redis_client.lpush.side_effect = RuntimeError("boom")
+        response = self._response([{"url": "https://x.example/1"}])
+
+        with self.assertLogs("scraper.spiders.discovery_spider", level="ERROR") as logs:
+            results = list(self.spider.parse_api(response))
+
+        self.assertEqual(results, [])
+        self.assertTrue(any("api.example.com" in r.getMessage() for r in logs.records))
 
 
 class TestParseApiFilters(ParseApiTestCase):
