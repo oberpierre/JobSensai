@@ -216,6 +216,7 @@ class TestMappingLearningTrigger(ParseApiTestCase):
         self.assertEqual(
             set(payload.keys()), {"artifact", "domain", "url", "body", "timestamp"}
         )
+        self.assertEqual(payload["artifact"], "mapping")
         datetime.fromisoformat(payload["timestamp"])
 
     def test_mixed_case_hostname_with_port_enqueues_lowercase_portless_domain(self):
