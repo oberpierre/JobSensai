@@ -300,7 +300,7 @@ class NonListPostingsTest(unittest.TestCase):
         self.assertEqual(refs, [])
 
 
-class NullJobUrlTest(unittest.TestCase):
+class NullPostingUrlTest(unittest.TestCase):
     def test_a_posting_with_no_resolvable_posting_url_is_skipped_and_logged(self):
         mapping = MappedIndex(_INDEX_DOCUMENT)
         surviving = {"absolute_url": "https://x.example/1"}
@@ -411,7 +411,7 @@ class VersionAndCompletenessTest(unittest.TestCase):
             load_mapping(document)
 
 
-class ReferencesJobUrlGuardTest(unittest.TestCase):
+class ReferencesPostingUrlGuardTest(unittest.TestCase):
     """The PostingRef.url guard MappedIndex.references applies to every posting."""
 
     def setUp(self):
