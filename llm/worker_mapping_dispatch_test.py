@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-from llm.adapter_files import _mapping_names
+from llm.adapter_files import _mapping_names, staged_paths
 from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
 from llm.worker import LLMWorker
 
@@ -11,6 +11,7 @@ _DOMAIN = "boards-api.acme.com"
 _URL = "https://boards-api.acme.com/v1/boards/acme/jobs"
 _DOCUMENT = {"jobs": [{"id": 1, "absolute_url": "https://acme.com/jobs/1"}]}
 _NAMES = _mapping_names(_DOMAIN, "index")
+_DETAIL_NAMES = _mapping_names(_DOMAIN, "detail")
 
 
 class TestProcessMappingTask(unittest.TestCase):
@@ -85,14 +86,6 @@ class TestProcessMappingTask(unittest.TestCase):
         self.assertIs(result, False)
         set_keys = {call.args[0] for call in self.mock_redis.set.call_args_list}
         self.assertNotIn(f"LEARNING_IN_PROGRESS:index:{_DOMAIN}", set_keys)
-
-    # Proof 12: the queue check
-
-    def test_mapping_task_on_extraction_queue_is_dropped(self):
-        payload = self._payload()
-        result = self.worker.process_task(payload, "extraction_learning_tasks")
-        self.assertIs(result, False)
-        self.mock_redis.set.assert_not_called()
 
     # Proof 13: the budget check
 
@@ -282,6 +275,137 @@ class TestProcessMappingTask(unittest.TestCase):
         mock_learn.assert_not_called()
         self.mock_redis.lpush.assert_called_once_with(
             "discovery_learning_tasks", payload
+        )
+
+
+class TestProcessDetailMappingTask(unittest.TestCase):
+    """A mapping task on ``extraction_learning_tasks`` learns a detail mapping."""
+
+    def setUp(self):
+        self.mock_redis = MagicMock()
+        self.mock_publisher = MagicMock()
+        self.mock_publisher.publish.return_value = "https://github.com/acme/repo/pull/9"
+        self.mock_publisher.has_existing_pr.return_value = False
+        with patch("redis.Redis", return_value=self.mock_redis):
+            self.worker = LLMWorker(
+                redis_host="localhost",
+                redis_port=6379,
+                publisher=self.mock_publisher,
+            )
+
+    def _payload(self, **overrides) -> bytes:
+        task = {
+            "artifact": "mapping",
+            "domain": _DOMAIN,
+            "url": _URL,
+            "body": json.dumps(_DOCUMENT),
+        }
+        task.update(overrides)
+        return json.dumps(task).encode("utf-8")
+
+    def _run_green(self):
+        self.mock_redis.set.return_value = True
+        self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
+        with patch(
+            "llm.learning_task.learn_mapping",
+            return_value=(_DETAIL_NAMES, "acme-test-model"),
+        ) as mock_learn:
+            result = self.worker.process_task(
+                self._payload(), "extraction_learning_tasks"
+            )
+        return result, mock_learn
+
+    # W1
+    def test_detail_task_reaches_learn_mapping_and_publish_with_detail_type(self):
+        _, mock_learn = self._run_green()
+        self.assertEqual(mock_learn.call_args.args[4], "detail")
+        kwargs = self.mock_publisher.publish.call_args.kwargs
+        self.assertEqual(kwargs["adapter_type"], "detail")
+        self.assertEqual(kwargs["kind"], "mapping")
+        self.assertEqual(
+            kwargs["paths"], staged_paths(_DETAIL_NAMES.basename, "mapping")
+        )
+
+    # W2
+    def test_only_the_detail_lease_marker_is_written_and_released(self):
+        self._run_green()
+        set_keys = {call.args[0] for call in self.mock_redis.set.call_args_list}
+        self.assertEqual(set_keys, {f"LEARNING_IN_PROGRESS:detail:{_DOMAIN}"})
+        self.mock_redis.delete.assert_called_with(
+            f"LEARNING_IN_PROGRESS:detail:{_DOMAIN}"
+        )
+
+    # W3
+    @patch("llm.learning_task.LLMModel")
+    def test_llm_model_receives_extraction_num_ctx(self, mock_llm_cls):
+        self.mock_redis.set.return_value = True
+        self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
+        with (
+            patch(
+                "llm.learning_task.learn_mapping",
+                return_value=(_DETAIL_NAMES, "acme-test-model"),
+            ),
+            patch.dict(os.environ, {"EXTRACTION_NUM_CTX": "12345"}, clear=False),
+        ):
+            os.environ.pop("INDEX_NUM_CTX", None)
+            self.worker.process_task(self._payload(), "extraction_learning_tasks")
+        self.assertEqual(mock_llm_cls.call_args.kwargs["num_ctx"], 12345)
+
+    # W4
+    def test_non_positive_detail_budget_drops_without_lease_or_requeue(self):
+        payload = self._payload()
+        with (
+            patch("llm.learning_task.logger") as mock_logger,
+            patch.dict(os.environ, {"EXTRACTION_NUM_CTX": "2000"}, clear=False),
+        ):
+            os.environ.pop("INDEX_NUM_CTX", None)
+            result = self.worker.process_task(payload, "extraction_learning_tasks")
+        self.assertIs(result, False)
+        self.mock_redis.set.assert_not_called()
+        self.mock_redis.lpush.assert_not_called()
+        logged = [call.args for call in mock_logger.error.call_args_list]
+        self.assertTrue(any("EXTRACTION_NUM_CTX" in args for args in logged))
+
+    # W5
+    def test_unknown_queue_is_dropped_without_a_lease(self):
+        payload = self._payload()
+        result = self.worker.process_task(payload, "some_other_queue")
+        self.assertIs(result, False)
+        self.mock_redis.set.assert_not_called()
+
+    # W6, first half
+    @patch("llm.learning_task.logger")
+    def test_unlearnable_page_on_detail_holds_the_lease(self, mock_logger):
+        self.mock_redis.set.return_value = True
+        exc = UnlearnablePage("truth agent grounded no title, company or description")
+        with patch("llm.learning_task.learn_mapping", side_effect=exc):
+            result = self.worker.process_task(
+                self._payload(), "extraction_learning_tasks"
+            )
+        self.assertIs(result, False)
+        self.mock_redis.delete.assert_not_called()
+        mock_logger.error.assert_called_once_with(
+            "Learned nothing for domain=%s url=%s artifact=%s mapping_type=%s: %s",
+            _DOMAIN,
+            _URL,
+            "mapping",
+            "detail",
+            exc,
+        )
+
+    # W6, second half
+    def test_truth_agent_unreadable_on_detail_releases_and_requeues(self):
+        self.mock_redis.set.return_value = True
+        exc = TruthAgentUnreadable("truth agent reply could not be parsed")
+        payload = self._payload()
+        with patch("llm.learning_task.learn_mapping", side_effect=exc):
+            result = self.worker.process_task(payload, "extraction_learning_tasks")
+        self.assertIs(result, True)
+        self.mock_redis.lpush.assert_called_once_with(
+            "extraction_learning_tasks", payload
+        )
+        self.mock_redis.delete.assert_called_once_with(
+            f"LEARNING_IN_PROGRESS:detail:{_DOMAIN}"
         )
 
 

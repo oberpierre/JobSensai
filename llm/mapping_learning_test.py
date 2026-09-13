@@ -18,21 +18,31 @@ class TestBudgetChars(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("INDEX_NUM_CTX", None)
             # (65536 - 4096) * 2, the default the ADR names.
-            self.assertEqual(budget_chars(), 122880)
+            self.assertEqual(budget_chars("index"), 122880)
 
     def test_custom_window(self):
         with patch.dict(os.environ, {"INDEX_NUM_CTX": "8192"}):
-            self.assertEqual(budget_chars(), (8192 - 4096) * 2)
+            self.assertEqual(budget_chars("index"), (8192 - 4096) * 2)
+
+    def test_detail_default_window(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("EXTRACTION_NUM_CTX", None)
+            self.assertEqual(budget_chars("detail"), 122880)
+
+    def test_detail_custom_window(self):
+        with patch.dict(os.environ, {"EXTRACTION_NUM_CTX": "8192"}):
+            self.assertEqual(budget_chars("detail"), (8192 - 4096) * 2)
+
+    def test_unknown_type_raises(self):
+        with self.assertRaises(ValueError):
+            budget_chars("listing")
 
 
-class TestLearnMappingRejectsDetail(unittest.TestCase):
-    def test_detail_type_raises_rather_than_writing_an_index_fixture(self):
-        # The body hardcodes index.json and IndexMappingSnapshotTest, so a detail
-        # caller would store a detail response under an index base and grade it with
-        # the wrong one.
+class TestLearnMappingRejectsUnknownType(unittest.TestCase):
+    def test_unknown_type_raises_rather_than_writing_anything(self):
         with self.assertRaises(ValueError) as caught:
-            learn_mapping(MagicMock(), "acme.com", "https://acme.com/j", {}, "detail")
-        self.assertIn("detail", str(caught.exception))
+            learn_mapping(MagicMock(), "acme.com", "https://acme.com/j", {}, "listing")
+        self.assertIn("listing", str(caught.exception))
 
 
 class TestTrimToBudget(unittest.TestCase):

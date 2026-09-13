@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from llm.adapter_files import _adapter_names, _mapping_names, staged_paths
 from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
 from llm.mapping_learning import budget_chars, learn_mapping
-from llm.model import LLMModel, index_num_ctx
+from llm.model import LLMModel, extraction_num_ctx, index_num_ctx
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +91,15 @@ class LearningTaskRunner:
                     )
                     return False
 
-                if queue_name != "discovery_learning_tasks":
+                if queue_name == "discovery_learning_tasks":
+                    mapping_type = "index"
+                elif queue_name == "extraction_learning_tasks":
+                    mapping_type = "detail"
+                else:
+                    # LLMWorker consumes only those two queues, so this is a
+                    # guard against a caller's bug rather than a real path.
                     logger.error(
-                        "Dropping mapping task for %s: arrived on %s, an index "
-                        "mapping rides discovery_learning_tasks",
+                        "Dropping mapping task for %s: %s is not a learning queue",
                         domain,
                         queue_name,
                     )
@@ -103,13 +108,18 @@ class LearningTaskRunner:
                 # Knowable without inspecting the task, so it runs here rather
                 # than at the top of process_task, where it would drop every
                 # HTML discovery and extraction task too on a misconfigured knob.
-                budget = budget_chars()
+                knob = (
+                    "INDEX_NUM_CTX" if mapping_type == "index" else "EXTRACTION_NUM_CTX"
+                )
+                budget = budget_chars(mapping_type)
                 if budget <= 0:
                     logger.error(
-                        "Dropping mapping task for %s: INDEX_NUM_CTX yields a "
-                        "budget of %d chars; fix INDEX_NUM_CTX",
+                        "Dropping mapping task for %s: %s yields a budget of %d "
+                        "chars; fix %s",
                         domain,
+                        knob,
                         budget,
+                        knob,
                     )
                     return False
 
@@ -135,7 +145,6 @@ class LearningTaskRunner:
                     return False
 
                 kind = "mapping"
-                mapping_type = "index"
                 lease_type = mapping_type
             else:
                 domain = task.get("domain") or None
@@ -197,7 +206,10 @@ class LearningTaskRunner:
                 return False
 
             if kind == "mapping":
-                model = LLMModel(base_url=self.llm_url, num_ctx=index_num_ctx())
+                num_ctx = (
+                    index_num_ctx() if mapping_type == "index" else extraction_num_ctx()
+                )
+                model = LLMModel(base_url=self.llm_url, num_ctx=num_ctx)
                 names, model_name = learn_mapping(
                     model, domain, url, document, mapping_type
                 )

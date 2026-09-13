@@ -122,6 +122,29 @@ class TestPromptBuilders(unittest.TestCase):
         self.assertIn("jmespath", prompt)
         self.assertNotIn("$body", prompt)
 
+    def test_build_mapping_expected_prompt_detail_shape(self):
+        prompt = build_mapping_expected_prompt(
+            "detail", '{"title": "MARKER"}', "https://boards.acme.com/api/jobs/1"
+        )
+        self.assertIn("description_source", prompt)
+        self.assertIn("html_escaped", prompt)
+        self.assertNotIn("job_links", prompt)
+
+    def test_build_mapping_code_prompt_detail_shape(self):
+        prompt = build_mapping_code_prompt(
+            "detail", '{"title": "MARKER"}', ["boards.acme.com"]
+        )
+        self.assertIn("markdown(", prompt)
+        self.assertIn("unescape(", prompt)
+        self.assertIn("never a string literal", prompt)
+        self.assertNotIn("posting_url", prompt)
+
+    def test_mapping_prompt_builders_raise_for_an_unknown_type(self):
+        with self.assertRaises(ValueError):
+            build_mapping_expected_prompt("listing", "{}", "https://acme.com")
+        with self.assertRaises(ValueError):
+            build_mapping_code_prompt("listing", "{}", ["acme.com"])
+
     @patch("llm.model.OllamaLLM")
     def test_generate_mapping_expected_invokes_llm_once(self, mock_ollama):
         instance = MagicMock()
