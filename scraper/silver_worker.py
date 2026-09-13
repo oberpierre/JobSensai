@@ -21,6 +21,7 @@ from scraper.models import (
     INGEST_STAGE_DETAIL,
     JobPosting,
     RawJobPosting,
+    StartUrl,
 )
 
 # The literal a Bronze row's content_type must equal to route to a detail mapping
@@ -135,6 +136,23 @@ class SilverWorker:
 
         logger.info("Silver Worker shutdown complete.")
 
+    def _operator_company(self, db: Session, raw_job: RawJobPosting) -> Optional[str]:
+        """The board's stated company for raw_job, or None if it stated none.
+
+        Raises whatever the lookup raises: a caller on an invalidated session
+        must not keep querying it, so this must not turn a database error into
+        a quiet None.
+        """
+        if raw_job.start_url_id is None:
+            return None
+        start_url = db.get(StartUrl, raw_job.start_url_id)
+        if start_url is None:
+            return None
+        company_name = start_url.company_name
+        if isinstance(company_name, str) and company_name.strip():
+            return company_name
+        return None
+
     def process_message(self, message: str):
         try:
             data = json.loads(message)
@@ -157,8 +175,10 @@ class SilverWorker:
                     logger.warning(f"RawJobPosting not found for URL: {url}")
                     return
 
+                operator_company = self._operator_company(db, raw_job)
+
                 if raw_job.content_type == _MAPPED_CONTENT_TYPE:
-                    self._process_mapped_row(db, url, raw_job)
+                    self._process_mapped_row(db, url, raw_job, operator_company)
                     return
 
                 adapter = self.registry.get_extraction_adapter(url)
@@ -171,6 +191,9 @@ class SilverWorker:
 
                     if not extracted_data:
                         raise ValueError("Extraction returned empty data")
+
+                    if operator_company is not None:
+                        extracted_data["company_name"] = operator_company
 
                     self._save_job_posting(db, url, extracted_data)
 
@@ -187,7 +210,11 @@ class SilverWorker:
             logger.error(f"Error processing message: {e}", exc_info=True)
 
     def _process_mapped_row(
-        self, db: Session, url: str, raw_job: RawJobPosting
+        self,
+        db: Session,
+        url: str,
+        raw_job: RawJobPosting,
+        operator_company: Optional[str],
     ) -> None:
         """Map a Bronze row whose content_type is JSON, validating its own output.
 
@@ -262,6 +289,8 @@ class SilverWorker:
         # A declared key whose path resolved to None is dropped, so a mapping
         # honestly silent about a field fails the same way an absent one does.
         cleaned = {k: v for k, v in mapped.items() if v is not None}
+        if operator_company is not None:
+            cleaned["company_name"] = operator_company
         violation = _mapped_shape_violation(cleaned)
         if violation is not None:
             logger.error(

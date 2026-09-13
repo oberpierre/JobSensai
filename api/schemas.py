@@ -70,14 +70,22 @@ def _not_blank(value: str) -> str:
     return value
 
 
+def _not_blank_if_present(value: str | None) -> str | None:
+    if value is not None and not value.strip():
+        raise ValueError("must not be blank")
+    return value
+
+
 class BoardCreate(BaseModel):
     name: str
     url: str
     type: BoardType
     active: bool = True
+    company_name: str | None = None
 
     _validate_name = field_validator("name")(_not_blank)
     _validate_url = field_validator("url")(_not_blank)
+    _validate_company_name = field_validator("company_name")(_not_blank_if_present)
 
 
 class BoardUpdate(BaseModel):
@@ -88,9 +96,12 @@ class BoardUpdate(BaseModel):
     url: str
     active: bool
     type: BoardType | None = None
+    # No default: an omitted key is 422, and null is how a client clears the value.
+    company_name: str | None
 
     _validate_name = field_validator("name")(_not_blank)
     _validate_url = field_validator("url")(_not_blank)
+    _validate_company_name = field_validator("company_name")(_not_blank_if_present)
 
 
 class Board(BaseModel):
@@ -101,6 +112,7 @@ class Board(BaseModel):
     active: bool
     posting_count: int | None
     health: None
+    company_name: str | None
     created_at: datetime
     updated_at: datetime
 

@@ -31,6 +31,7 @@ class StartUrl(Base):
     url = Column(Text, unique=True, nullable=False, index=True)
     type = Column(Text, nullable=False, default=START_URL_TYPE_HTML_CRAWL)
     active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    company_name = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
