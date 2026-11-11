@@ -219,9 +219,10 @@ class LearningTaskRunner:
                 names, model_name = self._learn_extraction(domain, url, raw_html)
             resolved_type = mapping_type if kind == "mapping" else adapter_type
 
-            passed, test_output = self._run_adapter_tests()
+            staged = staged_paths(names.basename, kind)
+            passed, test_output = self._run_adapter_tests(staged)
             logger.info(
-                "%s %s for %s: snapshot test %s",
+                "%s %s for %s: gate %s",
                 resolved_type,
                 kind,
                 domain,
@@ -236,7 +237,7 @@ class LearningTaskRunner:
                 passed=passed,
                 test_output=test_output,
                 model_name=model_name,
-                paths=staged_paths(names.basename, kind),
+                paths=staged,
                 kind=kind,
             )
             if pr_url:

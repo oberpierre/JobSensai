@@ -19,6 +19,7 @@ from llm.adapter_files import (
     _write_snapshot,
 )
 from llm.dom import prune_to_links, resolve_hrefs
+from llm.generated_lint import lint_generated
 from llm.html_cleaner import clean_html
 from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
 from llm.learning_task import LearningTaskRunner
@@ -174,12 +175,14 @@ class LLMWorker(LearningTaskRunner):
         logger.info("Generated extraction adapter and snapshot for %s", names.basename)
         return names, llm.model_name
 
-    def _run_adapter_tests(self) -> tuple[bool, str]:
-        """Run the adapter suite once. Return whether it passed and its output.
+    def _run_adapter_tests(self, staged: list[str]) -> tuple[bool, str]:
+        """Run the gate once and return whether it passed and its output.
 
         The output is carried back rather than only logged because it becomes the body
         of the PR: a red run has to tell the reviewer what broke.
         """
+        # Linting first, so the snapshot test runs against the files that get committed.
+        lint_passed, lint_output = lint_generated(_WORKSPACE_ROOT, staged)
         result = subprocess.run(
             ["bazel", "test", "//adapters:adapter_test", "--test_output=errors"],
             cwd=str(_WORKSPACE_ROOT),
@@ -187,10 +190,10 @@ class LLMWorker(LearningTaskRunner):
             text=True,
             check=False,
         )
-        output = result.stdout + result.stderr
+        test_output = result.stdout + result.stderr
         if result.returncode != 0:
-            logger.error("Adapter tests failed:\n%s", output[-2000:])
-        return result.returncode == 0, output
+            logger.error("Adapter tests failed:\n%s", test_output[-2000:])
+        return lint_passed and result.returncode == 0, f"{test_output}\n{lint_output}"
 
     def run(self) -> bool:
         """Consume tasks until stopped.
