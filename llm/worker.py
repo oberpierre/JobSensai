@@ -183,8 +183,16 @@ class LLMWorker(LearningTaskRunner):
         """
         # Linting first, so the snapshot test runs against the files that get committed.
         lint_passed, lint_output = lint_generated(_WORKSPACE_ROOT, staged)
+        # ruff_test is CI's lint verdict, and its //adapters targets glob every
+        # generated file, so what ruff could not fix turns the run red here.
         result = subprocess.run(
-            ["bazel", "test", "//adapters:adapter_test", "--test_output=errors"],
+            [
+                "bazel",
+                "test",
+                "//adapters:adapter_test",
+                "//tools/lint:ruff_test",
+                "--test_output=errors",
+            ],
             cwd=str(_WORKSPACE_ROOT),
             capture_output=True,
             text=True,
