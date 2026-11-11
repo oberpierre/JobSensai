@@ -331,7 +331,9 @@ class TestSilverWorkerIngestEvents(unittest.TestCase):
         self.assertIsNone(
             session.query(JobPosting).filter(JobPosting.url == self.POSTING_URL).first()
         )
-        self.worker.redis.lpush.assert_not_called()
+        self.assertEqual(
+            self.worker.redis.lpush.call_args.args[0], "extraction_learning_tasks"
+        )
 
     def test_unparseable_raw_content_records_unparseable_content(self):
         self._seed_raw_job("not json at all")

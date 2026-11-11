@@ -4,6 +4,7 @@ import os
 import signal
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Optional
 from urllib.parse import urlsplit
 
@@ -27,6 +28,10 @@ from scraper.models import (
 # rather than an extraction adapter. The comparison is exact, so a value with
 # parameters, such as "application/json; charset=utf-8", takes the extraction path.
 _MAPPED_CONTENT_TYPE = "application/json"
+
+# Not the learner's LEARNING_IN_PROGRESS lease, which would make it drop the task.
+_DETAIL_REQUEST_KEY_PREFIX = "LEARNING_REQUESTED:detail:"
+_DETAIL_REQUEST_TTL_SECONDS = 1800
 
 # Required Silver fields, matching _save_job_posting's own blank check.
 _REQUIRED_STRING_FIELDS = ("title", "company_name", "description")
@@ -198,22 +203,6 @@ class SilverWorker:
         land in the same except as a database write failure.
         """
         hostname = urlsplit(raw_job.source_url).hostname
-        mapping = self.registry.get_detail_mapping(raw_job.source_url)
-        if mapping is None:
-            logger.error(
-                f"No detail mapping for {hostname} (posting {url}); operator error "
-                "until the mapping is learned"
-            )
-            record_ingest_failure(
-                stage=INGEST_STAGE_DETAIL,
-                reason=INGEST_REASON_NO_RULE,
-                source_url=raw_job.source_url,
-                posting_url=url,
-                start_url_id=raw_job.start_url_id,
-                detail=None,
-            )
-            return
-
         try:
             document = json.loads(raw_job.raw_content)
         except ValueError as e:
@@ -242,6 +231,25 @@ class SilverWorker:
                 posting_url=url,
                 start_url_id=raw_job.start_url_id,
                 detail=type(document).__name__,
+            )
+            return
+
+        mapping = self.registry.get_detail_mapping(raw_job.source_url)
+        if mapping is None:
+            logger.warning(
+                f"No detail mapping for {hostname} (posting {url}); refused until "
+                "one is learned"
+            )
+            record_ingest_failure(
+                stage=INGEST_STAGE_DETAIL,
+                reason=INGEST_REASON_NO_RULE,
+                source_url=raw_job.source_url,
+                posting_url=url,
+                start_url_id=raw_job.start_url_id,
+                detail=None,
+            )
+            self._request_detail_mapping(
+                raw_job.source_url, hostname, raw_job.raw_content
             )
             return
 
@@ -279,6 +287,60 @@ class SilverWorker:
             return
 
         self._save_job_posting(db, url, cleaned)
+
+    def _request_detail_mapping(
+        self, source_url: str, hostname: Optional[str], body: str
+    ) -> None:
+        """Ask the learner for a detail mapping, once per host per TTL."""
+        if self.redis is None:
+            logger.error(
+                f"No Redis client; detail mapping learning task for {hostname} "
+                "was not enqueued"
+            )
+            return
+
+        if not hostname:
+            logger.error(
+                f"No hostname in {source_url}; detail mapping learning task "
+                "was not enqueued"
+            )
+            return
+
+        key = f"{_DETAIL_REQUEST_KEY_PREFIX}{hostname}"
+        try:
+            claimed = self.redis.set(key, "1", nx=True, ex=_DETAIL_REQUEST_TTL_SECONDS)
+        except Exception as e:
+            logger.error(
+                f"Could not claim the detail mapping request for {hostname}, so the "
+                f"learning task was not enqueued: {e}"
+            )
+            return
+        if not claimed:
+            return
+
+        payload = {
+            "artifact": "mapping",
+            "domain": hostname,
+            "url": source_url,
+            "body": body,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        try:
+            self.redis.lpush("extraction_learning_tasks", json.dumps(payload))
+        except Exception as e:
+            logger.error(
+                f"Could not enqueue the detail mapping learning task for "
+                f"{hostname}: {e}"
+            )
+            try:
+                self.redis.delete(key)
+            except Exception as delete_error:
+                logger.error(
+                    f"Could not release the request key for {hostname} "
+                    f"({delete_error}), so the host waits out the TTL"
+                )
+            return
+        logger.info(f"Enqueued a detail mapping learning task for {hostname}")
 
     def _save_job_posting(self, db: Session, url: str, data: dict):
         # title, company_name and description back NOT NULL columns. A missing one is a
