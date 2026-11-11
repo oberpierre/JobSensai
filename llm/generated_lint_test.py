@@ -73,6 +73,22 @@ class TestLintGenerated(unittest.TestCase):
         )
         return check.returncode, fmt.returncode
 
+    def _lint(self, staged: list[str], **commands) -> tuple[bool, str]:
+        cfg = str(self.root / ".ruff.toml")
+        defaults = {
+            "ruff_command": (RUFF,),
+            "format_command": (RUFF, "format", "--config", cfg),
+            "format_check_command": (
+                RUFF,
+                "format",
+                "--check",
+                "--diff",
+                "--config",
+                cfg,
+            ),
+        }
+        return lint_generated(self.root, staged, **{**defaults, **commands})
+
     def _write_extraction(self, source: str):
         names = _adapter_names("acme.com", "extraction")
         _write_snapshot(
@@ -104,9 +120,7 @@ class TestLintGenerated(unittest.TestCase):
         test_file = self.root / "adapters" / "adapters" / f"{names.basename}_test.py"
         self.assertNotEqual(self._hook(test_file)[0], 0)
 
-        passed, _ = lint_generated(
-            self.root, staged_paths(names.basename, "mapping"), (RUFF,)
-        )
+        passed, _ = self._lint(staged_paths(names.basename, "mapping"))
 
         self.assertTrue(passed)
         self.assertEqual(self._hook(test_file), (0, 0))
@@ -116,23 +130,46 @@ class TestLintGenerated(unittest.TestCase):
         for f in files:
             self.assertNotEqual(self._hook(f)[0], 0, f.name)
 
-        passed, _ = lint_generated(
-            self.root, staged_paths(names.basename, "adapter"), (RUFF,)
-        )
+        passed, _ = self._lint(staged_paths(names.basename, "adapter"))
 
         self.assertTrue(passed)
         for f in files:
             self.assertEqual(self._hook(f), (0, 0), f.name)
 
-    def test_what_ruff_cannot_fix_makes_the_result_red(self):
-        names, _ = self._write_extraction(UNFIXABLE_SOURCE)
+    def test_what_ruff_cannot_fix_is_left_for_the_lint_verdict(self):
+        names, files = self._write_extraction(UNFIXABLE_SOURCE)
 
-        passed, output = lint_generated(
-            self.root, staged_paths(names.basename, "adapter"), (RUFF,)
+        passed, _ = self._lint(staged_paths(names.basename, "adapter"))
+
+        self.assertTrue(passed)
+        lint = subprocess.run(
+            [RUFF, "check", "--config", str(self.root / ".ruff.toml"), str(files[1])],
+            capture_output=True,
+            text=True,
+        )
+        self.assertIn("F841", lint.stdout)
+
+    def test_unformatted_output_makes_the_result_red(self):
+        names, _ = self._write_extraction(SOURCE)
+
+        passed, output = self._lint(
+            staged_paths(names.basename, "adapter"), format_command=("true",)
         )
 
         self.assertFalse(passed)
-        self.assertIn("F841", output)
+        self.assertIn("would be reformatted", output)
+
+    def test_a_fix_step_that_fails_is_red_and_skips_the_check(self):
+        names, _ = self._write_extraction(SOURCE)
+
+        passed, output = self._lint(
+            staged_paths(names.basename, "adapter"),
+            format_command=("false",),
+            format_check_command=("/nonexistent/check",),
+        )
+
+        self.assertFalse(passed)
+        self.assertIn("Could not fix generated Python", output)
 
     def test_nothing_to_lint_runs_nothing(self):
         with patch("llm.generated_lint.subprocess.run") as mock_run:
@@ -148,8 +185,8 @@ class TestLintGenerated(unittest.TestCase):
 
     def test_a_missing_binary_is_a_red_result_not_an_exception(self):
         (self.root / "adapters" / "adapters" / "x_test.py").write_text("")
-        passed, output = lint_generated(
-            self.root, ["adapters/adapters/x_test.py"], ("/nonexistent/ruff",)
+        passed, output = self._lint(
+            ["adapters/adapters/x_test.py"], ruff_command=("/nonexistent/ruff",)
         )
         self.assertFalse(passed)
         self.assertIn("Could not run ruff", output)

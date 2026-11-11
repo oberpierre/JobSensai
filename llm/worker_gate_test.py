@@ -47,6 +47,13 @@ class TestRunAdapterTests(unittest.TestCase):
         names = [c[0] for c in parent.mock_calls]
         self.assertLess(names.index("lint"), names.index("run"))
 
+    def test_the_test_run_carries_ci_lint_beside_the_snapshot_tests(self):
+        _, parent = self._gate((True, ""), 0)
+        argv = parent.run.call_args.args[0]
+        self.assertEqual(argv[:2], ["bazel", "test"])
+        self.assertIn("//adapters:adapter_test", argv)
+        self.assertIn("//tools/lint:ruff_test", argv)
+
 
 if __name__ == "__main__":
     unittest.main()
