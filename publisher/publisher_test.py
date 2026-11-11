@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from publisher.publisher import Publisher
+from publisher.publisher import AGENT_TRAILER, Publisher
 
 _BASENAME = "acme_com_extraction_v1"
 
@@ -128,6 +128,54 @@ class TestPublisher(unittest.TestCase):
     def test_returns_none_when_a_git_step_fails(self, mock_run):
         mock_run.side_effect = subprocess.CalledProcessError(1, ["git", "push"])
         self.assertIsNone(_publish(passed=True))
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_red_commit_skips_the_hook_and_commits_only_the_paths(self, mock_run):
+        mock_run.return_value = _ok()
+        _publish(passed=False)
+
+        commit = next(c for c in _commands(mock_run) if c[:2] == ("git", "commit"))
+        subject = "@ F Add a generated extraction adapter for acme.com"
+        self.assertEqual(
+            list(commit),
+            ["git", "commit", "--no-verify", "-m", subject, "-m", AGENT_TRAILER]
+            + ["--", *_PATHS],
+        )
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_green_commit_runs_the_hook_and_commits_only_the_paths(self, mock_run):
+        mock_run.return_value = _ok()
+        _publish(passed=True)
+
+        cmds = _commands(mock_run)
+        commit = next(c for c in cmds if c[:2] == ("git", "commit"))
+        subject = "^ F Add a generated extraction adapter for acme.com"
+        self.assertEqual(
+            list(commit),
+            ["git", "commit", "-m", subject, "-m", AGENT_TRAILER] + ["--", *_PATHS],
+        )
+        self.assertFalse(any("--no-verify" in c for c in cmds))
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_a_failed_commit_logs_its_stdout_and_stderr(self, mock_run):
+        def run(args, **_kwargs):
+            if tuple(args[:2]) == ("git", "commit"):
+                raise subprocess.CalledProcessError(
+                    1,
+                    ["git", "commit"],
+                    output="OUT-TEXT",
+                    stderr="pre-commit: ruff found lint errors.",
+                )
+            return _ok()
+
+        mock_run.side_effect = run
+        with self.assertLogs("publisher.publisher", level="ERROR") as logs:
+            self.assertIsNone(_publish(passed=True))
+
+        self.assertEqual(len(logs.records), 1)
+        message = logs.records[0].getMessage()
+        self.assertIn("OUT-TEXT", message)
+        self.assertIn("pre-commit: ruff found lint errors.", message)
 
     @patch("publisher.publisher.subprocess.run")
     def test_clone_is_left_on_the_base_branch(self, mock_run):
