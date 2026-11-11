@@ -363,6 +363,29 @@ class TestProcessTask(unittest.TestCase):
             "LEARNING_IN_PROGRESS:extraction:newboard.com", "1", nx=True, ex=1800
         )
 
+    def test_one_staged_list_reaches_the_gate_and_the_publisher(self):
+        self.mock_redis.set.return_value = True
+        self.worker._learn_discovery = MagicMock(
+            return_value=(_adapter_names("acme.com", "discovery"), "some-model")
+        )
+        self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
+        self.worker.release_learning = MagicMock()
+        expected = [
+            "adapters/adapters/acme_com_discovery_v1.py",
+            "adapters/adapters/acme_com_discovery_v1_test.py",
+            "adapters/adapters/fixtures/acme_com_discovery_v1",
+        ]
+
+        task_payload = json.dumps(
+            {"domain": "acme.com", "url": "https://acme.com/jobs", "html": "<html/>"}
+        ).encode("utf-8")
+        self.worker.process_task(task_payload, "discovery_learning_tasks")
+
+        self.worker._run_adapter_tests.assert_called_once_with(expected)
+        self.assertEqual(
+            self.mock_publisher.publish.call_args.kwargs["paths"], expected
+        )
+
     @patch("llm.learning_task.logger")
     def test_process_task_already_learning(self, mock_logger):
         self.mock_redis.set.return_value = None

@@ -97,6 +97,7 @@ py_library(
     deps = [
         ":adapter_files",
         ":dom",
+        ":generated_lint",
         ":html_cleaner",
         ":learning_errors",
         ":learning_task",
@@ -233,5 +234,42 @@ py_test(
     name = "dom_test",
     srcs = ["dom_test.py"],
     deps = [":dom"],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "generated_lint",
+    srcs = ["generated_lint.py"],
+    imports = [".."],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "generated_lint_test",
+    srcs = ["generated_lint_test.py"],
+    imports = [".."],
+    data = [
+        "@aspect_rules_lint//format:ruff",
+        "//:.ruff.toml",
+    ],
+    env = {
+        "RUFF_BIN": "$(rootpath @aspect_rules_lint//format:ruff)",
+        "RUFF_CONFIG": "$(rootpath //:.ruff.toml)",
+    },
+    deps = [
+        ":adapter_files",
+        ":generated_lint",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_gate_test",
+    srcs = ["worker_gate_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker_lib",
+        "@pip//redis",
+    ],
     visibility = ["//visibility:public"],
 )

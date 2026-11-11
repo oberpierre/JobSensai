@@ -157,6 +157,27 @@ class TestProcessMappingTask(unittest.TestCase):
             ],
         )
 
+    def test_one_staged_list_reaches_the_gate_and_the_publisher(self):
+        self.mock_redis.set.return_value = True
+        self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
+        domain = "boards-api.greenhouse.io"
+        expected = [
+            "adapters/adapters/mappings/boards_api_greenhouse_io_index_v1.json",
+            "adapters/adapters/boards_api_greenhouse_io_index_v1_test.py",
+            "adapters/adapters/fixtures/boards_api_greenhouse_io_index_v1",
+        ]
+        with patch(
+            "llm.learning_task.learn_mapping",
+            return_value=(_mapping_names(domain, "index"), "acme-test-model"),
+        ):
+            self.worker.process_task(
+                self._payload(domain=domain), "discovery_learning_tasks"
+            )
+        self.worker._run_adapter_tests.assert_called_once_with(expected)
+        self.assertEqual(
+            self.mock_publisher.publish.call_args.kwargs["paths"], expected
+        )
+
     def test_publish_receives_mapping_type_as_adapter_type(self):
         self._run_green()
         self.assertEqual(
