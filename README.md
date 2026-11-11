@@ -107,7 +107,7 @@ The learning worker consumes the two adapter-learning queues from Redis, generat
 
 - Ollama running with the model pulled, as in section 1.
 - An authenticated `gh`. The worker runs `gh auth status` before it consumes anything and exits non-zero with `Cannot publish` when that fails, so a missing credential costs a restart rather than a half-finished run.
-- **A clean clone on `main`.** Publishing runs `git checkout -B feature/adapter-<name> main` in the checkout you started it from, commits the generated adapter, pushes to `origin` and returns to `main`. Uncommitted work in that clone is at risk, and starting from another branch publishes against the wrong base.
+- A pushed base branch. The worker runs from your own checkout and publishes against `LEARNING_BASE_BRANCH`, which defaults to `main` and also means `main` when empty. Setting it in `.env` makes every restart inherit it. Each publish fetches that branch, creates `feature/<kind>-<basename>` off `origin/<branch>`, commits only the generated files, force-pushes it (replacing an earlier attempt whose PR was never opened), opens the PR against that branch, and returns the checkout to the local branch with nothing staged, so unpushed commits and edits never reach the PR.
 
 **Run it:**
 
@@ -116,6 +116,12 @@ bazel run //llm:worker
 ```
 
 It reads `.env` for Redis and Ollama exactly as the scraper does, and logs `Starting LLM Worker, listening on [...]` as soon as the `gh` check passes, so the absence of that line points at the credential rather than at Redis. The Redis client connects lazily, which means a wrong host or password surfaces a moment later on the first poll instead of at startup.
+
+At startup, after the `gh` check, it logs a line ending `HEAD vs origin/<branch>: <state>`. `in sync` is the intended state. `ahead N` means push first, because local commits are in the gate's tree but not in the PR's parent. `behind M` means pull first. `ahead N, behind M` means reconcile the two. `unknown` means the fetch failed, so check the branch name and the network.
+
+Never close a PR to get rid of it, because a closed PR counts as published and that board is never learned again. A PR the worker opened against the wrong base, because `LEARNING_BASE_BRANCH` was unset or wrong, means the first publish has already moved the checkout to that base. Stop the worker, check out the intended branch, fix the variable, then run `gh pr edit <number> --base <branch>`. A PR for a board you did not mean to learn is retargeted to `main` with `gh pr edit <number> --base main` and left for review there, since the deployed app enqueues learning tasks to the same Redis.
+
+CI runs only on PRs into `main`, so a PR against another base gets no CI. The reviewer checks out its branch and runs both `bazel test //adapters:adapter_test --test_filter=<the PR's test module>` and `bazel test //tools/lint:ruff_test` there before merging, and a `ruff_test` finding that names a file outside the PR is local clutter.
 
 **With a different model:**
 

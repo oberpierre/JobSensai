@@ -213,6 +213,7 @@ class LLMWorker(LearningTaskRunner):
             logger.error("Cannot publish: run `gh auth login` and restart")
             self._publish_unavailable = True
             return not self._publish_unavailable
+        self.publisher.log_base_state()
         self.running = True
         logger.info("Starting LLM Worker, listening on %s", self.queue_names)
         while self.running:
@@ -240,6 +241,10 @@ def _worker_from_env() -> LLMWorker:
         llm_url=f"http://{host}:{ollama_port}",
         redis_host=os.getenv("REDIS_HOST", "localhost"),
         redis_port=int(os.getenv("REDIS_PORT", "6379")),
+        publisher=Publisher(
+            repo_root=_WORKSPACE_ROOT,
+            base_branch=os.getenv("LEARNING_BASE_BRANCH") or "main",
+        ),
     )
 
 

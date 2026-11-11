@@ -14,3 +14,10 @@ py_test(
     imports = [".."],
     deps = [":publisher"],
 )
+
+py_test(
+    name = "publisher_git_test",
+    srcs = ["publisher_git_test.py"],
+    imports = [".."],
+    deps = [":publisher"],
+)

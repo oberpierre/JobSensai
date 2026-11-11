@@ -18,22 +18,33 @@ def _ok(stdout: str = "https://github.com/acme/repo/pull/7\n"):
     return subprocess.CompletedProcess([], 0, stdout=stdout, stderr="")
 
 
-def _publish(passed: bool, model_name: str = "qwen3-coder:30b", paths=_PATHS):
-    pub = Publisher(repo_root=Path("/repo"))
-    return pub.publish(
-        basename=_BASENAME,
-        domain="acme.com",
-        adapter_type="extraction",
-        passed=passed,
-        test_output="TEST LOG OUTPUT",
-        model_name=model_name,
-        paths=paths,
-        kind="adapter",
-    )
+def _publish(
+    passed: bool,
+    model_name: str = "qwen3-coder:30b",
+    paths=_PATHS,
+    base_branch: str = "main",
+    existing: bool | None = False,
+):
+    pub = Publisher(repo_root=Path("/repo"), base_branch=base_branch)
+    with patch.object(Publisher, "has_existing_pr", return_value=existing):
+        return pub.publish(
+            basename=_BASENAME,
+            domain="acme.com",
+            adapter_type="extraction",
+            passed=passed,
+            test_output="TEST LOG OUTPUT",
+            model_name=model_name,
+            paths=paths,
+            kind="adapter",
+        )
 
 
 def _commands(mock_run) -> list[tuple]:
     return [tuple(call.args[0]) for call in mock_run.call_args_list]
+
+
+def _git_commands(mock_run) -> list[tuple]:
+    return [c for c in _commands(mock_run) if c[0] == "git"]
 
 
 class TestPublisher(unittest.TestCase):
@@ -44,9 +55,18 @@ class TestPublisher(unittest.TestCase):
         self.assertEqual(url, "https://github.com/acme/repo/pull/7")
 
         cmds = _commands(mock_run)
-        # Branch is taken off the base branch, one branch per adapter.
+        # Branch is taken off the fetched remote base, one branch per adapter.
+        git = _git_commands(mock_run)
+        branch_step = git.index(
+            ("git", "checkout", "-B", f"feature/adapter-{_BASENAME}", "origin/main")
+        )
+        self.assertEqual(
+            git[branch_step - 1],
+            ("git", "fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"),
+        )
         self.assertIn(
-            ("git", "checkout", "-B", f"feature/adapter-{_BASENAME}", "main"), cmds
+            ("git", "push", "--force", "-u", "origin", f"feature/adapter-{_BASENAME}"),
+            cmds,
         )
         # Only this adapter's three paths are staged — never BUILD or other adapters.
         add = next(c for c in cmds if c[:2] == ("git", "add"))
@@ -183,8 +203,10 @@ class TestPublisher(unittest.TestCase):
         mock_run.return_value = _ok()
         _publish(passed=True)
 
-        cmds = _commands(mock_run)
-        self.assertEqual(cmds[-1], ("git", "checkout", "main"))
+        self.assertEqual(
+            _git_commands(mock_run)[-2:],
+            [("git", "checkout", "main"), ("git", "reset", "-q", "--", *_PATHS)],
+        )
 
     @patch("publisher.publisher.subprocess.run")
     def test_base_branch_is_restored_even_when_publishing_fails(self, mock_run):
@@ -192,7 +214,10 @@ class TestPublisher(unittest.TestCase):
         # escaping error.
         mock_run.side_effect = subprocess.CalledProcessError(1, ["git", "push"])
         self.assertIsNone(_publish(passed=True))
-        self.assertEqual(_commands(mock_run)[-1], ("git", "checkout", "main"))
+        self.assertEqual(
+            _git_commands(mock_run)[-2:],
+            [("git", "checkout", "main"), ("git", "reset", "-q", "--", *_PATHS)],
+        )
 
 
 class TestHasExistingPr(unittest.TestCase):
@@ -276,7 +301,14 @@ class TestHasExistingPr(unittest.TestCase):
     def test_check_and_publish_name_the_same_branch_for_one_kind(self, mock_run):
         """The already-published check and the publish that follows it must name
         one branch for a given kind, since the branch is the idempotency key."""
-        mock_run.return_value = _ok()
+
+        # The real has_existing_pr runs twice here, so it must answer "none yet".
+        def run(args, **_kwargs):
+            if tuple(args[:3]) == ("gh", "pr", "list"):
+                return _ok("[]\n")
+            return _ok()
+
+        mock_run.side_effect = run
         pub = Publisher(repo_root=Path("/repo"))
         pub.has_existing_pr(_BASENAME, kind="mapping")
         pub.publish(
@@ -315,6 +347,152 @@ class TestCanPublish(unittest.TestCase):
             4, ["gh", "auth", "status"]
         )
         self.assertIs(self.pub.can_publish(), False)
+
+
+class TestPublishAgainstAConfiguredBase(unittest.TestCase):
+    @patch("publisher.publisher.subprocess.run")
+    def test_cuts_pushes_and_opens_against_the_configured_base(self, mock_run):
+        mock_run.return_value = _ok()
+        _publish(passed=True, base_branch="feature/api-boards")
+
+        branch = f"feature/adapter-{_BASENAME}"
+        git = [list(c) for c in _git_commands(mock_run)]
+        self.assertIn(
+            [
+                "git",
+                "fetch",
+                "origin",
+                "+refs/heads/feature/api-boards:refs/remotes/origin/feature/api-boards",
+            ],
+            git,
+        )
+        self.assertIn(
+            ["git", "checkout", "-B", branch, "origin/feature/api-boards"], git
+        )
+        self.assertIn(["git", "push", "--force", "-u", "origin", branch], git)
+        gh = next(c for c in _commands(mock_run) if c[0] == "gh")
+        self.assertEqual(gh[gh.index("--base") + 1], "feature/api-boards")
+        self.assertEqual(
+            git[-2:],
+            [
+                ["git", "checkout", "feature/api-boards"],
+                ["git", "reset", "-q", "--", *_PATHS],
+            ],
+        )
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_a_failed_fetch_is_a_failed_publish(self, mock_run):
+        def run(args, **_kwargs):
+            if tuple(args[:2]) == ("git", "fetch"):
+                raise subprocess.CalledProcessError(
+                    128, ["git", "fetch"], stderr="FETCH-ERR"
+                )
+            return _ok()
+
+        mock_run.side_effect = run
+        with self.assertLogs("publisher.publisher", level="ERROR") as logs:
+            self.assertIsNone(_publish(passed=True))
+
+        self.assertFalse(
+            any(c[:3] == ("git", "checkout", "-B") for c in _commands(mock_run))
+        )
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn("FETCH-ERR", logs.records[0].getMessage())
+        self.assertEqual(
+            _git_commands(mock_run)[-2:],
+            [("git", "checkout", "main"), ("git", "reset", "-q", "--", *_PATHS)],
+        )
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_a_pr_opened_meanwhile_stops_the_forced_push(self, mock_run):
+        mock_run.return_value = _ok()
+        with self.assertLogs("publisher.publisher", level="WARNING") as logs:
+            self.assertIsNone(_publish(passed=True, existing=True))
+
+        cmds = _commands(mock_run)
+        self.assertFalse(any(c[:2] == ("git", "push") for c in cmds))
+        self.assertFalse(any(c[0] == "gh" for c in cmds))
+        warnings = [r for r in logs.records if r.levelname == "WARNING"]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn(f"feature/adapter-{_BASENAME}", warnings[0].getMessage())
+        self.assertEqual(
+            _git_commands(mock_run)[-2:],
+            [("git", "checkout", "main"), ("git", "reset", "-q", "--", *_PATHS)],
+        )
+
+    @patch("publisher.publisher.subprocess.run")
+    def test_an_unknown_pr_state_stops_the_forced_push(self, mock_run):
+        mock_run.return_value = _ok()
+        self.assertIsNone(_publish(passed=True, existing=None))
+
+        self.assertFalse(any(c[:2] == ("git", "push") for c in _commands(mock_run)))
+
+
+class TestLogBaseState(unittest.TestCase):
+    def _run(self, side_effect):
+        pub = Publisher(repo_root=Path("/repo"))
+        with (
+            patch("publisher.publisher.subprocess.run", side_effect=side_effect) as m,
+            self.assertLogs("publisher.publisher", level="INFO") as logs,
+        ):
+            pub.log_base_state()
+        info = [r for r in logs.records if r.getMessage().startswith("Publishing")]
+        self.assertEqual(len(info), 1)
+        return info[0], m
+
+    @staticmethod
+    def _git_answering(counts: str = "0\t0\n", fetch_error: Exception | None = None):
+        def run(args, **_kwargs):
+            if tuple(args[:3]) == ("git", "rev-parse", "--abbrev-ref"):
+                return _ok("feature/api-boards\n")
+            if tuple(args[:2]) == ("git", "fetch") and fetch_error:
+                raise fetch_error
+            if tuple(args[:2]) == ("git", "rev-list"):
+                return _ok(counts)
+            return _ok("")
+
+        return run
+
+    def test_in_sync(self):
+        record, _ = self._run(self._git_answering("0\t0\n"))
+        self.assertEqual(record.levelname, "INFO")
+        self.assertEqual(
+            record.getMessage(),
+            "Publishing against origin/main from branch feature/api-boards, "
+            "HEAD vs origin/main: in sync",
+        )
+
+    def test_ahead(self):
+        record, _ = self._run(self._git_answering("0\t2\n"))
+        self.assertTrue(record.getMessage().endswith(": ahead 2"))
+
+    def test_behind(self):
+        record, _ = self._run(self._git_answering("3\t0\n"))
+        self.assertTrue(record.getMessage().endswith(": behind 3"))
+
+    def test_ahead_and_behind(self):
+        record, _ = self._run(self._git_answering("3\t2\n"))
+        self.assertTrue(record.getMessage().endswith(": ahead 2, behind 3"))
+
+    def test_a_failed_fetch_is_unknown_and_counts_nothing(self):
+        error = subprocess.CalledProcessError(128, ["git", "fetch"])
+        record, mock_run = self._run(self._git_answering(fetch_error=error))
+        message = record.getMessage()
+        self.assertIn("feature/api-boards", message)
+        self.assertTrue(message.endswith(": unknown"))
+        self.assertFalse(any(c[:2] == ("git", "rev-list") for c in _commands(mock_run)))
+
+    def test_git_missing_is_unknown_throughout(self):
+        record, _ = self._run(FileNotFoundError("git"))
+        self.assertEqual(
+            record.getMessage(),
+            "Publishing against origin/main from branch unknown, "
+            "HEAD vs origin/main: unknown",
+        )
+
+    def test_unparseable_counts_are_unknown(self):
+        record, _ = self._run(self._git_answering("garbage\n"))
+        self.assertTrue(record.getMessage().endswith(": unknown"))
 
 
 if __name__ == "__main__":
