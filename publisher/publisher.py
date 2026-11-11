@@ -2,8 +2,9 @@
 
 Stages the paths it is given, commits them (Arlo notation whose risk marks red vs
 green), pushes, and opens a PR. Draft PR when the artifact's tests are red, ready when
-green. Assumes the agent machine's clone is on a clean base branch and that ``git`` push
-credentials and an authenticated ``gh`` are already configured.
+green. The checkout may hold other work, because each publish branches off the remote
+base and commits only its own paths. Assumes ``git`` push credentials and an
+authenticated ``gh`` are already configured.
 """
 
 import logging
@@ -74,6 +75,49 @@ class Publisher:
             return False
         return True
 
+    def log_base_state(self) -> None:
+        """Log the current branch and how HEAD stands against the remote base."""
+        try:
+            current = self._git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        except (subprocess.CalledProcessError, OSError):
+            current = "unknown"
+        try:
+            self._fetch_base()
+            counts = self._git(
+                "rev-list",
+                "--left-right",
+                "--count",
+                f"{self.remote}/{self.base_branch}...HEAD",
+            ).stdout.split()
+            behind, ahead = (int(count) for count in counts)
+            if not behind and not ahead:
+                state = "in sync"
+            elif not behind:
+                state = f"ahead {ahead}"
+            elif not ahead:
+                state = f"behind {behind}"
+            else:
+                state = f"ahead {ahead}, behind {behind}"
+        except (subprocess.CalledProcessError, OSError, ValueError):
+            state = "unknown"
+        logger.info(
+            "Publishing against %s/%s from branch %s, HEAD vs %s/%s: %s",
+            self.remote,
+            self.base_branch,
+            current,
+            self.remote,
+            self.base_branch,
+            state,
+        )
+
+    def _fetch_base(self) -> None:
+        """Bring the remote-tracking base up to date, whatever refspec the clone has."""
+        self._git(
+            "fetch",
+            self.remote,
+            f"+refs/heads/{self.base_branch}:refs/remotes/{self.remote}/{self.base_branch}",
+        )
+
     def publish(
         self,
         *,
@@ -93,8 +137,9 @@ class Publisher:
         that matches nothing makes `git add` fail rather than no-op. Returns None if
         any git/gh step fails (logged, not raised to the caller). A red commit skips
         the clone's hooks because they reject exactly the unfinished artifact a draft
-        PR exists to carry. Restores to base
-        branch in any case, so a failed publish cannot strand the runner.
+        PR exists to carry. It branches off the freshly fetched remote base, so local
+        commits and edits never reach the PR, and returns to the local base branch
+        with its paths unstaged.
         """
         branch = self.branch_for(basename, kind)
         # Risk token mirrors the gate: validated (^) when green, broken (@) when red.
@@ -103,12 +148,26 @@ class Publisher:
         try:
             # -B resets an existing local branch: a run that died between branching and
             # pushing leaves one behind that no remote PR check can see.
-            self._git("checkout", "-B", branch, self.base_branch)
+            self._fetch_base()
+            self._git("checkout", "-B", branch, f"{self.remote}/{self.base_branch}")
             self._git("add", "--", *paths)
             # The pathspec commits only the artifact even when something else is staged.
             commit = ["commit"] if passed else ["commit", "--no-verify"]
             self._git(*commit, "-m", subject, "-m", self.trailer, "--", *paths)
-            self._git("push", "-u", self.remote, branch)
+            # A remote branch with no PR is an earlier attempt whose PR never opened.
+            # This commit does not descend from it, so a plain push would be rejected.
+            # The recheck matters because another learner may have opened a PR since.
+            existing = self.has_existing_pr(basename, kind)
+            if existing is not False:
+                logger.warning(
+                    "Not pushing %s: GitHub %s",
+                    branch,
+                    "already has a PR for it"
+                    if existing
+                    else "could not say whether a PR exists for it",
+                )
+                return None
+            self._git("push", "--force", "-u", self.remote, branch)
             return self._open_pr(
                 branch, domain, adapter_type, passed, test_output, model_name, kind
             )
@@ -122,19 +181,27 @@ class Publisher:
             )
             return None
         finally:
-            self._restore_base_branch()
+            self._restore_base_branch(paths)
 
-    def _restore_base_branch(self) -> None:
-        """Return the clone to the base branch after publishing.
-
-        The agent runner is long-lived and publishes one adapter per task, so without
-        this the next task would branch off the previous adapter's branch and its PR
-        would carry both adapters.
-        """
+    def _restore_base_branch(self, paths: list[str]) -> None:
+        """Return to the local base branch with this publish's paths unstaged."""
         try:
             self._git("checkout", self.base_branch)
         except subprocess.CalledProcessError as exc:
-            logger.error("Could not return the clone to %s: %s", self.base_branch, exc)
+            logger.error(
+                "Could not return the clone to %s: %s\n%s",
+                self.base_branch,
+                exc,
+                exc.stderr or "",
+            )
+        # A rejected commit leaves the files staged, and a checkout carries staged
+        # files along, so the next publish's add would otherwise inherit them.
+        try:
+            self._git("reset", "-q", "--", *paths)
+        except subprocess.CalledProcessError as exc:
+            logger.error(
+                "Could not unstage %s: %s\n%s", " ".join(paths), exc, exc.stderr or ""
+            )
 
     def _open_pr(
         self,
