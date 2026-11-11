@@ -91,7 +91,9 @@ class Publisher:
         The PR is opened as a draft when *passed* is False. One branch introduces
         exactly one artifact, whose files are exactly *paths*, because a pathspec
         that matches nothing makes `git add` fail rather than no-op. Returns None if
-        any git/gh step fails (logged, not raised to the caller). Restores to base
+        any git/gh step fails (logged, not raised to the caller). A red commit skips
+        the clone's hooks because they reject exactly the unfinished artifact a draft
+        PR exists to carry. Restores to base
         branch in any case, so a failed publish cannot strand the runner.
         """
         branch = self.branch_for(basename, kind)
@@ -103,13 +105,21 @@ class Publisher:
             # pushing leaves one behind that no remote PR check can see.
             self._git("checkout", "-B", branch, self.base_branch)
             self._git("add", "--", *paths)
-            self._git("commit", "-m", subject, "-m", self.trailer)
+            # The pathspec commits only the artifact even when something else is staged.
+            commit = ["commit"] if passed else ["commit", "--no-verify"]
+            self._git(*commit, "-m", subject, "-m", self.trailer, "--", *paths)
             self._git("push", "-u", self.remote, branch)
             return self._open_pr(
                 branch, domain, adapter_type, passed, test_output, model_name, kind
             )
         except subprocess.CalledProcessError as exc:
-            logger.error("Publish failed for %s: %s", basename, exc)
+            logger.error(
+                "Publish failed for %s: %s\nstdout:\n%s\nstderr:\n%s",
+                basename,
+                exc,
+                exc.stdout or "",
+                exc.stderr or "",
+            )
             return None
         finally:
             self._restore_base_branch()
