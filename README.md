@@ -101,7 +101,7 @@ bazel run //scraper:worker
 
 ### 3. Adapter Learning Worker
 
-The learning worker consumes the two adapter-learning queues from Redis, generates a parsing adapter with the LLM, gates it with `bazel test //adapters:adapter_test`, and opens a pull request for it. Unlike the services above it writes to your clone and pushes from it, so treat it as an operator task rather than something to leave running unattended.
+The learning worker consumes the two adapter-learning queues from Redis, generates a parsing adapter with the LLM, gates the generated files with the commit hook's own ruff and format checks, runs that artifact's own snapshot test so nothing else in the checkout affects the verdict, and opens a pull request for it. Unlike the services above it writes to your clone and pushes from it, so treat it as an operator task rather than something to leave running unattended.
 
 **Prerequisites:**
 

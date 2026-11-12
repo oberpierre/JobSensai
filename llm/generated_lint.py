@@ -38,9 +38,9 @@ def lint_generated(
     format_command: Sequence[str] = FORMAT_COMMAND,
     format_check_command: Sequence[str] = FORMAT_CHECK_COMMAND,
 ) -> tuple[bool, str]:
-    """Fix what ruff can in place, then report whether the formatting check passes.
+    """Fix what ruff can in place, then report whether the hook's lint and format pass.
 
-    What ruff cannot fix is left in the files for the gate's own lint verdict.
+    Both checks run on the staged files, the second whether or not the first passed.
     """
     relative = [p for p in staged if p.endswith(".py")]
     if not relative:
@@ -73,12 +73,19 @@ def lint_generated(
                 output = fixed.stdout + fixed.stderr
                 logger.error("Could not fix generated Python:\n%s", output[-2000:])
                 return False, f"Could not fix generated Python:\n{output}"
+        linted = run(ruff_command, "check", "--config", config, *absolute)
         checked = run(format_check_command, *relative)
     except OSError as exc:
         logger.error("Could not run ruff: %s", exc)
         return False, f"Could not run ruff: {exc}"
 
-    output = checked.stdout + checked.stderr
+    lint_output = linted.stdout + linted.stderr
+    format_output = checked.stdout + checked.stderr
+    if linted.returncode != 0:
+        logger.error("Generated Python has lint errors:\n%s", lint_output[-2000:])
     if checked.returncode != 0:
-        logger.error("Generated Python is not formatted:\n%s", output[-2000:])
-    return checked.returncode == 0, output
+        logger.error("Generated Python is not formatted:\n%s", format_output[-2000:])
+    return (
+        linted.returncode == 0 and checked.returncode == 0,
+        lint_output + format_output,
+    )

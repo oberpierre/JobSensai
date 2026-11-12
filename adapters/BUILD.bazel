@@ -46,6 +46,19 @@ py_test(
     ],
 )
 
+# load_tests is the gate's test selector, so it is tested on its own rather than
+# as a generated-adapter test.
+py_test(
+    name = "adapter_suite_test",
+    srcs = [
+        "adapter_suite_test.py",
+        "adapters/adapter_test.py",
+    ],
+    deps = [
+        ":adapters",
+    ],
+)
+
 # Snapshot test infrastructure is tested on its own, not as an adapter test.
 py_test(
     name = "snapshot_test",
@@ -55,9 +68,9 @@ py_test(
     ],
 )
 
-# The mapping engine is tested on its own, not as a generated-adapter test: llm/worker.py
-# runs adapter_test as the gate on every generated adapter, and an engine regression here
-# would otherwise land in a draft PR as though a model wrote it.
+# The mapping engine is infrastructure rather than a generated adapter, so it has its own
+# target: in adapter_test, which CI runs unfiltered, an engine regression would read as a
+# generated adapter's failure.
 py_test(
     name = "mapping_test",
     srcs = ["adapters/mapping_test.py"],
@@ -66,9 +79,8 @@ py_test(
     ],
 )
 
-# The mapping snapshot bases are tested on their own, not as a generated-adapter
-# test, for the same reason mapping_test.py is: llm/worker.py runs adapter_test as
-# the gate on every generated adapter.
+# Infrastructure rather than a generated adapter, tested on its own for the same reason
+# mapping_test.py is.
 py_test(
     name = "mapping_snapshot_test",
     srcs = ["adapters/mapping_snapshot_test.py"],
@@ -77,9 +89,8 @@ py_test(
     ],
 )
 
-# The filter convention is tested on its own, not as a generated-adapter test, for
-# the same reason mapping_test.py is: llm/worker.py runs adapter_test as the gate on
-# every generated adapter.
+# Infrastructure rather than a generated adapter, tested on its own for the same reason
+# mapping_test.py is.
 py_test(
     name = "filters_test",
     srcs = ["adapters/filters_test.py"],

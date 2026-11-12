@@ -351,7 +351,7 @@ class TestCanPublish(unittest.TestCase):
 
 class TestPublishAgainstAConfiguredBase(unittest.TestCase):
     @patch("publisher.publisher.subprocess.run")
-    def test_cuts_pushes_and_opens_against_the_configured_base(self, mock_run):
+    def test_branches_off_pushes_and_opens_against_the_configured_base(self, mock_run):
         mock_run.return_value = _ok()
         _publish(passed=True, base_branch="feature/api-boards")
 
