@@ -4,6 +4,7 @@ import logging
 import os
 import subprocess
 import time
+from pathlib import Path
 
 import redis
 from dotenv import load_dotenv
@@ -45,6 +46,14 @@ _REQUEUE_BACKOFF_SECONDS = int(os.getenv("REQUEUE_BACKOFF_SECONDS", "30"))
 # A dense model reasoning over a wide context can outlive the default lease, letting a
 # second learning run start on the same domain before the first releases it.
 _LEASE_TTL_SECONDS = int(os.getenv("LEARNING_LEASE_TTL_SECONDS", "1800"))
+
+
+def _test_module(staged: list[str]) -> str:
+    """The module name of the one staged test file, which the gate filters on."""
+    matches = [p for p in staged if p.endswith("_test.py")]
+    if len(matches) != 1:
+        raise ValueError(f"expected one staged test file, got {matches!r}")
+    return Path(matches[0]).stem
 
 
 class LLMWorker(LearningTaskRunner):
@@ -181,16 +190,17 @@ class LLMWorker(LearningTaskRunner):
         The output is carried back rather than only logged because it becomes the body
         of the PR: a red run has to tell the reviewer what broke.
         """
+        module = _test_module(staged)
         # Linting first, so the snapshot test runs against the files that get committed.
         lint_passed, lint_output = lint_generated(_WORKSPACE_ROOT, staged)
-        # ruff_test is CI's lint verdict, and its //adapters targets glob every
-        # generated file, so what ruff could not fix turns the run red here.
+        # Filtered to this artifact's own module, because leftovers from other
+        # learns in the checkout must not turn this run red.
         result = subprocess.run(
             [
                 "bazel",
                 "test",
                 "//adapters:adapter_test",
-                "//tools/lint:ruff_test",
+                f"--test_filter={module}",
                 "--test_output=errors",
             ],
             cwd=str(_WORKSPACE_ROOT),

@@ -15,7 +15,12 @@ from llm.adapter_files import (
     _write_snapshot,
     staged_paths,
 )
-from llm.generated_lint import lint_generated
+from llm.generated_lint import (
+    FORMAT_CHECK_COMMAND,
+    FORMAT_COMMAND,
+    RUFF_COMMAND,
+    lint_generated,
+)
 
 RUFF = os.path.abspath(os.environ["RUFF_BIN"])
 RUFF_CONFIG = os.path.abspath(os.environ["RUFF_CONFIG"])
@@ -48,6 +53,12 @@ class AcmeExtractionAdapter(ExtractionAdapter):
         unused = html.strip()
         return {"title": json.dumps(url)}
 """
+
+UNFORMATTED_AND_UNFIXABLE_SOURCE = SOURCE.replace(
+    "        return {",
+    "        unused = html.strip()\n        return {",
+    1,
+)
 
 
 class TestLintGenerated(unittest.TestCase):
@@ -136,18 +147,44 @@ class TestLintGenerated(unittest.TestCase):
         for f in files:
             self.assertEqual(self._hook(f), (0, 0), f.name)
 
-    def test_what_ruff_cannot_fix_is_left_for_the_lint_verdict(self):
-        names, files = self._write_extraction(UNFIXABLE_SOURCE)
+    def test_what_ruff_cannot_fix_makes_the_result_red(self):
+        names, _ = self._write_extraction(UNFIXABLE_SOURCE)
 
-        passed, _ = self._lint(staged_paths(names.basename, "adapter"))
+        passed, output = self._lint(staged_paths(names.basename, "adapter"))
 
-        self.assertTrue(passed)
-        lint = subprocess.run(
-            [RUFF, "check", "--config", str(self.root / ".ruff.toml"), str(files[1])],
-            capture_output=True,
-            text=True,
+        self.assertFalse(passed)
+        self.assertIn("F841", output)
+
+    def test_a_red_lint_still_runs_the_format_check(self):
+        names, _ = self._write_extraction(UNFORMATTED_AND_UNFIXABLE_SOURCE)
+
+        passed, output = self._lint(
+            staged_paths(names.basename, "adapter"), format_command=("true",)
         )
-        self.assertIn("F841", lint.stdout)
+
+        self.assertFalse(passed)
+        self.assertIn("F841", output)
+        self.assertIn("would be reformatted", output)
+
+    def test_the_four_commands_are_the_hooks_own_in_order(self):
+        ok = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        with patch("llm.generated_lint.subprocess.run", return_value=ok) as mock_run:
+            lint_generated(
+                self.root,
+                ["adapters/adapters/x_test.py", "adapters/adapters/fixtures/x"],
+            )
+        cfg = str(self.root / ".ruff.toml")
+        path = str(self.root / "adapters/adapters/x_test.py")
+        rel = "adapters/adapters/x_test.py"
+        self.assertEqual(
+            [c.args[0] for c in mock_run.call_args_list],
+            [
+                [*RUFF_COMMAND, "check", "--fix", "--exit-zero", "--config", cfg, path],
+                [*FORMAT_COMMAND, rel],
+                [*RUFF_COMMAND, "check", "--config", cfg, path],
+                [*FORMAT_CHECK_COMMAND, rel],
+            ],
+        )
 
     def test_unformatted_output_makes_the_result_red(self):
         names, _ = self._write_extraction(SOURCE)

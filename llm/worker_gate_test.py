@@ -47,12 +47,42 @@ class TestRunAdapterTests(unittest.TestCase):
         names = [c[0] for c in parent.mock_calls]
         self.assertLess(names.index("lint"), names.index("run"))
 
-    def test_the_test_run_carries_ci_lint_beside_the_snapshot_tests(self):
+    def test_the_test_run_is_filtered_to_the_artifacts_test_module(self):
         _, parent = self._gate((True, ""), 0)
-        argv = parent.run.call_args.args[0]
-        self.assertEqual(argv[:2], ["bazel", "test"])
-        self.assertIn("//adapters:adapter_test", argv)
-        self.assertIn("//tools/lint:ruff_test", argv)
+        self.assertEqual(
+            parent.run.call_args.args[0],
+            [
+                "bazel",
+                "test",
+                "//adapters:adapter_test",
+                "--test_filter=x_test",
+                "--test_output=errors",
+            ],
+        )
+
+    def test_a_mapping_artifact_filters_on_its_own_test_module(self):
+        staged = [
+            "adapters/adapters/mappings/x_index_v1.json",
+            "adapters/adapters/x_index_v1_test.py",
+            "adapters/adapters/fixtures/x_index_v1",
+        ]
+        with (
+            patch("llm.worker.lint_generated", return_value=(True, "")),
+            patch("llm.worker.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            self.worker._run_adapter_tests(staged)
+        self.assertEqual(mock_run.call_args.args[0][3], "--test_filter=x_index_v1_test")
+
+    def test_staged_files_without_one_test_module_run_nothing(self):
+        with (
+            patch("llm.worker.lint_generated") as mock_lint,
+            patch("llm.worker.subprocess.run") as mock_run,
+            self.assertRaises(ValueError),
+        ):
+            self.worker._run_adapter_tests(["adapters/adapters/x.py"])
+        mock_lint.assert_not_called()
+        mock_run.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -146,9 +146,9 @@ class Publisher:
         risk = "^" if passed else "@"
         subject = f"{risk} F Add a generated {adapter_type} {kind} for {domain}"
         try:
+            self._fetch_base()
             # -B resets an existing local branch: a run that died between branching and
             # pushing leaves one behind that no remote PR check can see.
-            self._fetch_base()
             self._git("checkout", "-B", branch, f"{self.remote}/{self.base_branch}")
             self._git("add", "--", *paths)
             # The pathspec commits only the artifact even when something else is staged.
@@ -195,7 +195,7 @@ class Publisher:
                 exc.stderr or "",
             )
         # A rejected commit leaves the files staged, and a checkout carries staged
-        # files along, so the next publish's add would otherwise inherit them.
+        # files along, so the operator's checkout would otherwise keep them staged.
         try:
             self._git("reset", "-q", "--", *paths)
         except subprocess.CalledProcessError as exc:
