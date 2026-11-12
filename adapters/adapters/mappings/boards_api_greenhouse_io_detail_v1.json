@@ -1,0 +1,15 @@
+{
+  "jmespath": {
+    "title": "title",
+    "company_name": "company_name",
+    "locations": "offices[].name",
+    "categories": "departments[].name",
+    "description": "markdown(unescape(content))",
+    "metadata": "{pay: pay_input_ranges}"
+  },
+  "version": 1,
+  "type": "detail",
+  "domains": [
+    "boards-api.greenhouse.io"
+  ]
+}
