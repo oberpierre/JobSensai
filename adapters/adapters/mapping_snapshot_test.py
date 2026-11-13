@@ -446,6 +446,48 @@ class TestDetailMappingSnapshotTest(unittest.TestCase):
         self.assertIn("blank_snapshot", message)
         self.assertIn("proves nothing", message)
 
+    def _metadata_outcome(self, expression: str, **document_changes):
+        mapping = {
+            **_BASE_DETAIL_MAPPING,
+            "jmespath": {**_BASE_DETAIL_MAPPING["jmespath"], "metadata": expression},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            case = _detail_case(
+                Path(tmp),
+                "metadata_case",
+                mapping,
+                {**_DETAIL_DOCUMENT, **document_changes},
+                _DETAIL_SNAPSHOT,
+            )
+            return _run_one(case, "test_metadata_conforms")
+
+    def test_metadata_conforms_fails_a_projected_url(self):
+        outcome = self._metadata_outcome(
+            "{url: absolute_url}", absolute_url="https://boards.example.com/jobs/1"
+        )
+        self.assertEqual(len(outcome.failures), 1, outcome.errors)
+        self.assertIn("holds a URL", str(outcome.failures[0][1]))
+
+    def test_metadata_conforms_fails_a_value_repeating_categories(self):
+        outcome = self._metadata_outcome("{teams: tags}")
+        self.assertEqual(len(outcome.failures), 1, outcome.errors)
+        self.assertIn("repeats categories", str(outcome.failures[0][1]))
+
+    def test_metadata_conforms_passes_an_empty_value_equal_to_an_empty_field(self):
+        outcome = self._metadata_outcome(
+            "{pay: pay_input_ranges}", pay_input_ranges=[], tags=[]
+        )
+        self.assertTrue(outcome.wasSuccessful(), outcome.failures)
+
+    def test_metadata_conforms_fails_a_populated_list_of_objects(self):
+        outcome = self._metadata_outcome(
+            "{pay: pay_input_ranges}", pay_input_ranges=[{"min_cents": 19000000}]
+        )
+        self.assertEqual(len(outcome.failures), 1, outcome.errors)
+        self.assertIn(
+            "is not a string, a number or a list of them", str(outcome.failures[0][1])
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

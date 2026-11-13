@@ -4,7 +4,11 @@ import unittest
 from pathlib import Path
 
 from adapters.adapters.base import DiscoveryAdapter, ExtractionAdapter
-from adapters.adapters.snapshot import DiscoverySnapshotTest, ExtractionSnapshotTest
+from adapters.adapters.snapshot import (
+    DiscoverySnapshotTest,
+    ExtractionSnapshotTest,
+    metadata_violations,
+)
 
 _JOB_LINKS = ["https://example.com/a", "https://example.com/b"]
 _NEXT_LINKS = ["https://example.com/jobs?page=2"]
@@ -367,6 +371,94 @@ class TestExtractionSnapshotTest(unittest.TestCase):
 
         self.assertEqual(result.errors, [])
         self.assertFalse(result.wasSuccessful())
+
+    def test_metadata_conforms_fails_an_adapter_reporting_a_url(self):
+        class _UrlMetadataExtraction(ExtractionAdapter):
+            domains = ["example.com"]
+
+            def extract(self, html: str, url: str) -> dict:
+                return {**_SILVER, "metadata": {"apply": "https://example.com/apply"}}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._snapshot_case(_UrlMetadataExtraction, Path(tmp) / "s")
+            result = _run(case)
+
+        failed = [f for f in result.failures if "test_metadata_conforms" in str(f[0])]
+        self.assertEqual(len(failed), 1, result.failures)
+        self.assertIn("holds a URL", str(failed[0][1]))
+
+
+_NOT_VALUE = "is not a string, a number or a list of them"
+
+
+class TestMetadataViolations(unittest.TestCase):
+    def test_no_metadata_has_no_violations(self):
+        self.assertEqual(metadata_violations({"categories": ["Engineering"]}), [])
+
+    def test_strings_numbers_and_lists_of_them_conform(self):
+        metadata = {"experience_level": "Mid", "openings": 0, "levels": ["Mid", 2]}
+        data = {"metadata": metadata}
+        self.assertEqual(metadata_violations(data), [])
+
+    def test_metadata_that_is_not_an_object(self):
+        self.assertEqual(
+            metadata_violations({"metadata": ["Mid"]}),
+            ["metadata is not an object"],
+        )
+
+    def test_key_with_a_space_and_capitals(self):
+        self.assertEqual(
+            metadata_violations({"metadata": {"Experience Level": "Mid"}}),
+            ["metadata key 'Experience Level' is not lower snake_case"],
+        )
+
+    def test_camel_case_key(self):
+        self.assertEqual(
+            metadata_violations({"metadata": {"experienceLevel": "Mid"}}),
+            ["metadata key 'experienceLevel' is not lower snake_case"],
+        )
+
+    def test_url_after_whitespace_and_in_capitals(self):
+        data = {"metadata": {"apply": " HTTPS://example.com/apply"}}
+        self.assertEqual(metadata_violations(data), ["metadata['apply'] holds a URL"])
+
+    def test_url_nested_in_an_object_inside_a_list(self):
+        data = {"metadata": {"links": [{"href": "http://x.example"}]}}
+        self.assertEqual(
+            metadata_violations(data),
+            ["metadata['links'] holds a URL", f"metadata['links'] {_NOT_VALUE}"],
+        )
+
+    def test_url_inside_prose_is_not_a_url_value(self):
+        data = {"metadata": {"note": "see https://x.example"}}
+        self.assertEqual(metadata_violations(data), [])
+
+    def test_value_repeating_another_field(self):
+        data = {"categories": ["Engineering"], "metadata": {"teams": ["Engineering"]}}
+        self.assertEqual(
+            metadata_violations(data), ["metadata['teams'] repeats categories"]
+        )
+
+    def test_empty_values_are_exempt(self):
+        data = {
+            "categories": [],
+            "metadata": {"pay": [], "deadline": None, "note": "", "extra": {}},
+        }
+        self.assertEqual(metadata_violations(data), [])
+
+    def test_boolean_is_not_a_metadata_value(self):
+        self.assertEqual(
+            metadata_violations({"metadata": {"remote": False}}),
+            [f"metadata['remote'] {_NOT_VALUE}"],
+        )
+
+    def test_list_of_objects_is_not_a_metadata_value(self):
+        data = {"metadata": {"pay": [{"min_cents": 19000000}]}}
+        self.assertEqual(metadata_violations(data), [f"metadata['pay'] {_NOT_VALUE}"])
+
+    def test_object_is_not_a_metadata_value(self):
+        data = {"metadata": {"range": {"min": 1}}}
+        self.assertEqual(metadata_violations(data), [f"metadata['range'] {_NOT_VALUE}"])
 
 
 if __name__ == "__main__":
