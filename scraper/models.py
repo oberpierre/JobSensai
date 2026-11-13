@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Text, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Numeric, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
@@ -127,6 +127,13 @@ class JobPosting(Base):
     description = Column(Text, nullable=False)
 
     metadata_ = Column("metadata", JSONB, default=dict)
+
+    # The posting's stated pay in major units.
+    # A null bound is one the posting does not state.
+    pay_min = Column(Numeric(12, 2), nullable=True)
+    pay_max = Column(Numeric(12, 2), nullable=True)
+    pay_currency = Column(Text, nullable=True)
+    pay_period = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(
