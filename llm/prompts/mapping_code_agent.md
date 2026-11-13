@@ -10,10 +10,10 @@ A finished mapping document looks like this:
 {
   "version": 1,
   "type": "index",
-  "domains": ["boards-api.example.com"],
+  "domains": ["careers-api.example.org"],
   "jmespath": {
-    "postings": "jobs[]",
-    "posting_url": "absolute_url"
+    "postings": "results.vacancies[]",
+    "posting_url": "links.public_page"
   }
 }
 ```
