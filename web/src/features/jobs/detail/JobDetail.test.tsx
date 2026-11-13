@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -19,6 +19,7 @@ function detail(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload {
     locations: ["Zurich"],
     categories: [],
     metadata: {},
+    pay: null,
     description: "Full description body.",
     first_seen: new Date().toISOString(),
     last_seen: new Date().toISOString(),
@@ -125,11 +126,77 @@ describe("JobDetail", () => {
 
     await screen.findByText("Backend Engineer");
     expect(screen.getByText("Employment type")).toBeInTheDocument();
-    // Categories is empty in this fixture too and carries the same sentence, so
+    // Categories and Pay are empty in this fixture too and carry the same sentence, so
     // count the occurrences rather than fetching one and proving nothing.
-    expect(screen.getAllByText("Not provided by this board.")).toHaveLength(2);
+    expect(screen.getAllByText("Not provided by this board.")).toHaveLength(3);
     expect(
       screen.queryByText("Employment type not specified"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows a stated pay range under a Pay label", async () => {
+    const getJob = vi.fn<JobsApi["getJob"]>().mockResolvedValue(
+      detail({
+        pay: { min: 155000, max: 205000, currency: "EUR", period: "year" },
+      }),
+    );
+    renderJobDetailWithProviders({ getJob });
+
+    const value = await screen.findByText("€155,000 – €205,000/year");
+    expect(value.previousElementSibling).toHaveTextContent("Pay");
+  });
+
+  it("says a missing pay is the board's omission", async () => {
+    const getJob = vi
+      .fn<JobsApi["getJob"]>()
+      .mockResolvedValue(detail({ pay: null }));
+    renderJobDetailWithProviders({ getJob });
+
+    const label = await screen.findByText("Pay");
+    expect(
+      within(label.parentElement!).getByText("Not provided by this board."),
+    ).toBeInTheDocument();
+  });
+
+  it("skips a metadata value it cannot render", async () => {
+    const getJob = vi.fn<JobsApi["getJob"]>().mockResolvedValue(
+      detail({
+        metadata: {
+          experience_level: "Mid",
+          compensation: [{ min_cents: 19000000 }],
+        },
+      }),
+    );
+    renderJobDetailWithProviders({ getJob });
+
+    expect(await screen.findByText("Experience level")).toBeInTheDocument();
+    expect(screen.queryByText("Compensation")).not.toBeInTheDocument();
+    expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
+  });
+
+  it("renders no additional details when no metadata value is readable", async () => {
+    const getJob = vi
+      .fn<JobsApi["getJob"]>()
+      .mockResolvedValue(
+        detail({ metadata: { compensation: [{ min_cents: 19000000 }] } }),
+      );
+    renderJobDetailWithProviders({ getJob });
+
+    await screen.findByText("Backend Engineer");
+    expect(screen.queryByText("Additional details")).not.toBeInTheDocument();
+  });
+
+  it("treats a payload without pay as no pay", async () => {
+    const payload: Partial<JobDetailPayload> = detail();
+    delete payload.pay;
+    const getJob = vi
+      .fn<JobsApi["getJob"]>()
+      .mockResolvedValue(payload as JobDetailPayload);
+    renderJobDetailWithProviders({ getJob });
+
+    const label = await screen.findByText("Pay");
+    expect(
+      within(label.parentElement!).getByText("Not provided by this board."),
+    ).toBeInTheDocument();
   });
 });

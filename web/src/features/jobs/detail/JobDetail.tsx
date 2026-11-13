@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useJobsApi } from "../../../api/useJobsApi";
 import { ApiError } from "../../../api/ApiError";
-import type { JobDetail as JobDetailPayload } from "../../../api/types";
+import type { JobDetail as JobDetailPayload, Pay } from "../../../api/types";
 import { MicroLabel } from "../../../components/MicroLabel";
 import { MetadataChip } from "../../../components/MetadataChip";
 import {
@@ -14,6 +14,7 @@ import {
   ErrorState,
 } from "../../../components/StateCard";
 import { relativeTime } from "../index/relativeTime";
+import { formatPay } from "./formatPay";
 import { humanizeKey, metadataValueText } from "./humanizeKey";
 import styles from "./JobDetail.module.scss";
 
@@ -99,6 +100,8 @@ function Detail({
       <aside className={styles.sidebar}>
         <SourceCard job={job} />
 
+        <PaySection pay={job.pay} />
+
         <div className={styles.sidebarSection}>
           <MicroLabel>Employment type</MicroLabel>
           {job.employment_type ? (
@@ -154,23 +157,39 @@ function SourceCard({ job }: { job: JobDetailPayload }) {
   );
 }
 
-// Renders whatever the adapter's metadata dict holds, keys humanised and every
-// key on the same footing, since the interface never hard-codes a metadata key.
+function PaySection({ pay }: { pay: Pay | null }) {
+  return (
+    <div className={styles.sidebarSection}>
+      <MicroLabel>Pay</MicroLabel>
+      {pay == null ? (
+        <p className={styles.fieldEmpty}>Not provided by this board.</p>
+      ) : (
+        <p className={styles.fieldValue}>{formatPay(pay)}</p>
+      )}
+    </div>
+  );
+}
+
+// Renders every key whose value reads as text, keys humanised and on the same
+// footing, since the interface never hard-codes a metadata key.
 function AdditionalDetails({
   metadata,
 }: {
   metadata: Record<string, unknown>;
 }) {
-  const entries = Object.entries(metadata);
-  if (entries.length === 0) return null;
+  const rows = Object.entries(metadata).flatMap(([key, value]) => {
+    const text = metadataValueText(value);
+    return text === null ? [] : [{ key, text }];
+  });
+  if (rows.length === 0) return null;
   return (
     <div className={styles.sidebarSection}>
       <MicroLabel>Additional details</MicroLabel>
       <div className={styles.metadataGrid}>
-        {entries.map(([key, value]) => (
+        {rows.map(({ key, text }) => (
           <div key={key} className={styles.metadataRow}>
             <span className={styles.metadataKey}>{humanizeKey(key)}</span>
-            <MetadataChip value={metadataValueText(value)} />
+            <MetadataChip value={text} />
           </div>
         ))}
       </div>
