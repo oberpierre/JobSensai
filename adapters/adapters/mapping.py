@@ -20,6 +20,7 @@ import jmespath
 from jmespath import functions
 
 from adapters.adapters._markdown import html_to_markdown
+from adapters.adapters._pay import pay_period
 from adapters.adapters.base import DetailMapping, IndexMapping, PostingRef
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ _SILVER_SCHEMA_KEYS = frozenset(
         "categories",
         "description",
         "metadata",
+        "pay",
     }
 )
 
@@ -54,10 +56,10 @@ class MappingError(ValueError):
 
 
 class _MappingFunctions(functions.Functions):
-    """The two custom JMESPath functions a mapping document may call.
+    """The custom JMESPath functions a mapping document may call.
 
-    Each is typed to a single string argument so a mapping applying it to a list
-    raises at map time (a JMESPath type error) rather than silently stringifying it.
+    unescape and markdown are typed to a single string argument, so applying either
+    to a list raises at map time rather than silently stringifying it.
     """
 
     @functions.signature({"types": ["string", "null"]})
@@ -70,8 +72,20 @@ class _MappingFunctions(functions.Functions):
     def _func_markdown(self, value: str | None) -> str | None:
         return html_to_markdown(value) if value is not None else None
 
+    @functions.signature({"types": []})
+    def _func_hundredths(self, value: object) -> float | None:
+        # A wrongly typed pay argument yields null rather than raising, because a
+        # raise would refuse the whole posting.
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value / 100
+        return None
 
-_CUSTOM_FUNCTION_NAMES = frozenset({"unescape", "markdown"})
+    @functions.signature({"types": []})
+    def _func_pay_period(self, value: object) -> str | None:
+        return pay_period(value) if isinstance(value, str) else None
+
+
+_CUSTOM_FUNCTION_NAMES = frozenset({"unescape", "markdown", "hundredths", "pay_period"})
 _BUILTIN_FUNCTION_NAMES = frozenset(functions.Functions.FUNCTION_TABLE.keys())
 _KNOWN_FUNCTION_NAMES = _BUILTIN_FUNCTION_NAMES | _CUSTOM_FUNCTION_NAMES
 _OPTIONS = jmespath.Options(custom_functions=_MappingFunctions())

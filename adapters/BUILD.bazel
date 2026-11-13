@@ -43,6 +43,7 @@ py_test(
         exclude = [
             "adapters/snapshot_test.py",
             "adapters/_markdown_test.py",
+            "adapters/_pay_test.py",
             "adapters/mapping_test.py",
             "adapters/mapping_snapshot_test.py",
             "adapters/filters_test.py",
@@ -113,6 +114,16 @@ py_test(
     name = "markdown_test",
     srcs = ["adapters/_markdown_test.py"],
     main = "adapters/_markdown_test.py",
+    deps = [
+        ":adapters",
+    ],
+)
+
+# The pay rules and the engine's pay functions are infrastructure, not an adapter.
+py_test(
+    name = "pay_test",
+    srcs = ["adapters/_pay_test.py"],
+    main = "adapters/_pay_test.py",
     deps = [
         ":adapters",
     ],
