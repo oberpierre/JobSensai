@@ -106,6 +106,46 @@ class TestSilverWorker(unittest.TestCase):
             "https://unknown.com/job/1", "<html></html>"
         )
 
+    def _saved_row(self, extra: dict):
+        db = MagicMock()
+        db.query().filter().first.return_value = None
+        data = {
+            "title": "Engineer",
+            "company_name": "Acme",
+            "description": "Build things",
+            **extra,
+        }
+        self.worker._save_job_posting(db, "https://acme.example/jobs/1", data)
+        return db.add.call_args[0][0]
+
+    def test_save_drops_empty_top_level_metadata_values(self):
+        row = self._saved_row(
+            {
+                "metadata": {
+                    "experience_level": "Mid",
+                    "teams": [],
+                    "location_type": None,
+                    "note": "",
+                    "extra": {},
+                    "remote": False,
+                    "openings": 0,
+                    "range": {"min": None},
+                }
+            }
+        )
+        self.assertEqual(
+            row.metadata_,
+            {
+                "experience_level": "Mid",
+                "remote": False,
+                "openings": 0,
+                "range": {"min": None},
+            },
+        )
+
+    def test_save_without_metadata_stores_an_empty_object(self):
+        self.assertEqual(self._saved_row({}).metadata_, {})
+
     def test_process_message_missing_url(self):
         message = json.dumps({"other_data": "test"})
 
