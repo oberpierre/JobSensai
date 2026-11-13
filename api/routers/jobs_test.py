@@ -1,6 +1,7 @@
 import unittest
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -389,6 +390,10 @@ class TestGetJob(JobsRouterTestCase):
         super().setUp()
         self.open_job_id = uuid.uuid4()
         self.closed_job_id = uuid.uuid4()
+        self.paid_job_id = uuid.uuid4()
+        self.partial_job_id = uuid.uuid4()
+        self.floor_job_id = uuid.uuid4()
+        self.boundless_job_id = uuid.uuid4()
         self._seed(
             _job(
                 id=self.open_job_id,
@@ -402,6 +407,38 @@ class TestGetJob(JobsRouterTestCase):
                 url="https://example.com/2",
                 title="Closed Role",
                 deleted_at=datetime(2025, 6, 1),
+            ),
+            _job(
+                id=self.paid_job_id,
+                url="https://example.com/3",
+                pay_min=Decimal("155000.00"),
+                pay_max=Decimal("205000.00"),
+                pay_currency="EUR",
+                pay_period="year",
+            ),
+            _job(
+                id=self.partial_job_id,
+                url="https://example.com/4",
+                pay_min=Decimal("155000.00"),
+                pay_max=Decimal("205000.00"),
+                pay_currency="EUR",
+                pay_period=None,
+            ),
+            _job(
+                id=self.floor_job_id,
+                url="https://example.com/5",
+                pay_min=Decimal("50000.00"),
+                pay_max=None,
+                pay_currency="EUR",
+                pay_period="year",
+            ),
+            _job(
+                id=self.boundless_job_id,
+                url="https://example.com/6",
+                pay_min=None,
+                pay_max=None,
+                pay_currency="EUR",
+                pay_period="year",
             ),
         )
 
@@ -433,6 +470,40 @@ class TestGetJob(JobsRouterTestCase):
         response = self.client.get("/api/jobs/not-a-uuid")
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "No posting with that id")
+
+    def test_pay_is_returned_as_an_object(self):
+        response = self.client.get(f"/api/jobs/{self.paid_job_id}")
+        self.assertEqual(
+            response.json()["pay"],
+            {"min": 155000.0, "max": 205000.0, "currency": "EUR", "period": "year"},
+        )
+
+    def test_pay_is_null_when_unstated(self):
+        response = self.client.get(f"/api/jobs/{self.open_job_id}")
+        self.assertIsNone(response.json()["pay"])
+
+    def test_pay_is_null_without_a_period(self):
+        response = self.client.get(f"/api/jobs/{self.partial_job_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["pay"])
+
+    def test_one_ended_pay_keeps_its_null_bound(self):
+        response = self.client.get(f"/api/jobs/{self.floor_job_id}")
+        self.assertEqual(
+            response.json()["pay"],
+            {"min": 50000.0, "max": None, "currency": "EUR", "period": "year"},
+        )
+
+    def test_pay_is_null_without_either_bound(self):
+        response = self.client.get(f"/api/jobs/{self.boundless_job_id}")
+        self.assertIsNone(response.json()["pay"])
+
+    def test_list_items_carry_no_pay(self):
+        response = self.client.get("/api/jobs", params={"include_closed": "true"})
+        items = response.json()["items"]
+        self.assertTrue(items)
+        for item in items:
+            self.assertNotIn("pay", item)
 
 
 if __name__ == "__main__":

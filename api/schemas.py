@@ -15,6 +15,13 @@ def as_utc(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
+class Pay(BaseModel):
+    min: float | None
+    max: float | None
+    currency: str
+    period: str
+
+
 class JobSummary(BaseModel):
     id: UUID
     url: str
@@ -39,6 +46,7 @@ class JobDetail(BaseModel):
     locations: list[str]
     categories: list[str]
     metadata: dict
+    pay: Pay | None
     description: str
     first_seen: datetime
     last_seen: datetime
