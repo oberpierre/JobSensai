@@ -1,13 +1,20 @@
 import "@testing-library/jest-dom/vitest";
-import { screen, within } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { JobDetail } from "./JobDetail";
+import { PaySection } from "./PaySection";
 import { ApiError } from "../../../api/ApiError";
 import { renderWithProviders } from "../../../../test/TestProviders";
 import type { JobsApi } from "../../../api/jobsApi";
 import type { JobDetail as JobDetailPayload } from "../../../api/types";
+
+// Spies on the real component, so the page still renders it where pay exists.
+vi.mock("./PaySection", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./PaySection")>();
+  return { PaySection: vi.fn(actual.PaySection) };
+});
 
 function detail(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload {
   return {
@@ -38,6 +45,10 @@ function renderJobDetailWithProviders(api: Partial<JobsApi>, id = "1") {
 }
 
 describe("JobDetail", () => {
+  beforeEach(() => {
+    vi.mocked(PaySection).mockClear();
+  });
+
   it("renders the loading state before the response resolves", () => {
     renderJobDetailWithProviders({ getJob: () => new Promise(() => {}) });
     expect(screen.getByText("loading")).toBeInTheDocument();
@@ -126,9 +137,9 @@ describe("JobDetail", () => {
 
     await screen.findByText("Backend Engineer");
     expect(screen.getByText("Employment type")).toBeInTheDocument();
-    // Categories and Pay are empty in this fixture too and carry the same sentence, so
+    // Categories is empty in this fixture too and carries the same sentence, so
     // count the occurrences rather than fetching one and proving nothing.
-    expect(screen.getAllByText("Not provided by this board.")).toHaveLength(3);
+    expect(screen.getAllByText("Not provided by this board.")).toHaveLength(2);
     expect(
       screen.queryByText("Employment type not specified"),
     ).not.toBeInTheDocument();
@@ -146,16 +157,15 @@ describe("JobDetail", () => {
     expect(value.previousElementSibling).toHaveTextContent("Pay");
   });
 
-  it("says a missing pay is the board's omission", async () => {
+  it("renders no pay section for a posting stating no pay", async () => {
     const getJob = vi
       .fn<JobsApi["getJob"]>()
       .mockResolvedValue(detail({ pay: null }));
     renderJobDetailWithProviders({ getJob });
 
-    const label = await screen.findByText("Pay");
-    expect(
-      within(label.parentElement!).getByText("Not provided by this board."),
-    ).toBeInTheDocument();
+    await screen.findByText("Backend Engineer");
+    expect(PaySection).not.toHaveBeenCalled();
+    expect(screen.queryByText("Pay")).not.toBeInTheDocument();
   });
 
   it("skips a metadata value it cannot render", async () => {
@@ -194,9 +204,7 @@ describe("JobDetail", () => {
       .mockResolvedValue(payload as JobDetailPayload);
     renderJobDetailWithProviders({ getJob });
 
-    const label = await screen.findByText("Pay");
-    expect(
-      within(label.parentElement!).getByText("Not provided by this board."),
-    ).toBeInTheDocument();
+    await screen.findByText("Backend Engineer");
+    expect(PaySection).not.toHaveBeenCalled();
   });
 });

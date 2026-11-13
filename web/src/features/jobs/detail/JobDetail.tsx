@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useJobsApi } from "../../../api/useJobsApi";
 import { ApiError } from "../../../api/ApiError";
-import type { JobDetail as JobDetailPayload, Pay } from "../../../api/types";
+import type { JobDetail as JobDetailPayload } from "../../../api/types";
 import { MicroLabel } from "../../../components/MicroLabel";
 import { MetadataChip } from "../../../components/MetadataChip";
 import {
@@ -14,8 +14,8 @@ import {
   ErrorState,
 } from "../../../components/StateCard";
 import { relativeTime } from "../index/relativeTime";
-import { formatPay } from "./formatPay";
 import { humanizeKey, metadataValueText } from "./humanizeKey";
+import { PaySection } from "./PaySection";
 import styles from "./JobDetail.module.scss";
 
 // Back-to-top earns its place only after roughly one viewport of scroll.
@@ -100,7 +100,9 @@ function Detail({
       <aside className={styles.sidebar}>
         <SourceCard job={job} />
 
-        <PaySection pay={job.pay} />
+        {/* A board stating pay on some postings may omit it on this one, so a
+            missing pay gets no section rather than a claim about the board. */}
+        {job.pay != null && <PaySection pay={job.pay} />}
 
         <div className={styles.sidebarSection}>
           <MicroLabel>Employment type</MicroLabel>
@@ -153,19 +155,6 @@ function SourceCard({ job }: { job: JobDetailPayload }) {
         <span>first seen {relativeTime(job.first_seen)}</span>
         <span>last seen {relativeTime(job.last_seen)}</span>
       </div>
-    </div>
-  );
-}
-
-function PaySection({ pay }: { pay: Pay | null }) {
-  return (
-    <div className={styles.sidebarSection}>
-      <MicroLabel>Pay</MicroLabel>
-      {pay == null ? (
-        <p className={styles.fieldEmpty}>Not provided by this board.</p>
-      ) : (
-        <p className={styles.fieldValue}>{formatPay(pay)}</p>
-      )}
     </div>
   );
 }
