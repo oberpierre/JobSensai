@@ -1,6 +1,8 @@
 import unittest
 import uuid
 
+from sqlalchemy import Numeric, Text
+
 from scraper.models import (
     START_URL_TYPE_API,
     START_URL_TYPE_HTML_CRAWL,
@@ -55,6 +57,18 @@ class TestModels(unittest.TestCase):
         self.assertEqual(job_posting.employment_type, "Full time")
         self.assertEqual(job_posting.locations, ["Remote", "Seattle, WA"])
         self.assertEqual(job_posting.categories, ["Engineering"])
+
+    def test_pay_columns_are_nullable(self):
+        columns = JobPosting.__table__.c
+
+        for name in ("pay_min", "pay_max", "pay_currency", "pay_period"):
+            self.assertTrue(columns[name].nullable, name)
+        for name in ("pay_min", "pay_max"):
+            self.assertIsInstance(columns[name].type, Numeric)
+            self.assertEqual(columns[name].type.precision, 12)
+            self.assertEqual(columns[name].type.scale, 2)
+        for name in ("pay_currency", "pay_period"):
+            self.assertIsInstance(columns[name].type, Text)
 
 
 class TestStartUrlDeletion(unittest.TestCase):
