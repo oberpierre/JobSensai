@@ -7,9 +7,10 @@ You are an expert at JMESPath, a query language for JSON. Below is one job posti
 A finished mapping document looks like this:
 
 ```json
-{"version": 1, "type": "detail", "domains": ["boards-api.example.com"],
- "jmespath": {"title": "title", "company_name": "company_name", "locations": "offices[].name",
- "description": "markdown(unescape(content))", "metadata": "{pay: pay_input_ranges}"}}
+{"version": 1, "type": "detail", "domains": ["careers-api.example.org"],
+ "jmespath": {"title": "heading", "company_name": "organisation.display_name",
+ "locations": "sites[].city", "categories": "teams[].label",
+ "description": "markdown(body_html)", "metadata": "{work_arrangement: site_policy}"}}
 ```
 
 ## Requirements
@@ -20,6 +21,9 @@ A finished mapping document looks like this:
 - **`company_name` is never a string literal.** This document serves every company on the host it is registered under, so a literal would label all of them with one name.
 - `version`, `type` and `domains` are written by the orchestrator, not by you. Do not include them. The domains this mapping serves: $domains
 
+## What categories and metadata mean
+
+$silver_field_definitions
 ## Output
 
 Return **only** `{"jmespath": {...}}`, with no prose and no markdown fences.

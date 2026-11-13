@@ -19,6 +19,15 @@ py_library(
     ],
 )
 
+# The API payloads committed here, which a prompt's worked example must not answer.
+filegroup(
+    name = "api_fixtures",
+    srcs = glob(
+        ["adapters/fixtures/*/index.json", "adapters/fixtures/*/detail.json"],
+        allow_empty = True,
+    ),
+)
+
 py_test(
     name = "registry_test",
     srcs = ["registry_test.py"],

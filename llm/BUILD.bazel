@@ -219,7 +219,8 @@ py_test(
 py_test(
     name = "model_test",
     srcs = ["model_test.py"],
-    deps = [":model"],
+    data = ["//adapters:api_fixtures"],
+    deps = [":model", "//adapters"],
     visibility = ["//visibility:public"],
 )
 

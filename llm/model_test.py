@@ -1,8 +1,13 @@
+import json
 import os
+import re
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from adapters.adapters.mapping import evaluate_expression
 from llm.model import (
+    _SILVER_FIELD_DEFINITIONS,
     LLMModel,
     build_code_prompt,
     build_expected_prompt,
@@ -11,6 +16,38 @@ from llm.model import (
     index_num_ctx,
     parse_json_object,
 )
+
+# Never resolved: runfiles are per-file symlinks, so resolving would leave the runfiles
+# tree for the source tree.
+_FIXTURES = Path(__file__).parent.parent / "adapters" / "adapters" / "fixtures"
+
+
+def _example_jmespath(prompt: str) -> dict[str, str]:
+    """The ``jmespath`` block of the prompt's fenced JSON example."""
+    match = re.search(r"```json\n(.*?)\n```", prompt, re.DOTALL)
+    assert match is not None, "the prompt holds no fenced JSON example"
+    return json.loads(match.group(1))["jmespath"]
+
+
+def _object_nodes(node: object) -> list[dict]:
+    """Every object in a parsed JSON tree, *node* itself included."""
+    if isinstance(node, dict):
+        found = [node]
+        for value in node.values():
+            found.extend(_object_nodes(value))
+        return found
+    if isinstance(node, list):
+        return [found for item in node for found in _object_nodes(item)]
+    return []
+
+
+def _selects_nothing(value: object) -> bool:
+    """Whether an expression's result carries no value from the document."""
+    if value is None:
+        return True
+    if isinstance(value, dict):
+        return all(_selects_nothing(item) for item in value.values())
+    return False
 
 
 class TestParseJsonObject(unittest.TestCase):
@@ -231,6 +268,84 @@ class TestPromptBuilders(unittest.TestCase):
             model = LLMModel(model_name="explicit-model")
         self.assertEqual(model.model_name, "explicit-model")
         self.assertEqual(mock_ollama.call_args.kwargs["model"], "explicit-model")
+
+
+_RULE = "Omit a metadata key whose value"
+_URL = "https://acme.example/x"
+_DOMAINS = ["acme.example"]
+
+
+class TestSilverFieldPrompts(unittest.TestCase):
+    def test_extraction_prompts_carry_the_field_definitions(self):
+        expected = build_expected_prompt("extraction", "MARKER", _URL)
+        code = build_code_prompt(
+            "extraction", "MARKER", "AcmeExtractionAdapter", _DOMAINS, "base"
+        )
+        self.assertIn(_SILVER_FIELD_DEFINITIONS, expected)
+        self.assertIn(_SILVER_FIELD_DEFINITIONS, code)
+        self.assertIn(_RULE, expected)
+        self.assertNotIn(_RULE, code)
+
+    def test_discovery_prompts_carry_no_field_definitions(self):
+        expected = build_expected_prompt("discovery", "MARKER", _URL)
+        code = build_code_prompt(
+            "discovery", "MARKER", "AcmeDiscoveryAdapter", _DOMAINS, "base"
+        )
+        for prompt in (expected, code):
+            self.assertNotIn(_SILVER_FIELD_DEFINITIONS, prompt)
+            self.assertNotIn(_RULE, prompt)
+
+    def test_detail_mapping_prompts_carry_the_field_definitions(self):
+        expected = build_mapping_expected_prompt("detail", "MARKER", _URL)
+        code = build_mapping_code_prompt("detail", "MARKER", _DOMAINS)
+        for prompt in (expected, code):
+            self.assertIn(_SILVER_FIELD_DEFINITIONS, prompt)
+            self.assertNotIn("$silver_field_definitions", prompt)
+        self.assertIn(_RULE, expected)
+        self.assertNotIn("any other metadata", expected)
+        self.assertNotIn(_RULE, code)
+
+    def test_index_mapping_prompts_carry_no_field_definitions(self):
+        expected = build_mapping_expected_prompt("index", "MARKER", _URL)
+        code = build_mapping_code_prompt("index", "MARKER", _DOMAINS)
+        for prompt in (expected, code):
+            self.assertNotIn(_SILVER_FIELD_DEFINITIONS, prompt)
+            self.assertNotIn("$silver_field_definitions", prompt)
+
+    def test_mapping_code_examples_select_nothing_from_a_committed_payload(self):
+        index_docs = sorted(_FIXTURES.glob("*/index.json"))
+        detail_docs = sorted(_FIXTURES.glob("*/detail.json"))
+        self.assertTrue(index_docs, "no index.json fixture, so this proves nothing")
+        self.assertTrue(detail_docs, "no detail.json fixture, so this proves nothing")
+
+        detail_example = _example_jmespath(
+            build_mapping_code_prompt("detail", "MARKER", _DOMAINS)
+        )
+        index_example = _example_jmespath(
+            build_mapping_code_prompt("index", "MARKER", _DOMAINS)
+        )
+        checks: list[tuple[str, str, Path, object]] = []
+        for path in detail_docs:
+            doc = json.loads(path.read_text())
+            for expr in detail_example.values():
+                checks.append(("mapping_detail_code_agent.md", expr, path, doc))
+        for path in index_docs:
+            doc = json.loads(path.read_text())
+            checks.append(
+                ("mapping_code_agent.md", index_example["postings"], path, doc)
+            )
+            for node in _object_nodes(doc):
+                checks.append(
+                    ("mapping_code_agent.md", index_example["posting_url"], path, node)
+                )
+        for template, expr, path, doc in checks:
+            with self.subTest(expr=expr, path=str(path)):
+                value = evaluate_expression(expr, doc)  # type: ignore[arg-type]
+                self.assertTrue(
+                    _selects_nothing(value),
+                    f"{expr!r} selects {value!r} from {path}: change the example in "
+                    f"llm/prompts/{template}, never the fixture",
+                )
 
 
 if __name__ == "__main__":

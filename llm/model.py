@@ -80,6 +80,21 @@ _SILVER_SCHEMA = (
     "    description: str (as markdown), metadata: dict\n"
 )
 
+# Defines the Silver fields whose types alone do not say what belongs in them. Like
+# _SILVER_SCHEMA it stays free of braces and `$`, so no template engine disturbs it.
+_SILVER_FIELD_DEFINITIONS = (
+    "- categories: the department, team or job-category names the posting states, "
+    "such as Engineering or Customer Success. Never a location, an employment type, "
+    "a seniority level or a skill.\n"
+    "- metadata: an object of the facts the posting states that a job seeker would "
+    "weigh and no other field holds, such as a remote, hybrid or on-site "
+    "arrangement, a seniority or experience level, or an application deadline. Name "
+    "each key in lower snake_case English after the fact it holds. It never holds an "
+    "identifier, a requisition number, a URL, the board's own publish or update "
+    "timestamps, a language code, privacy, consent, compliance or AI-disclosure "
+    "settings, or a value another field already holds.\n"
+)
+
 _ROLE = {
     "discovery": {
         "base_class": "DiscoveryAdapter",
@@ -106,7 +121,11 @@ _ROLE = {
             "markdown: `from adapters.adapters._markdown import html_to_markdown`, "
             "then `description = html_to_markdown(node)`."
         ),
-        "schema": _SILVER_SCHEMA,
+        "schema": (
+            _SILVER_SCHEMA
+            + "Where a field's type does not say what belongs in it, the field means "
+            "exactly this:\n" + _SILVER_FIELD_DEFINITIONS
+        ),
         "test_contract": (
             "Your output dict is compared field-by-field against a snapshot of this "
             "page. title, company_name and description are required; title and "
@@ -137,7 +156,10 @@ _EXPECTED = {
         "instructions": (
             "Extract the job posting's fields into the Silver schema. Render "
             "description as markdown (headings with #, lists as - or 1., paragraphs "
-            "preserved), with the top heading starting at level 1 (#)."
+            "preserved), with the top heading starting at level 1 (#). Omit a "
+            "metadata key whose value the page leaves null or empty. Where a "
+            "field's type does not say what belongs in it, the field means exactly "
+            "this:\n\n" + _SILVER_FIELD_DEFINITIONS
         ),
         "output_shape": (
             '{"title": "...", "company_name": "...", '
@@ -215,7 +237,12 @@ def build_mapping_expected_prompt(mapping_type: str, body: str, url: str) -> str
     if mapping_type not in _MAPPING_EXPECTED_TEMPLATES:
         raise ValueError(f"unknown mapping type: {mapping_type!r}")
     template = Template(_load_template(_MAPPING_EXPECTED_TEMPLATES[mapping_type]))
-    return template.safe_substitute(mapping_type=mapping_type, url=url, body=body)
+    return template.safe_substitute(
+        mapping_type=mapping_type,
+        url=url,
+        body=body,
+        silver_field_definitions=_SILVER_FIELD_DEFINITIONS,
+    )
 
 
 def build_mapping_code_prompt(mapping_type: str, body: str, domains: list[str]) -> str:
@@ -227,7 +254,10 @@ def build_mapping_code_prompt(mapping_type: str, body: str, domains: list[str]) 
         raise ValueError(f"unknown mapping type: {mapping_type!r}")
     template = Template(_load_template(_MAPPING_CODE_TEMPLATES[mapping_type]))
     return template.safe_substitute(
-        mapping_type=mapping_type, domains=list(domains), body=body
+        mapping_type=mapping_type,
+        domains=list(domains),
+        body=body,
+        silver_field_definitions=_SILVER_FIELD_DEFINITIONS,
     )
 
 
