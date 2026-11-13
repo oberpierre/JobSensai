@@ -77,7 +77,7 @@ _SILVER_SCHEMA = (
     "\nThe extract() dict must match this Silver schema (all keys required):\n"
     "    title: str, company_name: str, employment_type: str | None,\n"
     "    locations: list[str], categories: list[str],\n"
-    "    description: str (as markdown), metadata: dict\n"
+    "    description: str (as markdown), metadata: dict, pay: dict | None\n"
 )
 
 # Defines the Silver fields whose types alone do not say what belongs in them. Like
@@ -93,6 +93,15 @@ _SILVER_FIELD_DEFINITIONS = (
     "identifier, a requisition number, a URL, the board's own publish or update "
     "timestamps, a language code, privacy, consent, compliance or AI-disclosure "
     "settings, or a value another field already holds.\n"
+    "- pay: the pay range the posting states, as an object with exactly the keys "
+    "min, max, currency and period, or null when the posting states no amounts. min "
+    "and max are numbers in the currency's major unit, so a salary of 190,000 "
+    "dollars is 190000 and never 19000000 cents. A single stated amount goes in "
+    "both min and max. A bound is null only when the posting states just one end, "
+    "as in from 50,000 or up to 80,000. Never invent a bound. currency is the ISO "
+    "4217 code in capitals, such as USD or EUR. period is one of year, month, week, "
+    "day or hour. When the posting states several ranges, use the first. Pay never "
+    "goes in metadata.\n"
 )
 
 _ROLE = {
@@ -132,7 +141,8 @@ _ROLE = {
             "company_name must match exactly; description must equal the markdown that "
             "html_to_markdown produces for the body you select, so use that helper and "
             "pick the right node; locations and categories are compared as sets; "
-            "employment_type and metadata are optional. Extract what the page states — "
+            "employment_type and metadata are optional. The pay object is compared "
+            "exactly when the snapshot states it. Extract what the page states — "
             "do not summarise or invent."
         ),
     },
@@ -164,7 +174,9 @@ _EXPECTED = {
         "output_shape": (
             '{"title": "...", "company_name": "...", '
             '"employment_type": "... or null", "locations": ["..."], '
-            '"categories": ["..."], "description": "...", "metadata": {}}'
+            '"categories": ["..."], "description": "...", "metadata": {}, '
+            '"pay": {"min": <number or null>, "max": <number or null>, '
+            '"currency": "...", "period": "..."} or null}'
         ),
     },
 }

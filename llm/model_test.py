@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from adapters.adapters._pay import PAY_PERIODS
 from adapters.adapters.mapping import evaluate_expression
 from llm.model import (
     _SILVER_FIELD_DEFINITIONS,
@@ -346,6 +347,62 @@ class TestSilverFieldPrompts(unittest.TestCase):
                     f"{expr!r} selects {value!r} from {path}: change the example in "
                     f"llm/prompts/{template}, never the fixture",
                 )
+
+
+class TestPayPrompts(unittest.TestCase):
+    def setUp(self) -> None:
+        self.html_truth = build_expected_prompt("extraction", "MARKER", _URL)
+        self.html_code = build_code_prompt(
+            "extraction", "MARKER", "AcmeExtractionAdapter", _DOMAINS, "base"
+        )
+        self.detail_truth = build_mapping_expected_prompt("detail", "MARKER", _URL)
+        self.detail_code = build_mapping_code_prompt("detail", "MARKER", _DOMAINS)
+
+    def test_definition_names_every_period(self):
+        phrase = "period is one of " + ", ".join(PAY_PERIODS[:-1]) + " or "
+        self.assertIn(phrase + PAY_PERIODS[-1] + ".", _SILVER_FIELD_DEFINITIONS)
+
+    def test_extraction_kind_prompts_define_pay(self):
+        for prompt in (
+            self.html_truth,
+            self.html_code,
+            self.detail_truth,
+            self.detail_code,
+        ):
+            self.assertIn("- pay: ", prompt)
+        others = (
+            build_expected_prompt("discovery", "MARKER", _URL),
+            build_code_prompt(
+                "discovery", "MARKER", "AcmeDiscoveryAdapter", _DOMAINS, "base"
+            ),
+            build_mapping_expected_prompt("index", "MARKER", _URL),
+            build_mapping_code_prompt("index", "MARKER", _DOMAINS),
+        )
+        for prompt in others:
+            self.assertNotIn("- pay: ", prompt)
+
+    def test_extraction_code_prompt_lists_pay_in_the_schema(self):
+        self.assertIn("pay: dict | None", self.html_code)
+
+    def test_truth_prompts_ask_for_pay(self):
+        shape = '"pay": {"min": <number or null>, "max": <number or null>'
+        self.assertIn(shape, self.html_truth)
+        self.assertIn(shape, self.detail_truth)
+
+    def test_detail_code_prompt_documents_the_pay_functions(self):
+        self.assertIn("hundredths(n)", self.detail_code)
+        self.assertIn("pay_period(s)", self.detail_code)
+        self.assertIn("pay", _example_jmespath(self.detail_code))
+
+    def test_prompts_say_how_one_number_is_stored(self):
+        for text in (
+            "A single stated amount goes in both min and max.",
+            "A bound is null only when the posting states just one end",
+            "Never invent a bound.",
+        ):
+            self.assertIn(text, _SILVER_FIELD_DEFINITIONS)
+        self.assertIn("maps that field into both", self.detail_code)
+        self.assertIn("never to a copy", self.detail_code)
 
 
 if __name__ == "__main__":

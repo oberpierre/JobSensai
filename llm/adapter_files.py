@@ -59,6 +59,7 @@ _SILVER_FIELDS = (
     "categories",
     "description",
     "metadata",
+    "pay",
 )
 
 
