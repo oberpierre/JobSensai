@@ -76,6 +76,7 @@ ruff_test(
         "//adapters:mapping_snapshot_test",
         "//adapters:filters_test",
         "//adapters:markdown_test",
+        "//adapters:pay_test",
         "//adapters:registry_test",
         "//publisher:publisher",
         "//publisher:publisher_git_test",
