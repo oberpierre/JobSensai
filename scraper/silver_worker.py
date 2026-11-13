@@ -62,6 +62,19 @@ def _mapped_shape_violation(data: dict) -> Optional[str]:
     return None
 
 
+def _without_empty_values(metadata: object) -> object:
+    """*metadata* minus its top-level keys whose value is null or an empty string,
+    list or object.
+    """
+    if not isinstance(metadata, dict):
+        return metadata
+    return {
+        key: value
+        for key, value in metadata.items()
+        if not (value is None or value == "" or value == [] or value == {})
+    }
+
+
 # Configuration
 @dataclass
 class SilverWorkerConfig:
@@ -365,7 +378,7 @@ class SilverWorker:
             job_posting.locations = data.get("locations", [])
             job_posting.categories = data.get("categories", [])
             job_posting.description = data["description"]
-            job_posting.metadata_ = data.get("metadata", {})
+            job_posting.metadata_ = _without_empty_values(data.get("metadata", {}))
 
             db.commit()
             logger.info(f"Successfully saved JobPosting for URL: {url}")
