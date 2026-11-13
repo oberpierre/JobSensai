@@ -6,6 +6,7 @@ the adapter's actual parsing rather than shape-only checks a stub could satisfy.
 
 import inspect
 import json
+import math
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -32,9 +33,12 @@ def _is_empty(value: object) -> bool:
 def _is_metadata_value(value: object) -> bool:
     """Whether *value* is a string, a number or a list of those."""
 
+    # NaN and infinities are excluded because the web app renders only finite numbers.
     def is_scalar(item: object) -> bool:
         return isinstance(item, str) or (
-            isinstance(item, (int, float)) and not isinstance(item, bool)
+            isinstance(item, (int, float))
+            and not isinstance(item, bool)
+            and math.isfinite(item)
         )
 
     if isinstance(value, list):

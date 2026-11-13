@@ -456,6 +456,13 @@ class TestMetadataViolations(unittest.TestCase):
         data = {"metadata": {"pay": [{"min_cents": 19000000}]}}
         self.assertEqual(metadata_violations(data), [f"metadata['pay'] {_NOT_VALUE}"])
 
+    def test_non_finite_number_is_not_a_metadata_value(self):
+        data = {"metadata": {"openings": float("nan"), "ranks": [1, float("inf")]}}
+        self.assertEqual(
+            metadata_violations(data),
+            [f"metadata['openings'] {_NOT_VALUE}", f"metadata['ranks'] {_NOT_VALUE}"],
+        )
+
     def test_object_is_not_a_metadata_value(self):
         data = {"metadata": {"range": {"min": 1}}}
         self.assertEqual(metadata_violations(data), [f"metadata['range'] {_NOT_VALUE}"])
