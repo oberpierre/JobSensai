@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 import redis
 from sqlalchemy.orm import Session
 
+from adapters.adapters._pay import pay_violation
 from adapters.registry import AdapterRegistry
 from scraper.database import SessionLocal, init_db
 from scraper.ingest_events import record_ingest_failure
@@ -72,6 +73,29 @@ def _without_empty_values(metadata: object) -> object:
         key: value
         for key, value in metadata.items()
         if not (value is None or value == "" or value == [] or value == {})
+    }
+
+
+def _pay_columns(pay: object, url: str) -> dict[str, object]:
+    """The four pay column values for *pay*, all None unless it is a valid Silver
+    pay.
+    """
+    violation = None if pay is None else pay_violation(pay)
+    if pay is not None and violation is None:
+        assert isinstance(pay, dict)
+        return {
+            "pay_min": pay["min"],
+            "pay_max": pay["max"],
+            "pay_currency": pay["currency"],
+            "pay_period": pay["period"],
+        }
+    if pay is not None:
+        logger.warning(f"Dropping invalid pay for {url}: {violation}")
+    return {
+        "pay_min": None,
+        "pay_max": None,
+        "pay_currency": None,
+        "pay_period": None,
     }
 
 
@@ -379,6 +403,8 @@ class SilverWorker:
             job_posting.categories = data.get("categories", [])
             job_posting.description = data["description"]
             job_posting.metadata_ = _without_empty_values(data.get("metadata", {}))
+            for column, value in _pay_columns(data.get("pay"), url).items():
+                setattr(job_posting, column, value)
 
             db.commit()
             logger.info(f"Successfully saved JobPosting for URL: {url}")

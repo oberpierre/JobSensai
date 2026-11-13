@@ -5,7 +5,7 @@ import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
-from scraper.models import RawJobPosting
+from scraper.models import JobPosting, RawJobPosting
 from scraper.silver_worker import SilverWorker, SilverWorkerConfig
 
 
@@ -145,6 +145,61 @@ class TestSilverWorker(unittest.TestCase):
 
     def test_save_without_metadata_stores_an_empty_object(self):
         self.assertEqual(self._saved_row({}).metadata_, {})
+
+    def _pay_columns_of(self, row) -> tuple:
+        return (row.pay_min, row.pay_max, row.pay_currency, row.pay_period)
+
+    def test_save_stores_a_valid_pay(self):
+        row = self._saved_row(
+            {"pay": {"min": 155000, "max": 205000, "currency": "EUR", "period": "year"}}
+        )
+        self.assertEqual(self._pay_columns_of(row), (155000, 205000, "EUR", "year"))
+
+    def test_save_drops_an_invalid_pay_and_warns(self):
+        with self.assertLogs(level="WARNING") as logs:
+            row = self._saved_row(
+                {
+                    "pay": {
+                        "min": 155000,
+                        "max": 205000,
+                        "currency": "eur",
+                        "period": "year",
+                    }
+                }
+            )
+        self.assertEqual(self._pay_columns_of(row), (None, None, None, None))
+        self.assertEqual(len(logs.records), 1)
+        message = logs.records[0].getMessage()
+        self.assertIn("pay currency is not a three-letter ISO 4217 code", message)
+        self.assertIn("https://acme.example/jobs/1", message)
+
+    def test_save_without_pay_clears_an_existing_rows_pay(self):
+        existing = JobPosting(
+            url="https://acme.example/jobs/1",
+            pay_min=1,
+            pay_max=2,
+            pay_currency="USD",
+            pay_period="year",
+        )
+        db = MagicMock()
+        db.query().filter().first.return_value = existing
+        data = {"title": "Engineer", "company_name": "Acme", "description": "Build"}
+        self.worker._save_job_posting(db, "https://acme.example/jobs/1", data)
+        self.assertEqual(self._pay_columns_of(existing), (None, None, None, None))
+
+    def test_save_keeps_a_null_bound_null_without_warning(self):
+        with self.assertNoLogs(level="WARNING"):
+            row = self._saved_row(
+                {
+                    "pay": {
+                        "min": 50000,
+                        "max": None,
+                        "currency": "EUR",
+                        "period": "year",
+                    }
+                }
+            )
+        self.assertEqual(self._pay_columns_of(row), (50000, None, "EUR", "year"))
 
     def test_process_message_missing_url(self):
         message = json.dumps({"other_data": "test"})
