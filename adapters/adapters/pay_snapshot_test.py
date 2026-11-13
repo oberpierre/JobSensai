@@ -132,9 +132,16 @@ class TestExtractionPay(unittest.TestCase):
         self.assertEqual(len(result.failures), 1, _failure_text(result))
         self.assertIn("ISO 4217", _failure_text(result))
 
+    def test_an_invalid_snapshot_pay_names_the_snapshot(self):
+        snapshot = {**_SILVER, "pay": {**_PAY, "currency": "usd"}}
+        result = self._result(_SILVER, snapshot, "test_snapshot_pay_conforms")
+        self.assertEqual(len(result.failures), 1, _failure_text(result))
+        self.assertIn("expected.json: pay currency", _failure_text(result))
+
     def test_a_cap_only_pay_matches_and_conforms(self):
         pay = {**_SILVER, "pay": {**_PAY, "min": None}}
-        for method in ("test_pay_matches_snapshot", "test_pay_conforms"):
+        methods = ("test_pay_matches_snapshot", "test_pay_conforms")
+        for method in methods + ("test_snapshot_pay_conforms",):
             result = self._result(pay, pay, method)
             self.assertTrue(result.wasSuccessful(), (method, _failure_text(result)))
 
@@ -193,6 +200,16 @@ class TestDetailMappingPay(unittest.TestCase):
             {**_DOCUMENT, "pay_input_ranges": _FLOOR_ONLY},
             {**_SNAPSHOT, "pay": {**_EUR_PAY, "max": None}},
         )
+
+    def test_a_snapshot_pay_with_a_string_amount_names_the_snapshot(self):
+        result = self._result(
+            _GREENHOUSE_PAY,
+            {**_DOCUMENT, "pay_input_ranges": _RANGES},
+            {**_SNAPSHOT, "pay": {**_EUR_PAY, "min": "155,000"}},
+            "test_snapshot_pay_conforms",
+        )
+        self.assertEqual(len(result.failures), 1, _failure_text(result))
+        self.assertIn("expected.json: pay min is not", _failure_text(result))
 
     def test_a_snapshot_that_copied_the_floor_into_the_cap_fails(self):
         result = self._result(

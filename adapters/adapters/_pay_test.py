@@ -122,6 +122,18 @@ class TestPayViolation(unittest.TestCase):
             "pay min exceeds 9999999999.99",
         )
 
+    def test_amount_rounding_to_zero(self):
+        self.assertEqual(
+            pay_violation({**_VALID, "min": 0.004}),
+            "pay min rounds to zero at two decimals",
+        )
+
+    def test_smallest_amount_stored_above_zero_is_valid(self):
+        self.assertIsNone(pay_violation({**_VALID, "min": 0.005}))
+
+    def test_amount_with_more_than_two_decimals_is_valid(self):
+        self.assertIsNone(pay_violation({**_VALID, "min": 4166.667, "max": 4166.667}))
+
     def test_lowercase_currency(self):
         self.assertEqual(
             pay_violation({**_VALID, "currency": "eur"}),
