@@ -44,6 +44,7 @@ py_test(
             "adapters/snapshot_test.py",
             "adapters/_markdown_test.py",
             "adapters/_pay_test.py",
+            "adapters/pay_snapshot_test.py",
             "adapters/mapping_test.py",
             "adapters/mapping_snapshot_test.py",
             "adapters/filters_test.py",
@@ -124,6 +125,15 @@ py_test(
     name = "pay_test",
     srcs = ["adapters/_pay_test.py"],
     main = "adapters/_pay_test.py",
+    deps = [
+        ":adapters",
+    ],
+)
+
+# Snapshot infrastructure, tested on its own like snapshot_test.py.
+py_test(
+    name = "pay_snapshot_test",
+    srcs = ["adapters/pay_snapshot_test.py"],
     deps = [
         ":adapters",
     ],
