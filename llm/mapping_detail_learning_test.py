@@ -120,6 +120,19 @@ class TestLearnDetailMappingDescription(unittest.TestCase):
         self.assertNotIn("description_source", expected)
 
 
+class TestLearnDetailMappingPay(unittest.TestCase):
+    def test_d13_truth_pay_reaches_the_snapshot(self):
+        pay = {"min": 155000, "max": 205000, "currency": "EUR", "period": "year"}
+        truth = {
+            "title": "Engineer",
+            "company_name": "Acme",
+            "pay": pay,
+            "description_source": {"field": "content", "html_escaped": True},
+        }
+        _, _, _, expected, _, _ = _learn(truth)
+        self.assertEqual(expected["pay"], pay)
+
+
 class TestLearnDetailMappingSourceDefects(unittest.TestCase):
     """D6: a description_source the orchestrator cannot use holds the lease."""
 
