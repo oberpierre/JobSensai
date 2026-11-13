@@ -228,6 +228,14 @@ class ExtractionSnapshotTest:
         violation = pay_violation(self.data.get("pay"))
         self.assertIsNone(violation, f"{self.fixture_dir}: {violation}")
 
+    def test_snapshot_pay_conforms(self):
+        # An invalid pinned pay makes the two tests above unpassable together, so this
+        # names expected.json rather than the artifact as the thing to fix.
+        if not isinstance(self.snapshot, dict):
+            return
+        violation = pay_violation(self.snapshot.get("pay"))
+        self.assertIsNone(violation, f"{self.fixture_dir}/expected.json: {violation}")
+
     def test_description_matches_snapshot(self):
         # A null or non-string description (a snapshot the orchestrator did not write
         # may hold anything) is treated as unpinned rather than raising from .strip().
@@ -420,6 +428,14 @@ class DetailMappingSnapshotTest:
             return
         violation = pay_violation(self.data.get("pay"))
         self.assertIsNone(violation, f"{self.basename}: {violation}")
+
+    def test_snapshot_pay_conforms(self):
+        # An invalid pinned pay makes the two tests above unpassable together, so this
+        # names expected.json rather than the artifact as the thing to fix.
+        if not isinstance(self.snapshot, dict):
+            return
+        violation = pay_violation(self.snapshot.get("pay"))
+        self.assertIsNone(violation, f"{self.basename}/expected.json: {violation}")
 
     def test_description_matches_snapshot(self):
         expected = self.snapshot.get("description")

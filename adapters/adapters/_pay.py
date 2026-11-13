@@ -16,6 +16,8 @@ _PERIOD_PATTERNS: dict[str, re.Pattern[str]] = {
 
 # The largest value a Numeric(12, 2) column holds.
 _MAX_AMOUNT = 9999999999.99
+# The column rounds to two decimals, so anything smaller is stored as zero.
+_MIN_AMOUNT = 0.005
 
 _PAY_KEYS = frozenset({"min", "max", "currency", "period"})
 _BOUNDS = ("min", "max")
@@ -65,6 +67,8 @@ def pay_violation(pay: object) -> str | None:
     for bound in _BOUNDS:
         if pay[bound] is not None and pay[bound] > _MAX_AMOUNT:
             return f"pay {bound} exceeds {_MAX_AMOUNT}"
+        if pay[bound] is not None and pay[bound] < _MIN_AMOUNT:
+            return f"pay {bound} rounds to zero at two decimals"
     currency = pay["currency"]
     if not isinstance(currency, str) or not re.fullmatch(r"[A-Z]{3}", currency):
         return "pay currency is not a three-letter ISO 4217 code"
