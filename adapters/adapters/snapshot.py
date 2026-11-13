@@ -11,6 +11,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
+from adapters.adapters._pay import pay_violation
 from adapters.adapters.base import DetailMapping, IndexMapping
 from adapters.adapters.mapping import load_mapping_file
 
@@ -170,6 +171,8 @@ class ExtractionSnapshotTest:
     actually states). A field the truth agent could not ground is not asserted.
     ``metadata`` is never compared with the snapshot, because each agent names its keys
     independently. ``test_metadata_conforms`` checks the output's own metadata instead.
+    ``pay`` is compared exactly when the snapshot pins it, and must be a valid pay value
+    whatever the snapshot says.
     """
 
     adapter_cls = None
@@ -213,6 +216,17 @@ class ExtractionSnapshotTest:
             return
         violations = metadata_violations(self.data)
         self.assertEqual(violations, [], f"{self.fixture_dir}: {violations}")
+
+    def test_pay_matches_snapshot(self):
+        if not isinstance(self.data, dict) or "pay" not in self.snapshot:
+            return
+        self.assertEqual(self.data.get("pay"), self.snapshot["pay"], "pay")
+
+    def test_pay_conforms(self):
+        if not isinstance(self.data, dict):
+            return
+        violation = pay_violation(self.data.get("pay"))
+        self.assertIsNone(violation, f"{self.fixture_dir}: {violation}")
 
     def test_description_matches_snapshot(self):
         # A null or non-string description (a snapshot the orchestrator did not write
@@ -395,6 +409,17 @@ class DetailMappingSnapshotTest:
             return
         violations = metadata_violations(self.data)
         self.assertEqual(violations, [], f"{self.basename}: {violations}")
+
+    def test_pay_matches_snapshot(self):
+        if not isinstance(self.data, dict) or "pay" not in self.snapshot:
+            return
+        self.assertEqual(self.data.get("pay"), self.snapshot["pay"], "pay")
+
+    def test_pay_conforms(self):
+        if not isinstance(self.data, dict):
+            return
+        violation = pay_violation(self.data.get("pay"))
+        self.assertIsNone(violation, f"{self.basename}: {violation}")
 
     def test_description_matches_snapshot(self):
         expected = self.snapshot.get("description")
