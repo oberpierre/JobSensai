@@ -16,6 +16,13 @@ export interface JobSummary {
   closed: boolean;
 }
 
+export interface Pay {
+  min: number | null;
+  max: number | null;
+  currency: string;
+  period: string;
+}
+
 export interface JobDetail {
   id: string;
   url: string;
@@ -25,6 +32,7 @@ export interface JobDetail {
   locations: string[];
   categories: string[];
   metadata: Record<string, unknown>;
+  pay: Pay | null;
   description: string;
   first_seen: string;
   last_seen: string;
