@@ -184,9 +184,8 @@ class AdapterRegistry:
     def _load_mappings(self, mappings_dir: Path) -> None:
         """Load every mapping document under *mappings_dir*.
 
-        The directory ships empty in this repository, mapping documents arriving one
-        at a time through the learning loop's pull requests, so a missing directory
-        is not an error.
+        A missing directory means no mapping has been learned yet, so it is not an
+        error.
         """
         if not mappings_dir.is_dir():
             return
