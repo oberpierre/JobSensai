@@ -3,12 +3,16 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 package(default_visibility = ["//visibility:public"])
 
 # Models and the DB session/engine, split out so the API package can depend
-# on the schema without dragging Scrapy and Playwright into its image.
+# on the schema without dragging Scrapy and Playwright into its image. The
+# migrations tree's Python files are srcs, not data. The non-Python files
+# (script.py.mako, read by `alembic revision`) still ship as data.
 py_library(
     name = "models_lib",
-    srcs = ["models.py", "database.py"],
+    srcs = ["models.py", "database.py"] + glob(["migrations/**/*.py"]),
+    data = glob(["migrations/**"], exclude = ["migrations/**/*.py"]),
     imports = ["."],
     deps = [
+        "@pip//alembic",
         "@pip//sqlalchemy",
         "@pip//psycopg2_binary",
         "@pip//python_dotenv",
@@ -20,7 +24,7 @@ py_library(
     name = "scraper_lib",
     srcs = glob(
         ["**/*.py"],
-        exclude = ["**/*_test.py", "main.py", "models.py", "database.py"],
+        exclude = ["**/*_test.py", "main.py", "models.py", "database.py", "migrations/**/*.py"],
     ),
     imports = ["."],
     deps = [
@@ -87,6 +91,26 @@ py_binary(
     python_version = "PY3",
 )
 
+# Operator-run authoring CLI for Alembic migrations: `revision` autogenerates
+# one, `check` reports whether the models and the chain still agree. Depends
+# on :models_lib alone, not :scraper_lib, since it never touches Scrapy. Reads
+# .env for its own Postgres connection settings, unlike :main/:worker/etc,
+# which get theirs from the deploy's Secrets instead.
+py_binary(
+    name = "migrate",
+    srcs = ["migrations_cli.py"],
+    main = "migrations_cli.py",
+    data = ["//:env"],
+    imports = ["."],
+    deps = [
+        ":models_lib",
+        "@pip//alembic",
+        "@pip//sqlalchemy",
+        "@pip//python_dotenv",
+    ],
+    python_version = "PY3",
+)
+
 py_test(
     name = "main_test",
     srcs = ["main_test.py"],
@@ -111,6 +135,36 @@ py_test(
 py_test(
     name = "silver_worker_test",
     srcs = ["silver_worker_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "silver_worker_mapped_test",
+    srcs = ["silver_worker_mapped_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "silver_worker_detail_request_test",
+    srcs = ["silver_worker_detail_request_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "ingest_events_test",
+    srcs = ["ingest_events_test.py"],
     imports = ["."],
     deps = [
         ":scraper_lib",
@@ -159,8 +213,39 @@ py_test(
 )
 
 py_test(
+    name = "migrations_cli_test",
+    srcs = ["migrations_cli_test.py"],
+    imports = ["."],
+    deps = [
+        ":migrate",
+        ":models_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
     name = "discovery_spider_test",
     srcs = ["spiders/discovery_spider_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "discovery_spider_api_test",
+    srcs = ["spiders/discovery_spider_api_test.py"],
+    imports = ["."],
+    deps = [
+        ":scraper_lib",
+    ],
+    python_version = "PY3",
+)
+
+py_test(
+    name = "posting_filters_test",
+    srcs = ["spiders/posting_filters_test.py"],
     imports = ["."],
     deps = [
         ":scraper_lib",

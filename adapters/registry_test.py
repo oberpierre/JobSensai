@@ -1,9 +1,34 @@
+import json
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
+from adapters.adapters.base import DetailMapping, IndexMapping
 from adapters.adapters.google_discovery_v1 import GoogleDiscoveryAdapter
 from adapters.adapters.greenhouse_discovery_v1 import GreenhouseIOAdapter
+from adapters.adapters.mapping import MappedIndex
 from adapters.adapters.www_google_com_extraction_v1 import WwwGoogleComExtractionAdapter
 from adapters.registry import AdapterRegistry
+
+
+class _StubIndexMapping(IndexMapping):
+    """A hand-written escape-hatch mapping, for exercising manual registration."""
+
+    domains = ["stub-index.example.com"]
+
+    def fetch_url(self, start_url: str) -> str:
+        return start_url
+
+    def references(self, document: dict, start_url: str) -> list:
+        return []
+
+
+class _StubDetailMapping(DetailMapping):
+    domains = ["stub-detail.example.com"]
+
+    def to_silver(self, document: dict) -> dict:
+        return {}
 
 
 class TestAdapterRegistry(unittest.TestCase):
@@ -87,6 +112,89 @@ class TestAdapterRegistry(unittest.TestCase):
         self.registry.register("quiet.io", GoogleDiscoveryAdapter)
         with self.assertNoLogs("adapters.registry", level="WARNING"):
             self.registry.register("quiet.io", GoogleDiscoveryAdapter)
+
+    def test_manual_register_index_mapping(self):
+        self.registry.register("custom-index.io", _StubIndexMapping)
+        mapping = self.registry.get_index_mapping("https://custom-index.io/jobs")
+        self.assertIsInstance(mapping, _StubIndexMapping)
+
+    def test_manual_register_detail_mapping(self):
+        self.registry.register("custom-detail.io", _StubDetailMapping)
+        mapping = self.registry.get_detail_mapping("https://custom-detail.io/jobs")
+        self.assertIsInstance(mapping, _StubDetailMapping)
+
+    def test_unregistered_domain_has_no_mapping(self):
+        self.assertIsNone(self.registry.get_index_mapping("https://www.example.com"))
+        self.assertIsNone(self.registry.get_detail_mapping("https://www.example.com"))
+
+    def test_construction_names_no_class_as_missing_domains(self):
+        # The mapping engine's own MappedIndex/MappedDetail carry no class-level
+        # domains, so scanning that module previously logged this warning twice on
+        # every construction.
+        with self.assertLogs("adapters.registry", level="DEBUG") as logs:
+            AdapterRegistry()
+        self.assertNotIn("has no declared domains", "\n".join(logs.output))
+
+
+class MappingDocumentDiscoveryTest(unittest.TestCase):
+    """A mapping document is registered from a directory the test itself wrote.
+
+    Nothing here relies on a committed document, so the cases hold whichever
+    mappings ``adapters/adapters/mappings/`` carries.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        document = {
+            "version": 1,
+            "type": "index",
+            "domains": ["mapped-a.example.com", "mapped-b.example.com"],
+            "jmespath": {"postings": "jobs[]", "posting_url": "url"},
+        }
+        (Path(self._tmp.name) / "mapped_index_v1.json").write_text(json.dumps(document))
+        self.registry = AdapterRegistry(mappings_dir=Path(self._tmp.name))
+
+    def test_mapping_is_served_for_each_declared_domain(self):
+        for domain in ("mapped-a.example.com", "mapped-b.example.com"):
+            mapping = self.registry.get_index_mapping(f"https://{domain}/jobs")
+            self.assertIsInstance(mapping, MappedIndex)
+
+    def test_mapping_is_not_returned_as_a_discovery_or_extraction_adapter(self):
+        url = "https://mapped-a.example.com/jobs"
+        self.assertIsNone(self.registry.get_discovery_adapter(url))
+        self.assertIsNone(self.registry.get_extraction_adapter(url))
+
+
+class EscapeHatchDiscoveryTest(unittest.TestCase):
+    """A platform the mapping language cannot express falls back to a Python
+    subclass of IndexMapping/DetailMapping, dropped into the scanned directory like
+    any hand-written adapter. Nothing else here exercises that path: the other
+    registry tests reach a class only through register() or a mapping document.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        module_name = "adapters.adapters.escape_hatch_index_v1"
+        (Path(self._tmp.name) / "escape_hatch_index_v1.py").write_text(
+            "from adapters.adapters.base import IndexMapping\n\n\n"
+            "class EscapeHatchIndexMapping(IndexMapping):\n"
+            '    domains = ["escape-hatch.example.com"]\n\n'
+            "    def references(self, document, start_url):\n"
+            "        return []\n"
+        )
+        import adapters.adapters as adapters_pkg
+
+        adapters_pkg.__path__.insert(0, self._tmp.name)
+        self.addCleanup(adapters_pkg.__path__.remove, self._tmp.name)
+        self.addCleanup(sys.modules.pop, module_name, None)
+
+    def test_python_index_mapping_dropped_into_the_directory_is_served(self):
+        registry = AdapterRegistry(adapters_dir=Path(self._tmp.name))
+        mapping = registry.get_index_mapping("https://escape-hatch.example.com/jobs")
+        self.assertIsInstance(mapping, IndexMapping)
+        self.assertEqual(type(mapping).__name__, "EscapeHatchIndexMapping")
 
 
 if __name__ == "__main__":

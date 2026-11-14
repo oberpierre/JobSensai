@@ -2,12 +2,19 @@ import "@testing-library/jest-dom/vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { JobDetail } from "./JobDetail";
+import { PaySection } from "./PaySection";
 import { ApiError } from "../../../api/ApiError";
 import { renderWithProviders } from "../../../../test/TestProviders";
 import type { JobsApi } from "../../../api/jobsApi";
 import type { JobDetail as JobDetailPayload } from "../../../api/types";
+
+// Spies on the real component, so the page still renders it where pay exists.
+vi.mock("./PaySection", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./PaySection")>();
+  return { PaySection: vi.fn(actual.PaySection) };
+});
 
 function detail(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload {
   return {
@@ -19,6 +26,7 @@ function detail(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload {
     locations: ["Zurich"],
     categories: [],
     metadata: {},
+    pay: null,
     description: "Full description body.",
     first_seen: new Date().toISOString(),
     last_seen: new Date().toISOString(),
@@ -37,6 +45,10 @@ function renderJobDetailWithProviders(api: Partial<JobsApi>, id = "1") {
 }
 
 describe("JobDetail", () => {
+  beforeEach(() => {
+    vi.mocked(PaySection).mockClear();
+  });
+
   it("renders the loading state before the response resolves", () => {
     renderJobDetailWithProviders({ getJob: () => new Promise(() => {}) });
     expect(screen.getByText("loading")).toBeInTheDocument();
@@ -131,5 +143,68 @@ describe("JobDetail", () => {
     expect(
       screen.queryByText("Employment type not specified"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows a stated pay range under a Pay label", async () => {
+    const getJob = vi.fn<JobsApi["getJob"]>().mockResolvedValue(
+      detail({
+        pay: { min: 155000, max: 205000, currency: "EUR", period: "year" },
+      }),
+    );
+    renderJobDetailWithProviders({ getJob });
+
+    const value = await screen.findByText("€155,000 – €205,000/year");
+    expect(value.previousElementSibling).toHaveTextContent("Pay");
+  });
+
+  it("renders no pay section for a posting stating no pay", async () => {
+    const getJob = vi
+      .fn<JobsApi["getJob"]>()
+      .mockResolvedValue(detail({ pay: null }));
+    renderJobDetailWithProviders({ getJob });
+
+    await screen.findByText("Backend Engineer");
+    expect(PaySection).not.toHaveBeenCalled();
+    expect(screen.queryByText("Pay")).not.toBeInTheDocument();
+  });
+
+  it("skips a metadata value it cannot render", async () => {
+    const getJob = vi.fn<JobsApi["getJob"]>().mockResolvedValue(
+      detail({
+        metadata: {
+          experience_level: "Mid",
+          compensation: [{ min_cents: 19000000 }],
+        },
+      }),
+    );
+    renderJobDetailWithProviders({ getJob });
+
+    expect(await screen.findByText("Experience level")).toBeInTheDocument();
+    expect(screen.queryByText("Compensation")).not.toBeInTheDocument();
+    expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
+  });
+
+  it("renders no additional details when no metadata value is readable", async () => {
+    const getJob = vi
+      .fn<JobsApi["getJob"]>()
+      .mockResolvedValue(
+        detail({ metadata: { compensation: [{ min_cents: 19000000 }] } }),
+      );
+    renderJobDetailWithProviders({ getJob });
+
+    await screen.findByText("Backend Engineer");
+    expect(screen.queryByText("Additional details")).not.toBeInTheDocument();
+  });
+
+  it("treats a payload without pay as no pay", async () => {
+    const payload: Partial<JobDetailPayload> = detail();
+    delete payload.pay;
+    const getJob = vi
+      .fn<JobsApi["getJob"]>()
+      .mockResolvedValue(payload as JobDetailPayload);
+    renderJobDetailWithProviders({ getJob });
+
+    await screen.findByText("Backend Engineer");
+    expect(PaySection).not.toHaveBeenCalled();
   });
 });

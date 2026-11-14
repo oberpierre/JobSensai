@@ -11,6 +11,7 @@ scrapy-playwright==0.0.44
 
 # Database
 sqlalchemy==2.0.44
+alembic==1.19.2
 psycopg2-binary==2.9.11
 redis==7.1.0
 
@@ -21,3 +22,6 @@ python-dotenv==1.2.1
 fastapi==0.121.1
 httpx==0.28.1
 uvicorn==0.38.0
+
+# Adapters
+jmespath==1.0.1

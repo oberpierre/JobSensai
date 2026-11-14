@@ -1,6 +1,6 @@
 import unittest
 
-from llm.adapter_files import _adapter_names, _domain_slug
+from llm.adapter_files import _adapter_names, _domain_slug, _mapping_names, staged_paths
 
 
 class TestDomainSlug(unittest.TestCase):
@@ -38,6 +38,57 @@ class TestAdapterNames(unittest.TestCase):
         self.assertTrue(names.basename.isidentifier())
         self.assertTrue(names.adapter_class.isidentifier())
         self.assertTrue(names.test_class.isidentifier())
+
+
+class TestMappingNames(unittest.TestCase):
+    def test_index_mapping(self):
+        names = _mapping_names("boards-api.greenhouse.io", "index")
+        self.assertEqual(names.basename, "boards_api_greenhouse_io_index_v1")
+        self.assertEqual(names.test_class, "TestBoardsApiGreenhouseIoIndexMapping")
+
+    def test_detail_mapping(self):
+        names = _mapping_names("boards-api.greenhouse.io", "detail")
+        self.assertEqual(names.basename, "boards_api_greenhouse_io_detail_v1")
+        self.assertEqual(names.test_class, "TestBoardsApiGreenhouseIoDetailMapping")
+
+    def test_unknown_mapping_type_raises(self):
+        with self.assertRaises(ValueError):
+            _mapping_names("acme.com", "extraction")
+
+    def test_never_falls_back_to_adapter_naming(self):
+        # _adapter_names' type argument is free-form and falls back to
+        # "extraction" for anything that is not "discovery", which would name a
+        # mapping document as though it were an adapter.
+        names = _mapping_names("acme.com", "index")
+        self.assertNotIn("extraction", names.basename)
+
+
+class TestStagedPaths(unittest.TestCase):
+    def test_adapter_kind(self):
+        paths = staged_paths("acme_com_discovery_v1", "adapter")
+        self.assertEqual(
+            paths,
+            [
+                "adapters/adapters/acme_com_discovery_v1.py",
+                "adapters/adapters/acme_com_discovery_v1_test.py",
+                "adapters/adapters/fixtures/acme_com_discovery_v1",
+            ],
+        )
+
+    def test_mapping_kind(self):
+        paths = staged_paths("acme_com_index_v1", "mapping")
+        self.assertEqual(
+            paths,
+            [
+                "adapters/adapters/mappings/acme_com_index_v1.json",
+                "adapters/adapters/acme_com_index_v1_test.py",
+                "adapters/adapters/fixtures/acme_com_index_v1",
+            ],
+        )
+
+    def test_unknown_kind_raises(self):
+        with self.assertRaises(ValueError):
+            staged_paths("acme_com_index_v1", "extraction")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
@@ -76,7 +77,7 @@ class TestJobWorker(unittest.TestCase):
                 "run_id": run_id,
                 "item": {
                     "url": item_url,
-                    "html_content": "<html></html>",
+                    "raw_content": "<html></html>",
                     "metadata": {"spider": "test_spider"},
                 },
             }
@@ -118,7 +119,7 @@ class TestJobWorker(unittest.TestCase):
                 "run_id": run_id,
                 "item": {
                     "url": item_url,
-                    "html_content": "<html></html>",
+                    "raw_content": "<html></html>",
                     "metadata": {"spider": "test_spider"},
                     "start_url_id": str(start_url_id),
                 },
@@ -146,7 +147,7 @@ class TestJobWorker(unittest.TestCase):
                 "run_id": run_id,
                 "item": {
                     "url": item_url,
-                    "html_content": "<html></html>",
+                    "raw_content": "<html></html>",
                     "metadata": {"spider": "test_spider"},
                     "start_url_id": str(start_url_id),
                 },
@@ -157,7 +158,7 @@ class TestJobWorker(unittest.TestCase):
         self.mock_session.get.return_value = mock_run
 
         existing_posting = RawJobPosting(
-            url=item_url, html_content="<html>old</html>", start_url_id=None
+            url=item_url, raw_content="<html>old</html>", start_url_id=None
         )
         self.mock_session.execute.return_value.scalar_one_or_none.return_value = (
             existing_posting
@@ -180,7 +181,7 @@ class TestJobWorker(unittest.TestCase):
                 "run_id": run_id,
                 "item": {
                     "url": item_url,
-                    "html_content": "<html></html>",
+                    "raw_content": "<html></html>",
                     "metadata": {"spider": "test_spider"},
                     "start_url_id": str(second_start_url_id),
                 },
@@ -192,7 +193,7 @@ class TestJobWorker(unittest.TestCase):
 
         existing_posting = RawJobPosting(
             url=item_url,
-            html_content="<html>old</html>",
+            raw_content="<html>old</html>",
             start_url_id=first_start_url_id,
         )
         self.mock_session.execute.return_value.scalar_one_or_none.return_value = (
@@ -215,7 +216,7 @@ class TestJobWorker(unittest.TestCase):
                 "run_id": run_id,
                 "item": {
                     "url": item_url,
-                    "html_content": "<html></html>",
+                    "raw_content": "<html></html>",
                     "metadata": {"spider": "test_spider"},
                 },
             }
@@ -226,7 +227,7 @@ class TestJobWorker(unittest.TestCase):
 
         existing_posting = RawJobPosting(
             url=item_url,
-            html_content="<html>old</html>",
+            raw_content="<html>old</html>",
             start_url_id=previously_attributed,
         )
         self.mock_session.execute.return_value.scalar_one_or_none.return_value = (
@@ -248,7 +249,7 @@ class TestJobWorker(unittest.TestCase):
                 "run_id": run_id,
                 "item": {
                     "url": item_url,
-                    "html_content": "<html></html>",
+                    "raw_content": "<html></html>",
                     "metadata": {"spider": "test_spider"},
                     "start_url_id": 12345,
                 },
@@ -381,7 +382,9 @@ class TestHandleItemPersistsThroughARealEngine(unittest.TestCase):
             "run_id": str(run_id),
             "item": {
                 "url": item_url,
-                "html_content": "<html></html>",
+                "raw_content": "<html></html>",
+                "content_type": "text/html",
+                "source_url": item_url,
                 "metadata": {"spider": "test_spider"},
                 "start_url_id": str(start_url_id),
             },
@@ -403,6 +406,105 @@ class TestHandleItemPersistsThroughARealEngine(unittest.TestCase):
                 .one()
             )
             self.assertEqual(persisted.start_url_id, start_url_id)
+        finally:
+            read_session.close()
+
+    def test_insert_without_source_url_fails_rather_than_defaulting_to_url(self):
+        # A silent `item.get("source_url") or url` fallback would key a
+        # posting on the wrong netloc if a caller ever forgot the field, per
+        # the wrong-netloc trap this column exists to prevent.
+        run_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        data = {
+            "run_id": str(run_id),
+            "item": {
+                "url": item_url,
+                "raw_content": "<html></html>",
+                "content_type": "text/html",
+                "metadata": {"spider": "test_spider"},
+            },
+        }
+
+        write_session = self.session_factory()
+        try:
+            with self.assertRaises(IntegrityError):
+                self.worker._handle_item(write_session, data)
+        finally:
+            write_session.rollback()
+            write_session.close()
+
+    def test_insert_persists_content_type_and_source_url(self):
+        run_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        data = {
+            "run_id": str(run_id),
+            "item": {
+                "url": item_url,
+                "raw_content": "<html></html>",
+                "content_type": "application/json",
+                "source_url": "http://example.com/feed",
+                "metadata": {"spider": "test_spider"},
+            },
+        }
+
+        write_session = self.session_factory()
+        try:
+            self.worker._handle_item(write_session, data)
+        finally:
+            write_session.close()
+
+        read_session = self.session_factory()
+        try:
+            persisted = (
+                read_session.query(RawJobPosting)
+                .filter(RawJobPosting.url == item_url)
+                .one()
+            )
+            self.assertEqual(persisted.content_type, "application/json")
+            self.assertEqual(persisted.source_url, "http://example.com/feed")
+        finally:
+            read_session.close()
+
+    def test_update_persists_content_type_and_source_url(self):
+        run_id = uuid.uuid4()
+        item_url = "http://example.com/job/1"
+        first_data = {
+            "run_id": str(run_id),
+            "item": {
+                "url": item_url,
+                "raw_content": "<html></html>",
+                "content_type": "text/html",
+                "source_url": item_url,
+                "metadata": {"spider": "test_spider"},
+            },
+        }
+        second_data = {
+            "run_id": str(run_id),
+            "item": {
+                "url": item_url,
+                "raw_content": "<html>new</html>",
+                "content_type": "application/json",
+                "source_url": "http://example.com/feed",
+                "metadata": {"spider": "test_spider"},
+            },
+        }
+
+        write_session = self.session_factory()
+        try:
+            self.worker._handle_item(write_session, first_data)
+            self.worker._handle_item(write_session, second_data)
+        finally:
+            write_session.close()
+
+        read_session = self.session_factory()
+        try:
+            persisted = (
+                read_session.query(RawJobPosting)
+                .filter(RawJobPosting.url == item_url)
+                .one()
+            )
+            self.assertEqual(persisted.content_type, "application/json")
+            self.assertEqual(persisted.source_url, "http://example.com/feed")
         finally:
             read_session.close()
 

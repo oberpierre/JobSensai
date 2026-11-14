@@ -6,13 +6,20 @@ from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 
-BoardType = Literal["html_crawl", "json_api"]
+BoardType = Literal["html_crawl", "api"]
 
 
 def as_utc(value: datetime) -> datetime:
     """The DB stores naive timestamps that are UTC by convention; the contract requires
     an explicit offset on the wire, so attach one rather than let it come back naive."""
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+class Pay(BaseModel):
+    min: float | None
+    max: float | None
+    currency: str
+    period: str
 
 
 class JobSummary(BaseModel):
@@ -39,6 +46,7 @@ class JobDetail(BaseModel):
     locations: list[str]
     categories: list[str]
     metadata: dict
+    pay: Pay | None
     description: str
     first_seen: datetime
     last_seen: datetime

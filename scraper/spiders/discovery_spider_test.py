@@ -3,14 +3,15 @@ import unittest
 import uuid
 from unittest.mock import MagicMock, patch
 
+from scrapy.http import HtmlResponse, Request
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
 from scraper.models import (
+    START_URL_TYPE_API,
     START_URL_TYPE_HTML_CRAWL,
-    START_URL_TYPE_JSON_API,
     Base,
     StartUrl,
 )
@@ -32,7 +33,7 @@ class TestLoadStartUrls(unittest.TestCase):
         Base.metadata.create_all(engine)
         self.session = sessionmaker(bind=engine)()
 
-    def test_returns_only_html_crawl_rows_ordered_by_name(self):
+    def test_returns_both_html_crawl_and_api_rows_ordered_by_name(self):
         self.session.add_all(
             [
                 StartUrl(
@@ -48,17 +49,21 @@ class TestLoadStartUrls(unittest.TestCase):
                 StartUrl(
                     name="beta-api",
                     url="https://beta.example.com/api",
-                    type=START_URL_TYPE_JSON_API,
+                    type=START_URL_TYPE_API,
                 ),
             ]
         )
         self.session.commit()
 
-        pairs = DiscoverySpider.load_start_urls(self.session)
+        rows = DiscoverySpider.load_start_urls(self.session)
 
         self.assertEqual(
-            [url for _id, url in pairs],
-            ["https://alpha.example.com", "https://zeta.example.com"],
+            [(url, t) for _id, url, t in rows],
+            [
+                ("https://alpha.example.com", START_URL_TYPE_HTML_CRAWL),
+                ("https://beta.example.com/api", START_URL_TYPE_API),
+                ("https://zeta.example.com", START_URL_TYPE_HTML_CRAWL),
+            ],
         )
 
     def test_returns_only_active_html_crawl_rows(self):
@@ -80,9 +85,9 @@ class TestLoadStartUrls(unittest.TestCase):
         )
         self.session.commit()
 
-        pairs = DiscoverySpider.load_start_urls(self.session)
+        rows = DiscoverySpider.load_start_urls(self.session)
 
-        self.assertEqual([url for _id, url in pairs], ["https://active.example.com"])
+        self.assertEqual([url for _id, url, _t in rows], ["https://active.example.com"])
 
     def test_warns_once_when_every_row_is_inactive(self):
         self.session.add_all(
@@ -106,9 +111,9 @@ class TestLoadStartUrls(unittest.TestCase):
         with self.assertLogs(
             "scraper.spiders.discovery_spider", level="WARNING"
         ) as logs:
-            pairs = DiscoverySpider.load_start_urls(self.session)
+            rows = DiscoverySpider.load_start_urls(self.session)
 
-        self.assertEqual(pairs, [])
+        self.assertEqual(rows, [])
         self.assertEqual(len(logs.output), 1)
         # The one warning has to name inactivity, or a later rewrite can drop that
         # cause and leave an operator reading a line about the wrong one.
@@ -118,31 +123,31 @@ class TestLoadStartUrls(unittest.TestCase):
         with self.assertLogs(
             "scraper.spiders.discovery_spider", level="WARNING"
         ) as logs:
-            pairs = DiscoverySpider.load_start_urls(self.session)
+            rows = DiscoverySpider.load_start_urls(self.session)
 
-        self.assertEqual(pairs, [])
+        self.assertEqual(rows, [])
         # The count, not just the warning: one message now covers the empty table and
         # the table whose every row was filtered out, and only the number tells an
         # operator which of the two they are looking at.
         self.assertIn("out of 0 configured", logs.output[0])
 
-    def test_table_holding_only_json_api_rows_warns_and_yields_nothing(self):
+    def test_table_holding_only_api_rows_yields_them_and_does_not_warn(self):
         self.session.add(
             StartUrl(
                 name="only-api",
                 url="https://api.example.com",
-                type=START_URL_TYPE_JSON_API,
+                type=START_URL_TYPE_API,
             )
         )
         self.session.commit()
 
-        with self.assertLogs(
-            "scraper.spiders.discovery_spider", level="WARNING"
-        ) as logs:
-            pairs = DiscoverySpider.load_start_urls(self.session)
+        with self.assertNoLogs("scraper.spiders.discovery_spider", level="WARNING"):
+            rows = DiscoverySpider.load_start_urls(self.session)
 
-        self.assertEqual(pairs, [])
-        self.assertIn("out of 1 configured", logs.output[0])
+        self.assertEqual(
+            [(url, t) for _id, url, t in rows],
+            [("https://api.example.com", START_URL_TYPE_API)],
+        )
 
     def test_does_not_warn_when_html_crawl_rows_are_returned(self):
         self.session.add(
@@ -155,9 +160,9 @@ class TestLoadStartUrls(unittest.TestCase):
         self.session.commit()
 
         with self.assertNoLogs("scraper.spiders.discovery_spider", level="WARNING"):
-            pairs = DiscoverySpider.load_start_urls(self.session)
+            rows = DiscoverySpider.load_start_urls(self.session)
 
-        self.assertEqual(len(pairs), 1)
+        self.assertEqual(len(rows), 1)
 
 
 class TestDiscoverySpiderFromCrawler(unittest.TestCase):
@@ -196,29 +201,60 @@ class TestDiscoverySpiderFromCrawler(unittest.TestCase):
 
 class TestStartRequests(unittest.TestCase):
     @patch("scraper.spiders.discovery_spider.SessionLocal")
-    def test_yields_one_request_per_pair_tagged_with_its_start_url_id(
+    def test_yields_one_request_per_html_crawl_row_tagged_with_its_start_url_id(
         self, mock_session_local
     ):
         spider = DiscoverySpider()
         first_id = uuid.uuid4()
-        pairs = [(first_id, "https://a.example.com"), (None, "https://b.example.com")]
-        with patch.object(DiscoverySpider, "load_start_urls", return_value=pairs):
+        rows = [
+            (first_id, "https://a.example.com", START_URL_TYPE_HTML_CRAWL),
+            (None, "https://b.example.com", START_URL_TYPE_HTML_CRAWL),
+        ]
+        with patch.object(DiscoverySpider, "load_start_urls", return_value=rows):
             requests = list(spider.start_requests())
 
-        self.assertEqual([r.url for r in requests], [url for _id, url in pairs])
+        self.assertEqual([r.url for r in requests], [url for _id, url, _t in rows])
+        self.assertEqual([r.callback for r in requests], [spider.parse, spider.parse])
         self.assertEqual(requests[0].meta["start_url_id"], first_id)
         self.assertIsNone(requests[1].meta["start_url_id"])
         mock_session_local.return_value.close.assert_called_once()
+
+    @patch("scraper.spiders.discovery_spider.SessionLocal")
+    def test_an_api_row_is_sent_to_parse_api_at_the_stripped_url(
+        self, mock_session_local
+    ):
+        spider = DiscoverySpider()
+        stored_id = uuid.uuid4()
+        stored_url = "https://api.example.com/jobs?filter.offices[].name=Berlin&x=1"
+        rows = [(stored_id, stored_url, START_URL_TYPE_API)]
+        with patch.object(DiscoverySpider, "load_start_urls", return_value=rows):
+            requests = list(spider.start_requests())
+
+        self.assertEqual(requests[0].callback, spider.parse_api)
+        self.assertEqual(requests[0].url, "https://api.example.com/jobs?x=1")
+        self.assertEqual(requests[0].meta["start_url_id"], stored_id)
+        self.assertEqual(requests[0].meta["stored_url"], stored_url)
+
+
+def _html_response(url, *, headers=None, meta=None):
+    """A real Response, not a mock, so header normalisation genuinely runs."""
+    request = Request(url=url, meta=meta or {})
+    return HtmlResponse(
+        url=url,
+        body=b"<html>job</html>",
+        encoding="utf-8",
+        headers=headers,
+        request=request,
+    )
 
 
 class TestParseJob(unittest.TestCase):
     def test_carries_start_url_id_from_response_meta_into_the_item(self):
         spider = DiscoverySpider()
         start_url_id = uuid.uuid4()
-        response = MagicMock()
-        response.url = "https://a.example.com/job/1"
-        response.text = "<html>job</html>"
-        response.meta = {"start_url_id": start_url_id}
+        response = _html_response(
+            "https://a.example.com/job/1", meta={"start_url_id": start_url_id}
+        )
 
         items = list(spider.parse_job(response))
 
@@ -226,14 +262,38 @@ class TestParseJob(unittest.TestCase):
 
     def test_absent_start_url_id_stays_none(self):
         spider = DiscoverySpider()
-        response = MagicMock()
-        response.url = "https://a.example.com/job/1"
-        response.text = "<html>job</html>"
-        response.meta = {}
+        response = _html_response("https://a.example.com/job/1")
 
         items = list(spider.parse_job(response))
 
         self.assertIsNone(items[0]["start_url_id"])
+
+    def test_sets_source_url_from_the_response(self):
+        spider = DiscoverySpider()
+        response = _html_response("https://a.example.com/job/1")
+
+        items = list(spider.parse_job(response))
+
+        self.assertEqual(items[0]["source_url"], "https://a.example.com/job/1")
+
+    def test_strips_content_type_parameters_off_a_real_header(self):
+        spider = DiscoverySpider()
+        response = _html_response(
+            "https://a.example.com/job/1",
+            headers={"Content-Type": "text/html; charset=UTF-8"},
+        )
+
+        items = list(spider.parse_job(response))
+
+        self.assertEqual(items[0]["content_type"], "text/html")
+
+    def test_defaults_content_type_when_the_response_carries_no_header(self):
+        spider = DiscoverySpider()
+        response = _html_response("https://a.example.com/job/1")
+
+        items = list(spider.parse_job(response))
+
+        self.assertEqual(items[0]["content_type"], "text/html")
 
 
 if __name__ == "__main__":
