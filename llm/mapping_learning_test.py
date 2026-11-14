@@ -17,7 +17,7 @@ class TestBudgetChars(unittest.TestCase):
     def test_default_window(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("INDEX_NUM_CTX", None)
-            # (65536 - 4096) * 2, the default the ADR names.
+            # (65536 - 4096) * 2: the default window less the prompt reserve.
             self.assertEqual(budget_chars("index"), 122880)
 
     def test_custom_window(self):

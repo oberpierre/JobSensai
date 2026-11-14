@@ -139,8 +139,8 @@ class TestAdapterRegistry(unittest.TestCase):
 class MappingDocumentDiscoveryTest(unittest.TestCase):
     """A mapping document is registered from a directory the test itself wrote.
 
-    ``adapters/adapters/mappings/`` ships empty, so nothing here relies on a
-    committed document.
+    Nothing here relies on a committed document, so the cases hold whichever
+    mappings ``adapters/adapters/mappings/`` carries.
     """
 
     def setUp(self):
