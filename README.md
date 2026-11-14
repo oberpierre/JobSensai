@@ -99,6 +99,13 @@ bazel run //scraper:main
 bazel run //scraper:worker
 ```
 
+**Run the Silver worker**, which turns stored postings into structured job rows:
+```bash
+bazel run //scraper:silver_worker
+```
+
+It loads every adapter and mapping once, when it starts, so restart it after one merges.
+
 ### 3. Adapter Learning Worker
 
 The learning worker consumes the two adapter-learning queues from Redis, generates a parsing adapter with the LLM, gates the generated files with the commit hook's own ruff and format checks, runs that artifact's own snapshot test so nothing else in the checkout affects the verdict, and opens a pull request for it. Unlike the services above it writes to your clone and pushes from it, so treat it as an operator task rather than something to leave running unattended.
@@ -162,6 +169,26 @@ bazel run //scraper:migrate -- check
 ```
 
 Exits non-zero, naming the column or table it found, when a model changed with no matching revision. Nothing else in the build catches that gap. Both subcommands read `.env` for the same Postgres connection settings the rest of the scraper uses.
+
+**A database created before migrations existed** stops both workers at startup with `DuplicateTable`. Its tables were made by the application's old `create_all`, so `init_db` finds no record of the first revision and tries to create them again. Record that revision as already applied, which is all `alembic stamp` would do, by running this once in `psql` against that database:
+
+```sql
+CREATE TABLE alembic_version (
+    version_num VARCHAR(32) NOT NULL,
+    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+);
+INSERT INTO alembic_version (version_num) VALUES ('832e44da0602');
+```
+
+The next start then applies every later revision. Stamp only a database the application itself created and nobody altered by hand since, because the stamp asserts its schema is exactly the first revision's. With the compose setup above, `docker compose -p jobsensai exec postgres psql -U jobsensai jobsensai` opens that session from the host.
+
+## API boards
+
+A board whose postings come from a JSON API rather than from HTML pages is added on the admin screen (`/admin`) with the type **API**, its start URL being the API's listing endpoint. Such a board is read by two JSON mapping documents in `adapters/adapters/mappings/` instead of Python adapters. The *index* mapping finds the postings in the listing response, and the *detail* mapping turns one posting into a job row, both written as JMESPath expressions. The learning worker learns each mapping and opens a pull request for it, exactly as it does for an adapter. Until the index mapping has merged the spider stores nothing for the board, and until the detail mapping has merged the Silver worker refuses its postings, each enqueueing a learning task instead. Restart the Silver worker after a mapping merges, since it loads mappings only at startup.
+
+The start URL has to ask the API for everything a job row needs. On Greenhouse (`https://boards-api.greenhouse.io/v1/boards/<board>/jobs`) that means `content=true`, without which a posting carries no description, and `pay_transparency=true`, without which it carries no pay range.
+
+**Narrowing a board to some of its postings.** A query parameter whose name starts with `filter.` is never sent to the API. The spider removes it before fetching and then keeps only the postings it matches. The rest of its name is a JMESPath expression read on each posting, and its value is the text that expression's result must equal. A repeated parameter allows any of its values, and an expression yielding a list matches when any element does. So `filter.offices[].id=4063231008&filter.offices[].id=4029282008` keeps the postings listing either office, and the brackets may be stored percent-encoded (`filter.offices%5B%5D.id`). A filter that is not valid JMESPath, or that resolves on no posting at all, refuses the whole response and logs `filter.<expression> is invalid` or `did not resolve on any posting`, since either one is a mistake in the URL. Filters read the postings carried in the listing response itself, as Greenhouse's are, so they have no effect on an API whose listing carries only links.
 
 ## Running it locally
 
