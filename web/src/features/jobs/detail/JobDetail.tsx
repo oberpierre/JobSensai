@@ -15,6 +15,7 @@ import {
 } from "../../../components/StateCard";
 import { relativeTime } from "../index/relativeTime";
 import { humanizeKey, metadataValueText } from "./humanizeKey";
+import { PaySection } from "./PaySection";
 import styles from "./JobDetail.module.scss";
 
 // Back-to-top earns its place only after roughly one viewport of scroll.
@@ -99,6 +100,10 @@ function Detail({
       <aside className={styles.sidebar}>
         <SourceCard job={job} />
 
+        {/* A board stating pay on some postings may omit it on this one, so a
+            missing pay gets no section rather than a claim about the board. */}
+        {job.pay != null && <PaySection pay={job.pay} />}
+
         <div className={styles.sidebarSection}>
           <MicroLabel>Employment type</MicroLabel>
           {job.employment_type ? (
@@ -154,23 +159,26 @@ function SourceCard({ job }: { job: JobDetailPayload }) {
   );
 }
 
-// Renders whatever the adapter's metadata dict holds, keys humanised and every
-// key on the same footing, since the interface never hard-codes a metadata key.
+// Renders every key whose value reads as text, keys humanised and on the same
+// footing, since the interface never hard-codes a metadata key.
 function AdditionalDetails({
   metadata,
 }: {
   metadata: Record<string, unknown>;
 }) {
-  const entries = Object.entries(metadata);
-  if (entries.length === 0) return null;
+  const rows = Object.entries(metadata).flatMap(([key, value]) => {
+    const text = metadataValueText(value);
+    return text === null ? [] : [{ key, text }];
+  });
+  if (rows.length === 0) return null;
   return (
     <div className={styles.sidebarSection}>
       <MicroLabel>Additional details</MicroLabel>
       <div className={styles.metadataGrid}>
-        {entries.map(([key, value]) => (
+        {rows.map(({ key, text }) => (
           <div key={key} className={styles.metadataRow}>
             <span className={styles.metadataKey}>{humanizeKey(key)}</span>
-            <MetadataChip value={metadataValueText(value)} />
+            <MetadataChip value={text} />
           </div>
         ))}
       </div>

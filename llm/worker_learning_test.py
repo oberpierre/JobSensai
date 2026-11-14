@@ -1,28 +1,12 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from llm.worker import (
-    LLMWorker,
-    TruthAgentUnreadable,
-    UnlearnablePage,
-    _parse_json_object,
-)
-
-
-class TestParseJsonObject(unittest.TestCase):
-    def test_plain_json(self):
-        self.assertEqual(_parse_json_object('{"a": 1}'), {"a": 1})
-
-    def test_json_wrapped_in_fence_and_prose(self):
-        raw = 'Here you go:\n```json\n{"a": 1}\n```'
-        self.assertEqual(_parse_json_object(raw), {"a": 1})
-
-    def test_non_object_returns_empty(self):
-        self.assertEqual(_parse_json_object("not json at all"), {})
-        self.assertEqual(_parse_json_object("[1, 2]"), {})
+from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
+from llm.worker import LLMWorker
 
 
 class TestLearnDiscovery(unittest.TestCase):
@@ -35,7 +19,7 @@ class TestLearnDiscovery(unittest.TestCase):
                 "next_page_links": ["https://acme.com/jobs?page=2"],
             }
         )
-        # Wrapped in a markdown fence to prove _strip_code_fences runs.
+        # Wrapped in a markdown fence to prove strip_code_fences runs.
         llm.generate_code.return_value = (
             "```python\nclass AcmeComDiscoveryAdapter: pass\n```"
         )
@@ -83,6 +67,44 @@ class TestLearnDiscovery(unittest.TestCase):
         self.assertIn("/jobs/1", lean_code)
 
 
+class TestLearnDiscoveryHtmlBudget(unittest.TestCase):
+    @patch("llm.worker.LLMModel")
+    def test_budget_is_cut_once_and_shared_by_both_agents(self, mock_llm_cls):
+        # Set after llm.worker imported llm.model, matching load_dotenv()'s ordering
+        # relative to every caller's imports.
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = json.dumps(
+            {"job_links": ["https://acme.com/jobs/1"], "next_page_links": []}
+        )
+        llm.generate_code.return_value = "class AcmeComDiscoveryAdapter: pass"
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        html = (
+            "<html><body>"
+            + "".join(f"<a href='/jobs/{i}'>Job {i}</a>" for i in range(50))
+            + "</body></html>"
+        )
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
+            patch.dict(
+                os.environ, {"LLM_HTML_CHARS": "40", "DISCOVERY_NUM_CTX": "4096"}
+            ),
+        ):
+            (Path(tmp) / "base.py").write_text("class DiscoveryAdapter: pass\n")
+            worker._learn_discovery("acme.com", "https://acme.com/jobs", html)
+
+        truth_body = llm.generate_expected.call_args.args[1]
+        code_body = llm.generate_code.call_args.args[1]
+        self.assertEqual(len(truth_body), 40)
+        # One cut, not two of the same length: a snapshot is graded against the string
+        # both agents were shown.
+        self.assertEqual(truth_body, code_body)
+        # Set after this module imported llm.model, the ordering every caller has.
+        self.assertEqual(mock_llm_cls.call_args.kwargs["num_ctx"], 4096)
+
+
 class TestLearnDiscoveryUnlearnable(unittest.TestCase):
     @patch("llm.worker.LLMModel")
     def test_empty_job_links_raises_before_writing_anything(self, mock_llm_cls):
@@ -108,7 +130,7 @@ class TestLearnDiscoveryUnlearnable(unittest.TestCase):
 
 
 class TestLearnDiscoveryTruthAgentUnreadable(unittest.TestCase):
-    """A reply _parse_json_object cannot read is not a page with no links on it."""
+    """A reply parse_json_object cannot read is not a page with no links on it."""
 
     @patch("llm.worker.LLMModel")
     def test_unparseable_reply_raises_before_writing_anything(self, mock_llm_cls):
@@ -169,7 +191,7 @@ class TestLearnExtraction(unittest.TestCase):
                 "metadata": {},
             }
         )
-        # Wrapped in a fence to prove _strip_code_fences runs on the adapter source.
+        # Wrapped in a fence to prove strip_code_fences runs on the adapter source.
         llm.generate_code.return_value = (
             "```python\nclass AcmeComExtractionAdapter: pass\n```"
         )
@@ -211,6 +233,37 @@ class TestLearnExtraction(unittest.TestCase):
         self.assertIn("Staff Engineer", llm.generate_expected.call_args.args[1])
         self.assertEqual(llm.generate_code.call_args.args[0], "extraction")
         self.assertIn("Staff Engineer", llm.generate_code.call_args.args[1])
+
+
+class TestLearnExtractionHtmlBudget(unittest.TestCase):
+    @patch("llm.worker.LLMModel")
+    def test_budget_is_cut_once_and_shared_by_both_agents(self, mock_llm_cls):
+        llm = mock_llm_cls.return_value
+        llm.generate_expected.return_value = json.dumps(
+            {"title": "Staff Engineer", "description": "We build things."}
+        )
+        llm.generate_code.return_value = "class AcmeComExtractionAdapter: pass"
+        with patch("redis.Redis", return_value=MagicMock()):
+            worker = LLMWorker()
+
+        html = (
+            "<html><body><h1>Staff Engineer</h1><p>" + "A" * 200 + "</p></body></html>"
+        )
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("llm.adapter_files._ADAPTERS_DIR", Path(tmp)),
+            patch.dict(
+                os.environ, {"LLM_HTML_CHARS": "40", "EXTRACTION_NUM_CTX": "8192"}
+            ),
+        ):
+            (Path(tmp) / "base.py").write_text("class ExtractionAdapter: pass\n")
+            worker._learn_extraction("acme.com", "https://acme.com/job/1", html)
+
+        truth_body = llm.generate_expected.call_args.args[1]
+        code_body = llm.generate_code.call_args.args[1]
+        self.assertEqual(len(truth_body), 40)
+        self.assertEqual(truth_body, code_body)
+        self.assertEqual(mock_llm_cls.call_args.kwargs["num_ctx"], 8192)
 
 
 class TestLearnExtractionUnlearnable(unittest.TestCase):
@@ -260,7 +313,7 @@ class TestLearnExtractionUnlearnable(unittest.TestCase):
 
 
 class TestLearnExtractionTruthAgentUnreadable(unittest.TestCase):
-    """A reply _parse_json_object cannot read is not a page with no title on it."""
+    """A reply parse_json_object cannot read is not a page with no title on it."""
 
     @patch("llm.worker.LLMModel")
     def test_unparseable_reply_raises_before_writing_anything(self, mock_llm_cls):

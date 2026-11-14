@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-from llm.worker import LLMWorker, _worker_from_env, main
+from llm.worker import _WORKSPACE_ROOT, LLMWorker, _worker_from_env, main
 
 
 class TestRedisClientCredentials(unittest.TestCase):
@@ -73,6 +73,77 @@ class TestWorkerFromEnv(unittest.TestCase):
         mock_redis.assert_called_once_with(
             host="localhost", port=6379, username=None, password=None
         )
+
+
+class TestBaseBranchFromEnv(unittest.TestCase):
+    def _publisher_call(self, env: dict[str, str], remove: bool = False):
+        with (
+            patch.dict(os.environ, env),
+            patch("llm.worker.redis.Redis"),
+            patch("llm.worker.Publisher") as mock_publisher,
+        ):
+            if remove:
+                os.environ.pop("LEARNING_BASE_BRANCH", None)
+            worker = _worker_from_env()
+        mock_publisher.assert_called_once()
+        self.assertIs(worker.publisher, mock_publisher.return_value)
+        return mock_publisher.call_args
+
+    def test_publishes_against_the_configured_branch(self):
+        call = self._publisher_call({"LEARNING_BASE_BRANCH": "feature/api-boards"})
+        self.assertEqual(
+            call.kwargs,
+            {"repo_root": _WORKSPACE_ROOT, "base_branch": "feature/api-boards"},
+        )
+
+    def test_defaults_to_main_when_unset(self):
+        call = self._publisher_call({}, remove=True)
+        self.assertEqual(call.kwargs["base_branch"], "main")
+
+    def test_defaults_to_main_when_empty(self):
+        call = self._publisher_call({"LEARNING_BASE_BRANCH": ""})
+        self.assertEqual(call.kwargs["base_branch"], "main")
+
+
+class TestRunLogsBaseState(unittest.TestCase):
+    def _worker(self, can_publish: bool, log_result=None):
+        publisher = MagicMock()
+        publisher.can_publish.return_value = can_publish
+        publisher.log_base_state.return_value = log_result
+        with patch("llm.worker.redis.Redis"):
+            worker = LLMWorker(publisher=publisher)
+        return worker, publisher
+
+    def test_logs_once_before_the_first_poll(self):
+        worker, publisher = self._worker(True)
+        parent = MagicMock()
+        parent.attach_mock(publisher.log_base_state, "log_base_state")
+        parent.attach_mock(worker.redis_client.brpop, "brpop")
+
+        def stop(*_args, **_kwargs):
+            worker.running = False
+
+        worker.redis_client.brpop.side_effect = stop
+
+        self.assertTrue(worker.run())
+        names = [c[0] for c in parent.mock_calls]
+        self.assertEqual(names[0], "log_base_state")
+        self.assertEqual(names.count("log_base_state"), 1)
+        self.assertIn("brpop", names)
+
+    def test_a_worker_that_cannot_publish_logs_nothing(self):
+        worker, publisher = self._worker(False)
+        self.assertFalse(worker.run())
+        publisher.log_base_state.assert_not_called()
+
+    def test_the_result_never_depends_on_the_log(self):
+        worker, _ = self._worker(True, log_result=False)
+
+        def stop(*_args, **_kwargs):
+            worker.running = False
+
+        worker.redis_client.brpop.side_effect = stop
+        self.assertTrue(worker.run())
 
 
 class TestMain(unittest.TestCase):

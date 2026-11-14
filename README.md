@@ -99,15 +99,22 @@ bazel run //scraper:main
 bazel run //scraper:worker
 ```
 
+**Run the Silver worker**, which turns stored postings into structured job rows:
+```bash
+bazel run //scraper:silver_worker
+```
+
+It loads every adapter and mapping once, when it starts, so restart it after one merges.
+
 ### 3. Adapter Learning Worker
 
-The learning worker consumes the two adapter-learning queues from Redis, generates a parsing adapter with the LLM, gates it with `bazel test //adapters:adapter_test`, and opens a pull request for it. Unlike the services above it writes to your clone and pushes from it, so treat it as an operator task rather than something to leave running unattended.
+The learning worker consumes the two adapter-learning queues from Redis, generates a parsing adapter with the LLM, gates the generated files with the commit hook's own ruff and format checks, runs that artifact's own snapshot test so nothing else in the checkout affects the verdict, and opens a pull request for it. Unlike the services above it writes to your clone and pushes from it, so treat it as an operator task rather than something to leave running unattended.
 
 **Prerequisites:**
 
 - Ollama running with the model pulled, as in section 1.
 - An authenticated `gh`. The worker runs `gh auth status` before it consumes anything and exits non-zero with `Cannot publish` when that fails, so a missing credential costs a restart rather than a half-finished run.
-- **A clean clone on `main`.** Publishing runs `git checkout -B feature/adapter-<name> main` in the checkout you started it from, commits the generated adapter, pushes to `origin` and returns to `main`. Uncommitted work in that clone is at risk, and starting from another branch publishes against the wrong base.
+- A pushed base branch. The worker runs from your own checkout and publishes against `LEARNING_BASE_BRANCH`, which defaults to `main` and also means `main` when empty. Setting it in `.env` makes every restart inherit it. Each publish fetches that branch, creates `feature/<kind>-<basename>` off `origin/<branch>`, commits only the generated files, force-pushes it (replacing an earlier attempt whose PR was never opened), opens the PR against that branch, and returns the checkout to the local branch with nothing staged, so unpushed commits and edits never reach the PR.
 
 **Run it:**
 
@@ -116,6 +123,12 @@ bazel run //llm:worker
 ```
 
 It reads `.env` for Redis and Ollama exactly as the scraper does, and logs `Starting LLM Worker, listening on [...]` as soon as the `gh` check passes, so the absence of that line points at the credential rather than at Redis. The Redis client connects lazily, which means a wrong host or password surfaces a moment later on the first poll instead of at startup.
+
+At startup, after the `gh` check, it logs a line ending `HEAD vs origin/<branch>: <state>`. `in sync` is the intended state. `ahead N` means push first, because local commits are in the gate's tree but not in the PR's parent. `behind M` means pull first. `ahead N, behind M` means reconcile the two. `unknown` means the fetch failed, so check the branch name and the network.
+
+Never close a PR to get rid of it, because a closed PR counts as published and that board is never learned again. A PR the worker opened against the wrong base, because `LEARNING_BASE_BRANCH` was unset or wrong, means the first publish has already moved the checkout to that base. Stop the worker, check out the intended branch, fix the variable, then run `gh pr edit <number> --base <branch>`. A PR for a board you did not mean to learn is retargeted to `main` with `gh pr edit <number> --base main` and left for review there, since the deployed app enqueues learning tasks to the same Redis.
+
+CI runs only on PRs into `main`, so a PR against another base gets no CI. The reviewer checks out its branch and runs both `bazel test //adapters:adapter_test --test_filter=<the PR's test module>` and `bazel test //tools/lint:ruff_test` there before merging, and a `ruff_test` finding that names a file outside the PR is local clutter.
 
 **With a different model:**
 
@@ -136,6 +149,46 @@ bazel run //llm:worker
 `read -rs` prints nothing as you type, and history records only the `read` line rather than what you typed into it. Writing `REDIS_PASSWORD=... bazel run ...` as one line does the opposite, storing the password in history verbatim. The export lives as long as the shell, so run `unset REDIS_PASSWORD` when you are done with it. This keeps the value off your terminal and out of the file, though it stays readable in the process environment to anyone already on the machine as your user.
 
 **While it runs:** a domain being learned is leased for 30 minutes by default, so a second task for the same board and adapter type is dropped rather than queued behind the first. A model slow enough to outlive that lease learns one domain twice. You may set the lease duration by setting `LEARNING_LEASE_TTL_SECONDS` in `.env` or the shell.
+
+### 4. Database Migrations
+
+`init_db`, run at startup by `scraper/worker.py` and `scraper/silver_worker.py`, applies the chain under `scraper/migrations/versions/` while holding a Postgres advisory lock, so several workloads starting at once serialise instead of racing. Authoring a revision is a separate step, through `scraper/migrations_cli.py`, behind `bazel run //scraper:migrate`.
+
+**Generate a revision after changing a model in `scraper/models.py`:**
+
+```bash
+bazel run //scraper:migrate -- revision -m "add company size"
+```
+
+This never touches your own database. It builds a scratch one from the migration chain, diffs the models against that, writes the new file into `scraper/migrations/versions/`, and drops the scratch database whether or not the diff found anything. Review what it wrote, then run `aspect format` before committing it: autogenerate's raw output is unwrapped, and the `op.add_column(..., sa.Column(...))` boilerplate alone is enough to push essentially every generated line over this repo's limit, not just an unusual column or table name, which is a formatting gap rather than a broken tool. A **rename is always hand-written**: autogenerate has no notion of a rename, and renders one as a `drop_column` paired with an `add_column`, which loses the column's data rather than carrying it forward the way a real rename would.
+
+**Check that the models and the migration chain still agree:**
+
+```bash
+bazel run //scraper:migrate -- check
+```
+
+Exits non-zero, naming the column or table it found, when a model changed with no matching revision. Nothing else in the build catches that gap. Both subcommands read `.env` for the same Postgres connection settings the rest of the scraper uses.
+
+**A database created before migrations existed** stops both workers at startup with `DuplicateTable`. Its tables were made by the application's old `create_all`, so `init_db` finds no record of the first revision and tries to create them again. Record that revision as already applied, which is all `alembic stamp` would do, by running this once in `psql` against that database:
+
+```sql
+CREATE TABLE alembic_version (
+    version_num VARCHAR(32) NOT NULL,
+    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+);
+INSERT INTO alembic_version (version_num) VALUES ('832e44da0602');
+```
+
+The next start then applies every later revision. Stamp only a database the application itself created and nobody altered by hand since, because the stamp asserts its schema is exactly the first revision's. With the compose setup above, `docker compose -p jobsensai exec postgres psql -U jobsensai jobsensai` opens that session from the host.
+
+## API boards
+
+A board whose postings come from a JSON API rather than from HTML pages is added on the admin screen (`/admin`) with the type **API**, its start URL being the API's listing endpoint. Such a board is read by two JSON mapping documents in `adapters/adapters/mappings/` instead of Python adapters. The *index* mapping finds the postings in the listing response, and the *detail* mapping turns one posting into a job row, both written as JMESPath expressions. The learning worker learns each mapping and opens a pull request for it, exactly as it does for an adapter. Until the index mapping has merged the spider stores nothing for the board, and until the detail mapping has merged the Silver worker refuses its postings, each enqueueing a learning task instead. Restart the Silver worker after a mapping merges, since it loads mappings only at startup.
+
+The start URL has to ask the API for everything a job row needs. On Greenhouse (`https://boards-api.greenhouse.io/v1/boards/<board>/jobs`) that means `content=true`, without which a posting carries no description, and `pay_transparency=true`, without which it carries no pay range.
+
+**Narrowing a board to some of its postings.** A query parameter whose name starts with `filter.` is never sent to the API. The spider removes it before fetching and then keeps only the postings it matches. The rest of its name is a JMESPath expression read on each posting, and its value is the text that expression's result must equal. A repeated parameter allows any of its values, and an expression yielding a list matches when any element does. So `filter.offices[].id=4063231008&filter.offices[].id=4029282008` keeps the postings listing either office, and the brackets may be stored percent-encoded (`filter.offices%5B%5D.id`). A filter that is not valid JMESPath, or that resolves on no posting at all, refuses the whole response and logs `filter.<expression> is invalid` or `did not resolve on any posting`, since either one is a mistake in the URL. Filters read the postings carried in the listing response itself, as Greenhouse's are, so they have no effect on an API whose listing carries only links.
 
 ## Running it locally
 

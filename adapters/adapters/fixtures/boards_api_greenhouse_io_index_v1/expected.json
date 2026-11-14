@@ -1,0 +1,13 @@
+{
+  "url": "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs?content=true&pay_transparency=true",
+  "job_links": [
+    "https://job-boards.greenhouse.io/anthropic/jobs/5456619008",
+    "https://job-boards.greenhouse.io/anthropic/jobs/4461450008",
+    "https://job-boards.greenhouse.io/anthropic/jobs/4976314008",
+    "https://job-boards.greenhouse.io/anthropic/jobs/5391381008",
+    "https://job-boards.greenhouse.io/anthropic/jobs/5400138008",
+    "https://job-boards.greenhouse.io/anthropic/jobs/5391313008",
+    "https://job-boards.greenhouse.io/anthropic/jobs/5398438008",
+    "https://job-boards.greenhouse.io/anthropic/jobs/5382750008"
+  ]
+}

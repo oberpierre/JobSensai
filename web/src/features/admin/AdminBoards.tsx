@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MicroLabel } from "../../components/MicroLabel";
 import { ActiveToggle } from "../../components/ActiveToggle";
+import { ErrorNote } from "../../components/ErrorNote";
 import {
   StateCard,
   LoadingState,
@@ -10,6 +11,7 @@ import {
 import { useBoardsApi } from "../../api/useBoardsApi";
 import { ApiError } from "../../api/ApiError";
 import type { Board, BoardType } from "../../api/types";
+import { BoardForm } from "./BoardForm";
 import styles from "./AdminBoards.module.scss";
 
 const BOARDS_QUERY_KEY = ["boards"];
@@ -143,7 +145,7 @@ export function AdminBoards() {
         </button>
       </div>
 
-      {rowError && <p className={styles.formError}>{rowError}</p>}
+      {rowError && <ErrorNote message={rowError} />}
 
       {isPending && <LoadingState />}
       {isError && (
@@ -209,10 +211,7 @@ export function AdminBoards() {
               error={formError}
               onCancel={cancelForm}
               onSubmit={(values) =>
-                createMutation.mutate({
-                  ...values,
-                  type: values.type ?? "html_crawl",
-                })
+                createMutation.mutate({ ...values, type: values.type! })
               }
             />
           )}
@@ -235,16 +234,14 @@ function BoardRow({
   onToggleActive: () => void;
   toggling: boolean;
 }) {
-  const isJsonApi = board.type === "json_api";
+  const isApi = board.type === "api";
   return (
-    <div className={isJsonApi ? styles.rowGreyed : styles.row}>
+    <div className={styles.row}>
       <div className={styles.nameCell}>
         <span className={styles.name}>{board.name}</span>
         <span className={styles.url}>{board.url}</span>
       </div>
-      <span className={styles.type}>
-        {isJsonApi ? "JSON API" : "HTML crawl"}
-      </span>
+      <span className={styles.type}>{isApi ? "API" : "HTML crawl"}</span>
       <span className={styles.count}>
         {board.posting_count === null ? "—" : board.posting_count}
       </span>
@@ -267,133 +264,5 @@ function BoardRow({
         </button>
       </span>
     </div>
-  );
-}
-
-function BoardForm({
-  mode,
-  initialName = "",
-  initialUrl = "",
-  initialActive = true,
-  submitting,
-  error,
-  onCancel,
-  onSubmit,
-}: {
-  mode: "create" | "edit";
-  initialName?: string;
-  initialUrl?: string;
-  initialActive?: boolean;
-  submitting: boolean;
-  error: string | null;
-  onCancel: () => void;
-  onSubmit: (values: {
-    name: string;
-    url: string;
-    active: boolean;
-    type?: BoardType;
-  }) => void;
-}) {
-  const [name, setName] = useState(initialName);
-  const [url, setUrl] = useState(initialUrl);
-  const [type, setType] = useState<BoardType>("html_crawl");
-  const [active, setActive] = useState(initialActive);
-
-  return (
-    <form
-      className={styles.form}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit(
-          mode === "create"
-            ? { name, url, active, type }
-            : { name, url, active },
-        );
-      }}
-    >
-      <MicroLabel>{mode === "create" ? "New board" : "Edit board"}</MicroLabel>
-      <div className={styles.formFields}>
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Name</span>
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. Google · security roles"
-          />
-        </label>
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>URL</span>
-          <input
-            type="text"
-            required
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://…"
-          />
-        </label>
-      </div>
-
-      <div className={styles.field}>
-        <span className={styles.fieldLabel}>Active</span>
-        <div className={styles.activeField}>
-          <ActiveToggle
-            active={active}
-            onToggle={() => setActive((v) => !v)}
-            label="Active"
-          />
-          <span className={styles.activeNote}>crawls on next run</span>
-        </div>
-      </div>
-
-      {mode === "create" && (
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Type</span>
-          <div className={styles.typeToggle}>
-            <button
-              type="button"
-              className={
-                type === "html_crawl"
-                  ? styles.typeOptionActive
-                  : styles.typeOption
-              }
-              onClick={() => setType("html_crawl")}
-            >
-              HTML crawl
-            </button>
-            <button
-              type="button"
-              className={
-                type === "json_api"
-                  ? styles.typeOptionActive
-                  : styles.typeOption
-              }
-              onClick={() => setType("json_api")}
-            >
-              JSON API
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className={styles.formActions}>
-        <button
-          type="submit"
-          className={styles.saveButton}
-          disabled={submitting}
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          className={styles.cancelButton}
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-      </div>
-      {error && <p className={styles.formError}>{error}</p>}
-    </form>
   );
 }

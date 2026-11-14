@@ -15,16 +15,19 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import redis
 import scrapy
 from scrapy.crawler import Crawler
 
+from adapters.adapters import filters
 from adapters.registry import AdapterRegistry
 from scraper.database import SessionLocal
 from scraper.items import RawJobItem
-from scraper.models import START_URL_TYPE_HTML_CRAWL, StartUrl
+from scraper.models import START_URL_TYPE_API, START_URL_TYPE_HTML_CRAWL, StartUrl
 from scraper.spiders.base_spider import BaseJobSpider
+from scraper.spiders.posting_filters import apply_filters
 
 logger = logging.getLogger(__name__)
 
@@ -67,42 +70,53 @@ class DiscoverySpider(BaseJobSpider):
         return spider
 
     @classmethod
-    def load_start_urls(cls, session) -> list[tuple[uuid.UUID | None, str]]:
-        """Return (start_url_id, url) pairs to crawl, ordered by name.
+    def load_start_urls(cls, session) -> list[tuple[uuid.UUID | None, str, str]]:
+        """Return (start_url_id, url, type) triples to crawl, ordered by name.
 
-        Reads `html_crawl` rows that are `active`. An empty table and a table holding
-        only `json_api` or inactive rows are the same situation from an operator's
-        side, namely that the table is not driving this crawl, so all of them are
+        Reads `html_crawl` and `api` rows that are `active`. An empty table and a
+        table holding only inactive rows are the same situation from an operator's
+        side, namely that the table is not driving this crawl, so both are
         covered by the one warning below rather than a separate one per case.
         """
         rows = (
             session.query(StartUrl)
-            .filter(StartUrl.type == START_URL_TYPE_HTML_CRAWL, StartUrl.active)
+            .filter(
+                StartUrl.type.in_([START_URL_TYPE_HTML_CRAWL, START_URL_TYPE_API]),
+                StartUrl.active,
+            )
             .order_by(StartUrl.name)
             .all()
         )
         if not rows:
             total_count = session.query(StartUrl).count()
             logger.warning(
-                "This crawl has nothing to do: no start_urls row is both type %r"
-                " and active, out of %d configured.",
+                "This crawl has nothing to do: no start_urls row is both type"
+                " %r or %r and active, out of %d configured.",
                 START_URL_TYPE_HTML_CRAWL,
+                START_URL_TYPE_API,
                 total_count,
             )
-        return [(row.id, row.url) for row in rows]
+        return [(row.id, row.url, row.type) for row in rows]
 
     def start_requests(self) -> Iterator[scrapy.Request]:
         """Yield one request per configured start URL, tagged with its row id."""
         session = SessionLocal()
         try:
-            pairs = self.load_start_urls(session)
+            rows = self.load_start_urls(session)
         finally:
             session.close()
 
-        for start_url_id, url in pairs:
-            yield scrapy.Request(
-                url, callback=self.parse, meta={"start_url_id": start_url_id}
-            )
+        for start_url_id, url, start_url_type in rows:
+            if start_url_type == START_URL_TYPE_API:
+                yield scrapy.Request(
+                    filters.strip_filter_params(url),
+                    callback=self.parse_api,
+                    meta={"start_url_id": start_url_id, "stored_url": url},
+                )
+            else:
+                yield scrapy.Request(
+                    url, callback=self.parse, meta={"start_url_id": start_url_id}
+                )
 
     def parse(self, response: scrapy.http.Response) -> Iterator[scrapy.Request]:
         """Extract job links from search results page."""
@@ -150,8 +164,6 @@ class DiscoverySpider(BaseJobSpider):
           html      - raw page HTML
           timestamp - ISO-8601 string
         """
-        from urllib.parse import urlsplit
-
         domain = urlsplit(response.url).netloc
         payload = {
             "domain": domain,
@@ -173,8 +185,111 @@ class DiscoverySpider(BaseJobSpider):
         except Exception as e:
             logger.error("Failed to push discovery learning task: %s", e)
 
+    def parse_api(
+        self, response: scrapy.http.Response
+    ) -> Iterator[scrapy.Request | RawJobItem]:
+        """Turn an ``api`` board's response into filtered postings.
+
+        Every refusal below logs at error and yields nothing, except a
+        missing index mapping, which logs at warning and requests one
+        instead of refusing. Raises nothing out of this callback.
+        """
+        stored_url: str = response.meta["stored_url"]
+        start_url_id = response.meta.get("start_url_id")
+        hostname = urlsplit(response.url).hostname
+
+        try:
+            # The bytes, never response.text: JSON is UTF-8 by specification,
+            # so decoding by the header's declared charset can silently mangle it.
+            document = json.loads(response.body)
+        except ValueError as exc:
+            logger.error("Body from %s did not parse as JSON: %s", hostname, exc)
+            return
+        if not isinstance(document, (dict, list)):
+            logger.error(
+                "Body from %s parsed to a JSON %s, not an object or array",
+                hostname,
+                type(document).__name__,
+            )
+            return
+
+        bare_media_type = self._bare_media_type(response.headers.get("Content-Type"))
+        if bare_media_type != "application/json":
+            logger.info(
+                "Parsed a JSON body from %s despite Content-Type %r",
+                response.url,
+                bare_media_type,
+            )
+
+        mapping = self.registry.get_index_mapping(response.url)
+        if mapping is None:
+            logger.warning(
+                "No index mapping found for: %s. Triggering mapping learning pipeline.",
+                response.url,
+            )
+            self._trigger_mapping_learning(response, hostname)
+            return
+
+        refs = mapping.references(document, response.url)
+        kept_ids = apply_filters(refs, stored_url, hostname)
+        if kept_ids is None:
+            return
+
+        for ref in refs:
+            if ref.document is None:
+                yield response.follow(
+                    ref.url,
+                    callback=self.parse_job,
+                    meta={"start_url_id": start_url_id},
+                )
+            elif id(ref) in kept_ids:
+                yield self.create_item(
+                    url=ref.url,
+                    content=json.dumps(ref.document, ensure_ascii=False),
+                    start_url_id=start_url_id,
+                    source_url=response.url,
+                    content_type="application/json",
+                )
+
+    def _trigger_mapping_learning(
+        self, response: scrapy.http.Response, hostname: str
+    ) -> None:
+        """Push an API board's response to discovery_learning_tasks as a mapping task.
+
+        Payload schema (consumed by the LLM worker):
+          artifact  - the literal "mapping"
+          domain    - the registry's lookup key
+          url       - the URL actually fetched
+          body      - the response body decoded the same way json.loads already did
+          timestamp - ISO-8601 string
+        """
+        if not self.redis_client:
+            logger.error(
+                "Redis client is not initialized; mapping learning task for"
+                " %s was not enqueued",
+                hostname,
+            )
+            return
+
+        try:
+            payload = {
+                "artifact": "mapping",
+                "domain": hostname,
+                "url": response.url,
+                "body": response.body.decode(
+                    json.detect_encoding(response.body), "surrogatepass"
+                ),
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+            self.redis_client.lpush("discovery_learning_tasks", json.dumps(payload))
+            logger.info("Pushed mapping learning task for domain %s", hostname)
+        except Exception as e:
+            logger.error(
+                "Mapping learning task for %s was not enqueued: %s", hostname, e
+            )
+
     def parse_job(self, response: scrapy.http.Response) -> Iterator[RawJobItem]:
-        """Extract job details and HTML content."""
+        """Extract job details and content."""
         logger.info(f"Parsing job: {response.url}")
 
         # Extract relevant HTML section
@@ -185,9 +300,24 @@ class DiscoverySpider(BaseJobSpider):
 
         item = self.create_item(
             url=response.url,
-            html=html_content,
+            content=html_content,
             start_url_id=response.meta.get("start_url_id"),
+            source_url=response.url,
+            content_type=self._bare_media_type(response.headers.get("Content-Type")),
             # title=title,  # Additional metadata
         )
 
         yield item
+
+    @staticmethod
+    def _bare_media_type(content_type_header: bytes | None) -> str:
+        """Strip a response's Content-Type header to its media type, lowercased.
+
+        A server sends `text/html; charset=utf-8` far more often than not.
+        content_type is a downstream dispatch key compared against a lowercase
+        literal, so it drops the parameters rather than storing them verbatim.
+        """
+        if not content_type_header:
+            return "text/html"
+        media_type, _, _params = content_type_header.decode().partition(";")
+        return media_type.strip().lower()

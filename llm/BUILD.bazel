@@ -52,6 +52,39 @@ py_library(
     visibility = ["//visibility:public"],
 )
 
+py_library(
+    name = "learning_errors",
+    srcs = ["learning_errors.py"],
+    imports = [".."],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "mapping_learning",
+    srcs = ["mapping_learning.py"],
+    imports = [".."],
+    deps = [
+        ":adapter_files",
+        ":learning_errors",
+        ":model",
+        "//adapters:adapters",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "learning_task",
+    srcs = ["learning_task.py"],
+    imports = [".."],
+    deps = [
+        ":adapter_files",
+        ":learning_errors",
+        ":mapping_learning",
+        ":model",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 # A library rather than the binary's own srcs, so a test depends on worker.py without
 # also inheriting //:env. A developer's .env reaching the test runfiles decides the
 # defaults those tests assert, which passes in CI, where there is none, and fails on
@@ -64,10 +97,12 @@ py_library(
     deps = [
         ":adapter_files",
         ":dom",
+        ":generated_lint",
         ":html_cleaner",
+        ":learning_errors",
+        ":learning_task",
         ":model",
         "//adapters:adapters",
-        "//adapters:adapters_base",
         "//publisher:publisher",
         "@pip//python_dotenv",
         "@pip//redis",
@@ -91,7 +126,6 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],
@@ -103,8 +137,40 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_mapping_dispatch_test",
+    srcs = ["worker_mapping_dispatch_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker_lib",
+        "@pip//redis",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "mapping_learning_test",
+    srcs = ["mapping_learning_test.py"],
+    imports = [".."],
+    deps = [
+        ":mapping_learning",
+        "//adapters:adapters",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "mapping_detail_learning_test",
+    srcs = ["mapping_detail_learning_test.py"],
+    imports = [".."],
+    deps = [
+        ":mapping_learning",
+        "//adapters:adapters",
     ],
     visibility = ["//visibility:public"],
 )
@@ -115,7 +181,6 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],
@@ -127,7 +192,6 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],
@@ -147,7 +211,6 @@ py_test(
     imports = [".."],
     deps = [
         ":worker_lib",
-        "//adapters:adapters_base",
         "@pip//redis",
     ],
     visibility = ["//visibility:public"],
@@ -156,7 +219,8 @@ py_test(
 py_test(
     name = "model_test",
     srcs = ["model_test.py"],
-    deps = [":model"],
+    data = ["//adapters:api_fixtures"],
+    deps = [":model", "//adapters"],
     visibility = ["//visibility:public"],
 )
 
@@ -171,5 +235,42 @@ py_test(
     name = "dom_test",
     srcs = ["dom_test.py"],
     deps = [":dom"],
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "generated_lint",
+    srcs = ["generated_lint.py"],
+    imports = [".."],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "generated_lint_test",
+    srcs = ["generated_lint_test.py"],
+    imports = [".."],
+    data = [
+        "@aspect_rules_lint//format:ruff",
+        "//:.ruff.toml",
+    ],
+    env = {
+        "RUFF_BIN": "$(rootpath @aspect_rules_lint//format:ruff)",
+        "RUFF_CONFIG": "$(rootpath //:.ruff.toml)",
+    },
+    deps = [
+        ":adapter_files",
+        ":generated_lint",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "worker_gate_test",
+    srcs = ["worker_gate_test.py"],
+    imports = [".."],
+    deps = [
+        ":worker_lib",
+        "@pip//redis",
+    ],
     visibility = ["//visibility:public"],
 )

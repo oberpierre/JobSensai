@@ -14,6 +14,7 @@ from api.schemas import (
     JobDetail,
     JobListResponse,
     JobSummary,
+    Pay,
     as_utc,
 )
 from scraper.database import get_db
@@ -55,6 +56,20 @@ def _to_summary(job: JobPosting) -> JobSummary:
     )
 
 
+def _to_pay(job: JobPosting) -> Pay | None:
+    """The row's pay, or None unless its currency, period and a bound are set."""
+    if job.pay_currency is None or job.pay_period is None:
+        return None
+    if job.pay_min is None and job.pay_max is None:
+        return None
+    return Pay(
+        min=None if job.pay_min is None else float(job.pay_min),
+        max=None if job.pay_max is None else float(job.pay_max),
+        currency=job.pay_currency,
+        period=job.pay_period,
+    )
+
+
 def _to_detail(job: JobPosting) -> JobDetail:
     return JobDetail(
         id=job.id,
@@ -65,6 +80,7 @@ def _to_detail(job: JobPosting) -> JobDetail:
         locations=job.locations or [],
         categories=job.categories or [],
         metadata=job.metadata_ or {},
+        pay=_to_pay(job),
         description=job.description or "",
         first_seen=as_utc(job.created_at),
         last_seen=as_utc(job.updated_at),

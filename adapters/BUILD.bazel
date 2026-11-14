@@ -8,19 +8,24 @@ py_library(
         ["*.py", "adapters/*.py"],
         exclude = ["**/*_test.py"],
     ),
+    # Mapping documents the registry loads at construction time, which arrive one at a
+    # time through the learning loop's pull requests.
+    data = glob(["adapters/mappings/*.json"], allow_empty = True),
     deps = [
         "@pip//beautifulsoup4",
+        "@pip//jmespath",
         "@pip//markdownify",
         "@pip//parsel",
     ],
 )
 
-py_library(
-    name = "adapters_base",
-    srcs = ["adapters/base.py", "adapters/base_test.py"],
-    deps = [
-        "@pip//beautifulsoup4",
-    ],
+# The API payloads committed here, which a prompt's worked example must not answer.
+filegroup(
+    name = "api_fixtures",
+    srcs = glob(
+        ["adapters/fixtures/*/index.json", "adapters/fixtures/*/detail.json"],
+        allow_empty = True,
+    ),
 )
 
 py_test(
@@ -35,10 +40,31 @@ py_test(
     name = "adapter_test",
     srcs = glob(
         ["adapters/*_test.py"],
-        exclude = ["adapters/snapshot_test.py", "adapters/_markdown_test.py"],
+        exclude = [
+            "adapters/snapshot_test.py",
+            "adapters/_markdown_test.py",
+            "adapters/_pay_test.py",
+            "adapters/pay_snapshot_test.py",
+            "adapters/mapping_test.py",
+            "adapters/mapping_snapshot_test.py",
+            "adapters/filters_test.py",
+        ],
     ),
     # Generated snapshot fixtures (index.html / expected.json) the tests read at runtime.
     data = glob(["adapters/fixtures/**"], allow_empty = True),
+    deps = [
+        ":adapters",
+    ],
+)
+
+# load_tests is the gate's test selector, so it is tested on its own rather than
+# as a generated-adapter test.
+py_test(
+    name = "adapter_suite_test",
+    srcs = [
+        "adapter_suite_test.py",
+        "adapters/adapter_test.py",
+    ],
     deps = [
         ":adapters",
     ],
@@ -53,11 +79,61 @@ py_test(
     ],
 )
 
+# The mapping engine is infrastructure rather than a generated adapter, so it has its own
+# target: in adapter_test, which CI runs unfiltered, an engine regression would read as a
+# generated adapter's failure.
+py_test(
+    name = "mapping_test",
+    srcs = ["adapters/mapping_test.py"],
+    deps = [
+        ":adapters",
+    ],
+)
+
+# Infrastructure rather than a generated adapter, tested on its own for the same reason
+# mapping_test.py is.
+py_test(
+    name = "mapping_snapshot_test",
+    srcs = ["adapters/mapping_snapshot_test.py"],
+    deps = [
+        ":adapters",
+    ],
+)
+
+# Infrastructure rather than a generated adapter, tested on its own for the same reason
+# mapping_test.py is.
+py_test(
+    name = "filters_test",
+    srcs = ["adapters/filters_test.py"],
+    deps = [
+        ":adapters",
+    ],
+)
+
 # The shared HTML->Markdown util is a description helper, not an adapter.
 py_test(
     name = "markdown_test",
     srcs = ["adapters/_markdown_test.py"],
     main = "adapters/_markdown_test.py",
+    deps = [
+        ":adapters",
+    ],
+)
+
+# The pay rules and the engine's pay functions are infrastructure, not an adapter.
+py_test(
+    name = "pay_test",
+    srcs = ["adapters/_pay_test.py"],
+    main = "adapters/_pay_test.py",
+    deps = [
+        ":adapters",
+    ],
+)
+
+# Snapshot infrastructure, tested on its own like snapshot_test.py.
+py_test(
+    name = "pay_snapshot_test",
+    srcs = ["adapters/pay_snapshot_test.py"],
     deps = [
         ":adapters",
     ],

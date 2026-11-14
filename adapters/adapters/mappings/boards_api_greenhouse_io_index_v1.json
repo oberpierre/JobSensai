@@ -1,0 +1,11 @@
+{
+  "jmespath": {
+    "postings": "jobs[]",
+    "posting_url": "absolute_url"
+  },
+  "version": 1,
+  "type": "index",
+  "domains": [
+    "boards-api.greenhouse.io"
+  ]
+}

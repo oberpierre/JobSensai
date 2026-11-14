@@ -1,0 +1,233 @@
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from llm import adapter_files
+from llm.adapter_files import (
+    _adapter_names,
+    _mapping_names,
+    _write_adapter,
+    _write_mapping_snapshot,
+    _write_snapshot,
+    staged_paths,
+)
+from llm.generated_lint import (
+    FORMAT_CHECK_COMMAND,
+    FORMAT_COMMAND,
+    RUFF_COMMAND,
+    lint_generated,
+)
+
+RUFF = os.path.abspath(os.environ["RUFF_BIN"])
+RUFF_CONFIG = os.path.abspath(os.environ["RUFF_CONFIG"])
+
+# Imports out of order and unseparated, and a return line over the line length that
+# the formatter can wrap.
+SOURCE = (
+    """from urllib.parse import urljoin
+import json
+from adapters.adapters.base import ExtractionAdapter
+
+
+class AcmeExtractionAdapter(ExtractionAdapter):
+    domains = ["acme.com"]
+
+    def extract(self, html: str, url: str) -> dict:
+        return {"title": urljoin(url, "a"), "company_name": json.dumps(html), """
+    '"description": "a long description value", "metadata": {}}\n'
+)
+
+UNFIXABLE_SOURCE = """import json
+
+from adapters.adapters.base import ExtractionAdapter
+
+
+class AcmeExtractionAdapter(ExtractionAdapter):
+    domains = ["acme.com"]
+
+    def extract(self, html: str, url: str) -> dict:
+        unused = html.strip()
+        return {"title": json.dumps(url)}
+"""
+
+UNFORMATTED_AND_UNFIXABLE_SOURCE = SOURCE.replace(
+    "        return {",
+    "        unused = html.strip()\n        return {",
+    1,
+)
+
+
+class TestLintGenerated(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        shutil.copy(RUFF_CONFIG, self.root / ".ruff.toml")
+        adapters_dir = self.root / "adapters" / "adapters"
+        adapters_dir.mkdir(parents=True)
+        patcher = patch.object(adapter_files, "_ADAPTERS_DIR", adapters_dir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _hook(self, path: Path) -> tuple[int, int]:
+        cfg = str(self.root / ".ruff.toml")
+        check = subprocess.run(
+            [RUFF, "check", "--config", cfg, str(path)], capture_output=True
+        )
+        fmt = subprocess.run(
+            [RUFF, "format", "--check", "--force-exclude", "--config", cfg, str(path)],
+            capture_output=True,
+        )
+        return check.returncode, fmt.returncode
+
+    def _lint(self, staged: list[str], **commands) -> tuple[bool, str]:
+        cfg = str(self.root / ".ruff.toml")
+        defaults = {
+            "ruff_command": (RUFF,),
+            "format_command": (RUFF, "format", "--config", cfg),
+            "format_check_command": (
+                RUFF,
+                "format",
+                "--check",
+                "--diff",
+                "--config",
+                cfg,
+            ),
+        }
+        return lint_generated(self.root, staged, **{**defaults, **commands})
+
+    def _write_extraction(self, source: str):
+        names = _adapter_names("acme.com", "extraction")
+        _write_snapshot(
+            names,
+            "detail.html",
+            "<html></html>",
+            {"url": "https://acme.com/jobs/1"},
+            "ExtractionSnapshotTest",
+        )
+        _write_adapter(names, source)
+        adapters_dir = self.root / "adapters" / "adapters"
+        return names, [
+            adapters_dir / f"{names.basename}_test.py",
+            adapters_dir / f"{names.basename}.py",
+        ]
+
+    def test_the_mapping_test_template_passes_the_hook_for_a_long_hostname(self):
+        names = _mapping_names("boards-api.greenhouse.io", "index")
+        _write_mapping_snapshot(
+            names,
+            "index.json",
+            "{}",
+            {
+                "url": "https://boards-api.greenhouse.io/v1/boards/x/jobs",
+                "job_links": [],
+            },
+            "IndexMappingSnapshotTest",
+        )
+        test_file = self.root / "adapters" / "adapters" / f"{names.basename}_test.py"
+        self.assertNotEqual(self._hook(test_file)[0], 0)
+
+        passed, _ = self._lint(staged_paths(names.basename, "mapping"))
+
+        self.assertTrue(passed)
+        self.assertEqual(self._hook(test_file), (0, 0))
+
+    def test_the_adapter_test_template_and_model_source_pass_the_hook(self):
+        names, files = self._write_extraction(SOURCE)
+        for f in files:
+            self.assertNotEqual(self._hook(f)[0], 0, f.name)
+
+        passed, _ = self._lint(staged_paths(names.basename, "adapter"))
+
+        self.assertTrue(passed)
+        for f in files:
+            self.assertEqual(self._hook(f), (0, 0), f.name)
+
+    def test_what_ruff_cannot_fix_makes_the_result_red(self):
+        names, _ = self._write_extraction(UNFIXABLE_SOURCE)
+
+        passed, output = self._lint(staged_paths(names.basename, "adapter"))
+
+        self.assertFalse(passed)
+        self.assertIn("F841", output)
+
+    def test_a_red_lint_still_runs_the_format_check(self):
+        names, _ = self._write_extraction(UNFORMATTED_AND_UNFIXABLE_SOURCE)
+
+        passed, output = self._lint(
+            staged_paths(names.basename, "adapter"), format_command=("true",)
+        )
+
+        self.assertFalse(passed)
+        self.assertIn("F841", output)
+        self.assertIn("would be reformatted", output)
+
+    def test_the_four_commands_are_the_hooks_own_in_order(self):
+        ok = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        with patch("llm.generated_lint.subprocess.run", return_value=ok) as mock_run:
+            lint_generated(
+                self.root,
+                ["adapters/adapters/x_test.py", "adapters/adapters/fixtures/x"],
+            )
+        cfg = str(self.root / ".ruff.toml")
+        path = str(self.root / "adapters/adapters/x_test.py")
+        rel = "adapters/adapters/x_test.py"
+        self.assertEqual(
+            [c.args[0] for c in mock_run.call_args_list],
+            [
+                [*RUFF_COMMAND, "check", "--fix", "--exit-zero", "--config", cfg, path],
+                [*FORMAT_COMMAND, rel],
+                [*RUFF_COMMAND, "check", "--config", cfg, path],
+                [*FORMAT_CHECK_COMMAND, rel],
+            ],
+        )
+
+    def test_unformatted_output_makes_the_result_red(self):
+        names, _ = self._write_extraction(SOURCE)
+
+        passed, output = self._lint(
+            staged_paths(names.basename, "adapter"), format_command=("true",)
+        )
+
+        self.assertFalse(passed)
+        self.assertIn("would be reformatted", output)
+
+    def test_a_fix_step_that_fails_is_red_and_skips_the_check(self):
+        names, _ = self._write_extraction(SOURCE)
+
+        passed, output = self._lint(
+            staged_paths(names.basename, "adapter"),
+            format_command=("false",),
+            format_check_command=("/nonexistent/check",),
+        )
+
+        self.assertFalse(passed)
+        self.assertIn("Could not fix generated Python", output)
+
+    def test_nothing_to_lint_runs_nothing(self):
+        with patch("llm.generated_lint.subprocess.run") as mock_run:
+            result = lint_generated(
+                self.root,
+                [
+                    "adapters/adapters/mappings/x_index_v1.json",
+                    "adapters/adapters/fixtures/x_index_v1",
+                ],
+            )
+        self.assertEqual(result, (True, ""))
+        mock_run.assert_not_called()
+
+    def test_a_missing_binary_is_a_red_result_not_an_exception(self):
+        (self.root / "adapters" / "adapters" / "x_test.py").write_text("")
+        passed, output = self._lint(
+            ["adapters/adapters/x_test.py"], ruff_command=("/nonexistent/ruff",)
+        )
+        self.assertFalse(passed)
+        self.assertIn("Could not run ruff", output)
+
+
+if __name__ == "__main__":
+    unittest.main()

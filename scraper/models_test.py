@@ -1,9 +1,12 @@
 import unittest
 import uuid
 
+from sqlalchemy import Numeric, Text
+
 from scraper.models import (
+    START_URL_TYPE_API,
     START_URL_TYPE_HTML_CRAWL,
-    START_URL_TYPE_JSON_API,
+    IngestEvent,
     JobPosting,
     RawJobPosting,
     StartUrl,
@@ -23,14 +26,15 @@ class TestModels(unittest.TestCase):
         self.assertEqual(start_url.type, START_URL_TYPE_HTML_CRAWL)
 
     def test_start_url_type_constants_are_distinct(self):
-        self.assertNotEqual(START_URL_TYPE_HTML_CRAWL, START_URL_TYPE_JSON_API)
+        self.assertNotEqual(START_URL_TYPE_HTML_CRAWL, START_URL_TYPE_API)
 
     def test_raw_job_posting_carries_its_start_url_id(self):
         start_url_id = uuid.uuid4()
         posting = RawJobPosting(
             id=uuid.uuid4(),
             url="https://example.com/job/1",
-            html_content="<html/>",
+            raw_content="<html/>",
+            source_url="https://example.com/job/1",
             start_url_id=start_url_id,
         )
 
@@ -54,6 +58,18 @@ class TestModels(unittest.TestCase):
         self.assertEqual(job_posting.locations, ["Remote", "Seattle, WA"])
         self.assertEqual(job_posting.categories, ["Engineering"])
 
+    def test_pay_columns_are_nullable(self):
+        columns = JobPosting.__table__.c
+
+        for name in ("pay_min", "pay_max", "pay_currency", "pay_period"):
+            self.assertTrue(columns[name].nullable, name)
+        for name in ("pay_min", "pay_max"):
+            self.assertIsInstance(columns[name].type, Numeric)
+            self.assertEqual(columns[name].type.precision, 12)
+            self.assertEqual(columns[name].type.scale, 2)
+        for name in ("pay_currency", "pay_period"):
+            self.assertIsInstance(columns[name].type, Text)
+
 
 class TestStartUrlDeletion(unittest.TestCase):
     def test_start_url_id_declares_on_delete_set_null(self):
@@ -64,6 +80,19 @@ class TestStartUrlDeletion(unittest.TestCase):
         self.assertTrue(column.nullable)
 
 
+class TestRawJobPostingBronzeColumns(unittest.TestCase):
+    def test_content_type_is_not_null_and_defaults_to_text_html(self):
+        column = RawJobPosting.__table__.columns["content_type"]
+
+        self.assertFalse(column.nullable)
+        self.assertEqual(column.default.arg, "text/html")
+
+    def test_source_url_is_not_null(self):
+        column = RawJobPosting.__table__.columns["source_url"]
+
+        self.assertFalse(column.nullable)
+
+
 class TestStartUrlActive(unittest.TestCase):
     def test_active_column_is_not_null_and_defaults_true(self):
         column = StartUrl.__table__.columns["active"]
@@ -71,6 +100,29 @@ class TestStartUrlActive(unittest.TestCase):
         self.assertFalse(column.nullable)
         self.assertTrue(column.default.arg)
         self.assertEqual(str(column.server_default.arg), "true")
+
+
+class TestIngestEventColumns(unittest.TestCase):
+    def test_domain_is_not_null_and_indexed(self):
+        column = IngestEvent.__table__.columns["domain"]
+
+        self.assertFalse(column.nullable)
+        self.assertTrue(column.index)
+
+    def test_start_url_id_is_nullable_with_on_delete_set_null(self):
+        column = IngestEvent.__table__.columns["start_url_id"]
+        (foreign_key,) = column.foreign_keys
+
+        self.assertTrue(column.nullable)
+        self.assertEqual(foreign_key.ondelete, "SET NULL")
+
+    def test_required_and_optional_columns(self):
+        columns = IngestEvent.__table__.columns
+
+        for name in ("occurred_at", "source_url", "stage", "reason"):
+            self.assertFalse(columns[name].nullable, name)
+        for name in ("posting_url", "detail"):
+            self.assertTrue(columns[name].nullable, name)
 
 
 if __name__ == "__main__":

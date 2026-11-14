@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from pathlib import Path
@@ -8,13 +9,56 @@ from langchain_ollama import OllamaLLM
 logger = logging.getLogger(__name__)
 
 
+def strip_code_fences(text: str) -> str:
+    """Drop a leading/trailing markdown code fence if the model wrapped its output."""
+    lines = text.strip().splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip() + "\n"
+
+
+def parse_json_object(raw: str) -> dict:
+    """Parse an LLM JSON reply into a dict, tolerating stray prose or code fences."""
+    candidates = [raw]
+    start, end = raw.find("{"), raw.rfind("}")
+    if start != -1 and end != -1:
+        candidates.append(raw[start : end + 1])
+    for candidate in candidates:
+        try:
+            result = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(result, dict):
+            return result
+    return {}
+
+
 # How much cleaned HTML to put in a prompt. The old 8k cap dropped everything on real
 # pages: a listing's job links can start ~70k chars in — so the model saw only the
 # header/nav. Keep within the model's context window (see OLLAMA_NUM_CTX).
-def _html_char_budget() -> int:
+def html_char_budget() -> int:
     # Read per call, not at import: every caller imports this module before its own
     # load_dotenv() runs, so an import-time read never sees a .env value.
     return int(os.getenv("LLM_HTML_CHARS", "120000"))
+
+
+# Ollama sizes its KV cache from num_ctx, so the window is set per adapter type.
+# Discovery feeds a pruned link-only skeleton that stays small. Detail pages carry the
+# full posting body (a 1 MB page cleans to ~120k chars) and need a wider window, else
+# Ollama truncates the tail holding the content. Overridable per box for tuning.
+# Read per call for the same reason the budget above is.
+def discovery_num_ctx() -> int:
+    return int(os.getenv("DISCOVERY_NUM_CTX", "32768"))
+
+
+def extraction_num_ctx() -> int:
+    return int(os.getenv("EXTRACTION_NUM_CTX", "65536"))
+
+
+def index_num_ctx() -> int:
+    return int(os.getenv("INDEX_NUM_CTX", "65536"))
 
 
 _PROMPT_DIR = Path(__file__).parent / "prompts"
@@ -33,7 +77,31 @@ _SILVER_SCHEMA = (
     "\nThe extract() dict must match this Silver schema (all keys required):\n"
     "    title: str, company_name: str, employment_type: str | None,\n"
     "    locations: list[str], categories: list[str],\n"
-    "    description: str (as markdown), metadata: dict\n"
+    "    description: str (as markdown), metadata: dict, pay: dict | None\n"
+)
+
+# Defines the Silver fields whose types alone do not say what belongs in them. Like
+# _SILVER_SCHEMA it stays free of braces and `$`, so no template engine disturbs it.
+_SILVER_FIELD_DEFINITIONS = (
+    "- categories: the department, team or job-category names the posting states, "
+    "such as Engineering or Customer Success. Never a location, an employment type, "
+    "a seniority level or a skill.\n"
+    "- metadata: an object of the facts the posting states that a job seeker would "
+    "weigh and no other field holds, such as a remote, hybrid or on-site "
+    "arrangement, a seniority or experience level, or an application deadline. Name "
+    "each key in lower snake_case English after the fact it holds. It never holds an "
+    "identifier, a requisition number, a URL, the board's own publish or update "
+    "timestamps, a language code, privacy, consent, compliance or AI-disclosure "
+    "settings, or a value another field already holds.\n"
+    "- pay: the pay range the posting states, as an object with exactly the keys "
+    "min, max, currency and period, or null when the posting states no amounts. min "
+    "and max are numbers in the currency's major unit, so a salary of 190,000 "
+    "dollars is 190000 and never 19000000 cents. A single stated amount goes in "
+    "both min and max. A bound is null only when the posting states just one end, "
+    "as in from 50,000 or up to 80,000. Never invent a bound. currency is the ISO "
+    "4217 code in capitals, such as USD or EUR. period is one of year, month, week, "
+    "day or hour. When the posting states several ranges, use the first. Pay never "
+    "goes in metadata.\n"
 )
 
 _ROLE = {
@@ -62,14 +130,19 @@ _ROLE = {
             "markdown: `from adapters.adapters._markdown import html_to_markdown`, "
             "then `description = html_to_markdown(node)`."
         ),
-        "schema": _SILVER_SCHEMA,
+        "schema": (
+            _SILVER_SCHEMA
+            + "Where a field's type does not say what belongs in it, the field means "
+            "exactly this:\n" + _SILVER_FIELD_DEFINITIONS
+        ),
         "test_contract": (
             "Your output dict is compared field-by-field against a snapshot of this "
             "page. title, company_name and description are required; title and "
             "company_name must match exactly; description must equal the markdown that "
             "html_to_markdown produces for the body you select, so use that helper and "
             "pick the right node; locations and categories are compared as sets; "
-            "employment_type and metadata are optional. Extract what the page states — "
+            "employment_type and metadata are optional. The pay object is compared "
+            "exactly when the snapshot states it. Extract what the page states — "
             "do not summarise or invent."
         ),
     },
@@ -93,19 +166,27 @@ _EXPECTED = {
         "instructions": (
             "Extract the job posting's fields into the Silver schema. Render "
             "description as markdown (headings with #, lists as - or 1., paragraphs "
-            "preserved), with the top heading starting at level 1 (#)."
+            "preserved), with the top heading starting at level 1 (#). Omit a "
+            "metadata key whose value the page leaves null or empty. Where a "
+            "field's type does not say what belongs in it, the field means exactly "
+            "this:\n\n" + _SILVER_FIELD_DEFINITIONS
         ),
         "output_shape": (
             '{"title": "...", "company_name": "...", '
             '"employment_type": "... or null", "locations": ["..."], '
-            '"categories": ["..."], "description": "...", "metadata": {}}'
+            '"categories": ["..."], "description": "...", "metadata": {}, '
+            '"pay": {"min": <number or null>, "max": <number or null>, '
+            '"currency": "...", "period": "..."} or null}'
         ),
     },
 }
 
 
 def build_expected_prompt(adapter_type: str, cleaned_html: str, url: str) -> str:
-    """Render the truth-agent prompt asking for a grounded expected.json."""
+    """Render the truth-agent prompt asking for a grounded expected.json.
+
+    ``cleaned_html`` is substituted verbatim, so sizing it is the caller's job.
+    """
     role = _EXPECTED[adapter_type]
     template = Template(_load_template("expected_agent.md"))
     return template.safe_substitute(
@@ -113,7 +194,7 @@ def build_expected_prompt(adapter_type: str, cleaned_html: str, url: str) -> str
         role_instructions=role["instructions"],
         output_shape=role["output_shape"],
         url=url,
-        cleaned_html=cleaned_html[: _html_char_budget()],
+        cleaned_html=cleaned_html,
     )
 
 
@@ -127,7 +208,8 @@ def build_code_prompt(
     """Render the code-agent prompt.
 
     The code agent never sees ``expected.json`` — only the base class and the HTML — so
-    it must parse rather than hardcode.
+    it must parse rather than hardcode. ``cleaned_html`` is substituted verbatim, so
+    sizing it is the caller's job.
     """
     role = _ROLE[adapter_type]
     return Template(_load_template("code_agent.md")).safe_substitute(
@@ -139,7 +221,55 @@ def build_code_prompt(
         test_contract=role["test_contract"],
         domains=list(domains),
         base_code=base_code,
-        cleaned_html=cleaned_html[: _html_char_budget()],
+        cleaned_html=cleaned_html,
+    )
+
+
+_MAPPING_EXPECTED_TEMPLATES = {
+    "index": "mapping_expected_agent.md",
+    "detail": "mapping_detail_expected_agent.md",
+}
+
+_MAPPING_CODE_TEMPLATES = {
+    "index": "mapping_code_agent.md",
+    "detail": "mapping_detail_code_agent.md",
+}
+
+
+def build_mapping_expected_prompt(mapping_type: str, body: str, url: str) -> str:
+    """Render the mapping truth-agent prompt asking for a grounded expected.json.
+
+    Neither mapping template reuses ``expected_agent.md``: that one ends under a
+    "Cleaned page HTML" heading, which would hand a JSON response to the agent
+    under a heading calling it HTML. The detail template's markdown-transcription
+    wording is copied from ``_EXPECTED["extraction"]`` on purpose, so the HTML and
+    API detail paths agree on one description convention. ``body`` is substituted
+    verbatim, so sizing it is the caller's job.
+    """
+    if mapping_type not in _MAPPING_EXPECTED_TEMPLATES:
+        raise ValueError(f"unknown mapping type: {mapping_type!r}")
+    template = Template(_load_template(_MAPPING_EXPECTED_TEMPLATES[mapping_type]))
+    return template.safe_substitute(
+        mapping_type=mapping_type,
+        url=url,
+        body=body,
+        silver_field_definitions=_SILVER_FIELD_DEFINITIONS,
+    )
+
+
+def build_mapping_code_prompt(mapping_type: str, body: str, domains: list[str]) -> str:
+    """Render the mapping code-agent prompt asking for a ``jmespath`` block.
+
+    ``body`` is substituted verbatim, so sizing it is the caller's job.
+    """
+    if mapping_type not in _MAPPING_CODE_TEMPLATES:
+        raise ValueError(f"unknown mapping type: {mapping_type!r}")
+    template = Template(_load_template(_MAPPING_CODE_TEMPLATES[mapping_type]))
+    return template.safe_substitute(
+        mapping_type=mapping_type,
+        domains=list(domains),
+        body=body,
+        silver_field_definitions=_SILVER_FIELD_DEFINITIONS,
     )
 
 
@@ -198,4 +328,16 @@ class LLMModel:
             build_code_prompt(
                 adapter_type, cleaned_html, adapter_class, domains, base_code
             )
+        )
+
+    def generate_mapping_expected(self, mapping_type: str, body: str, url: str) -> str:
+        """Generate the grounded snapshot (expected.json body) for a mapping."""
+        return self.generate_response(
+            build_mapping_expected_prompt(mapping_type, body, url)
+        )
+
+    def generate_mapping(self, mapping_type: str, body: str, domains: list[str]) -> str:
+        """Generate the mapping document's ``jmespath`` block."""
+        return self.generate_response(
+            build_mapping_code_prompt(mapping_type, body, domains)
         )

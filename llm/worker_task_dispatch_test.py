@@ -6,7 +6,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from llm.adapter_files import _adapter_names
-from llm.worker import LLMWorker, TruthAgentUnreadable, UnlearnablePage
+from llm.learning_errors import TruthAgentUnreadable, UnlearnablePage
+from llm.worker import LLMWorker
 
 
 class TestProcessTask(unittest.TestCase):
@@ -128,13 +129,20 @@ class TestProcessTask(unittest.TestCase):
 
         kwargs = self.mock_publisher.publish.call_args.kwargs
         self.assertEqual(kwargs["basename"], "newboard_com_extraction_v1")
-        self.assertEqual(kwargs["adapter_class"], "NewboardComExtractionAdapter")
         self.assertEqual(kwargs["domain"], "newboard.com")
         self.assertEqual(kwargs["adapter_type"], "extraction")
         self.assertTrue(kwargs["passed"])
         # The suite's output travels to the publisher so it can land in the PR body.
         self.assertEqual(kwargs["test_output"], "TEST LOG")
         self.assertEqual(kwargs["model_name"], "acme-test-model")
+        self.assertEqual(
+            kwargs["paths"],
+            [
+                "adapters/adapters/newboard_com_extraction_v1.py",
+                "adapters/adapters/newboard_com_extraction_v1_test.py",
+                "adapters/adapters/fixtures/newboard_com_extraction_v1",
+            ],
+        )
         self._assert_lease_released()
 
     def test_red_run_still_publishes_for_review(self):
@@ -146,7 +154,7 @@ class TestProcessTask(unittest.TestCase):
         self.assertEqual(kwargs["test_output"], "FAILED: 1 test")
         self._assert_lease_released()
 
-    @patch("llm.worker.logger")
+    @patch("llm.learning_task.logger")
     def test_unlearnable_page_drops_the_task_without_publishing_or_requeueing(
         self, mock_logger
     ):
@@ -174,7 +182,7 @@ class TestProcessTask(unittest.TestCase):
             exc,
         )
 
-    @patch("llm.worker.logger")
+    @patch("llm.learning_task.logger")
     def test_truth_agent_unreadable_requeues_releases_and_backs_off(self, mock_logger):
         """Unlike UnlearnablePage, an unreadable reply is a transient model failure,
         not a fact about the page, so it goes back on the queue instead of being
@@ -238,12 +246,41 @@ class TestProcessTask(unittest.TestCase):
         self._run_extraction_task(passed=True)
 
         self.mock_publisher.has_existing_pr.assert_called_once_with(
-            "newboard_com_extraction_v1"
+            "newboard_com_extraction_v1", kind="adapter"
         )
         self.worker._learn_extraction.assert_not_called()
         self.mock_publisher.publish.assert_not_called()
         # The lease is dropped, not held: it means "learning", not "recently checked".
         self._assert_lease_released()
+
+    def test_has_existing_pr_receives_kind_adapter(self):
+        """Checked apart from publish's kind so a mutation to this call site alone
+        is caught."""
+        self._run_extraction_task(passed=True)
+
+        self.assertEqual(
+            self.mock_publisher.has_existing_pr.call_args.kwargs["kind"], "adapter"
+        )
+
+    def test_publish_receives_kind_adapter(self):
+        self._run_extraction_task(passed=True)
+
+        self.assertEqual(
+            self.mock_publisher.publish.call_args.kwargs["kind"], "adapter"
+        )
+
+    def test_has_existing_pr_and_publish_receive_the_same_kind(self):
+        """Pins that both calls read one binding rather than agreeing by hand.
+
+        The two assertions above pin today's value at each site separately, so
+        they stop covering this the moment either site takes a second value.
+        """
+        self._run_extraction_task(passed=True)
+
+        self.assertEqual(
+            self.mock_publisher.has_existing_pr.call_args.kwargs["kind"],
+            self.mock_publisher.publish.call_args.kwargs["kind"],
+        )
 
     def test_unknown_pr_state_requeues_the_task(self):
         """A skip would lose the task entirely, whereas a requeue only delays it."""
@@ -304,7 +341,7 @@ class TestProcessTask(unittest.TestCase):
 
         self.mock_publisher.has_existing_pr.assert_not_called()
 
-    @patch("llm.worker.logger")
+    @patch("llm.learning_task.logger")
     def test_process_task_no_domain_or_url(self, mock_logger):
         """Task with neither domain nor url must log an error and not touch Redis."""
         task_payload = json.dumps({}).encode("utf-8")
@@ -326,7 +363,30 @@ class TestProcessTask(unittest.TestCase):
             "LEARNING_IN_PROGRESS:extraction:newboard.com", "1", nx=True, ex=1800
         )
 
-    @patch("llm.worker.logger")
+    def test_one_staged_list_reaches_the_gate_and_the_publisher(self):
+        self.mock_redis.set.return_value = True
+        self.worker._learn_discovery = MagicMock(
+            return_value=(_adapter_names("acme.com", "discovery"), "some-model")
+        )
+        self.worker._run_adapter_tests = MagicMock(return_value=(True, "PASSED"))
+        self.worker.release_learning = MagicMock()
+        expected = [
+            "adapters/adapters/acme_com_discovery_v1.py",
+            "adapters/adapters/acme_com_discovery_v1_test.py",
+            "adapters/adapters/fixtures/acme_com_discovery_v1",
+        ]
+
+        task_payload = json.dumps(
+            {"domain": "acme.com", "url": "https://acme.com/jobs", "html": "<html/>"}
+        ).encode("utf-8")
+        self.worker.process_task(task_payload, "discovery_learning_tasks")
+
+        self.worker._run_adapter_tests.assert_called_once_with(expected)
+        self.assertEqual(
+            self.mock_publisher.publish.call_args.kwargs["paths"], expected
+        )
+
+    @patch("llm.learning_task.logger")
     def test_process_task_already_learning(self, mock_logger):
         self.mock_redis.set.return_value = None
 

@@ -108,7 +108,8 @@ class TestListBoards(BoardsRouterTestCase):
             RawJobPosting(
                 id=uuid.uuid4(),
                 url="https://a.example.com/job",
-                html_content="<html></html>",
+                raw_content="<html></html>",
+                source_url="https://a.example.com/job",
                 start_url_id=board_id,
             ),
         )
@@ -128,7 +129,8 @@ class TestListBoards(BoardsRouterTestCase):
             RawJobPosting(
                 id=uuid.uuid4(),
                 url="https://a.example.com/job",
-                html_content="<html></html>",
+                raw_content="<html></html>",
+                source_url="https://a.example.com/job",
                 start_url_id=board_id,
             ),
             JobPosting(
@@ -190,7 +192,7 @@ class TestCreateBoard(BoardsRouterTestCase):
             json={
                 "name": "Example",
                 "url": "https://example.com",
-                "type": "json_api",
+                "type": "api",
             },
         )
         self.assertEqual(response.status_code, 201)
@@ -250,7 +252,7 @@ class TestUpdateBoard(BoardsRouterTestCase):
                 "name": "Example",
                 "url": "https://example.com",
                 "active": True,
-                "type": "json_api",
+                "type": "api",
             },
         )
 
