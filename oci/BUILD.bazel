@@ -34,7 +34,7 @@ py_app_layer(
 
 oci_image(
     name = "crawler_image",
-    base = "@playwright_python_linux_amd64",
+    base = "@crawler_base_linux_amd64",
     tars = [":crawler_layer"],
     entrypoint = py_entrypoint("main"),
     user = "65532",
