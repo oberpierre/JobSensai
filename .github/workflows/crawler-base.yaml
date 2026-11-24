@@ -1,0 +1,53 @@
+name: Crawler base image
+
+# Builds the Chromium-only base the crawler image is layered on. A pull request
+# builds it without publishing. A push to main publishes it, and MODULE.bazel then
+# pins the new digest in a commit of its own.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "oci/crawler-base/**"
+      - ".github/workflows/crawler-base.yaml"
+  push:
+    branches:
+      - main
+    paths:
+      - "oci/crawler-base/**"
+      - ".github/workflows/crawler-base.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-push:
+    # amd64, matching the cluster node and the release workflow's build host.
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/oberpierre/jobsensai-crawler-base
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Build
+        run: docker build --tag "$IMAGE:sha-$(git rev-parse --short=7 HEAD)" oci/crawler-base
+
+      - name: Report size
+        run: docker image inspect --format '{{.Size}}' "$IMAGE:sha-$(git rev-parse --short=7 HEAD)"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # The digest printed here is what MODULE.bazel's crawler_base pull pins.
+      - name: Push
+        if: github.event_name != 'pull_request'
+        run: |
+          SHA_TAG="$IMAGE:sha-$(git rev-parse --short=7 HEAD)"
+          docker tag "$SHA_TAG" "$IMAGE:latest"
+          docker push "$SHA_TAG"
+          docker push "$IMAGE:latest"
+          docker image inspect --format '{{index .RepoDigests 0}}' "$SHA_TAG"

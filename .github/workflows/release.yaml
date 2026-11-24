@@ -136,6 +136,9 @@ jobs:
           curl -sf http://localhost:8000/api/health | grep -q '"status":"ok"' || { echo "web image did not answer /api/health"; exit 1; }
           curl -sf http://localhost:8000/ | grep -qi "<!doctype html" || { echo "web image did not serve the SPA"; exit 1; }
 
+      - name: Smoke test crawler browser
+        run: oci/ci/smoke_crawler_browser.sh
+
       - name: Log in to GHCR
         if: github.event_name == 'push'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
