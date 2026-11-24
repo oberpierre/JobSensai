@@ -90,6 +90,9 @@ jobs:
       - name: Check image size budgets
         run: oci/ci/check_image_sizes.sh
 
+      - name: Check the crawler base matches its Dockerfile
+        run: oci/ci/check_crawler_base.sh
+
       # Scrapy logs its own startup banner before the spider opens, and the
       # pipeline needs Redis at spider-open time, so with none reachable here the
       # process exits on its own without ever requesting a page.
