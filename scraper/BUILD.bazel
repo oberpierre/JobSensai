@@ -24,7 +24,17 @@ py_library(
     name = "scraper_lib",
     srcs = glob(
         ["**/*.py"],
-        exclude = ["**/*_test.py", "main.py", "models.py", "database.py", "migrations/**/*.py"],
+        exclude = [
+            "**/*_test.py",
+            "main.py",
+            "models.py",
+            "database.py",
+            "migrations/**/*.py",
+            "worker.py",
+            "silver_worker.py",
+            "backfill_silver.py",
+            "ingest_events.py",
+        ],
     ),
     imports = ["."],
     deps = [
@@ -54,13 +64,59 @@ py_binary(
     python_version = "PY3",
 )
 
+# The workers and the backfill need Redis and Postgres but never Scrapy or
+# Playwright, so each has its own library outside :scraper_lib. That keeps the
+# crawler's dependency stack out of the worker images.
+py_library(
+    name = "ingest_events",
+    srcs = ["ingest_events.py"],
+    imports = ["."],
+    deps = [":models_lib"],
+)
+
+py_library(
+    name = "worker_lib",
+    srcs = ["worker.py"],
+    imports = ["."],
+    deps = [
+        ":models_lib",
+        "@pip//redis",
+        "@pip//sqlalchemy",
+    ],
+)
+
+py_library(
+    name = "silver_worker_lib",
+    srcs = ["silver_worker.py"],
+    imports = ["."],
+    deps = [
+        ":ingest_events",
+        ":models_lib",
+        "//adapters:adapters",
+        "@pip//redis",
+        "@pip//sqlalchemy",
+    ],
+)
+
+py_library(
+    name = "backfill_silver_lib",
+    srcs = ["backfill_silver.py"],
+    imports = ["."],
+    deps = [
+        ":models_lib",
+        "//adapters:adapters",
+        "@pip//redis",
+        "@pip//sqlalchemy",
+    ],
+)
+
 # Worker binary. Same reasoning as :main.
 py_binary(
     name = "worker",
     srcs = ["worker.py"],
     imports = ["."],
     deps = [
-        ":scraper_lib",
+        ":worker_lib",
         "@pip//python_dotenv",
     ],
     python_version = "PY3",
@@ -72,7 +128,7 @@ py_binary(
     srcs = ["silver_worker.py"],
     imports = ["."],
     deps = [
-        ":scraper_lib",
+        ":silver_worker_lib",
         "@pip//python_dotenv",
     ],
     python_version = "PY3",
@@ -85,7 +141,7 @@ py_binary(
     srcs = ["backfill_silver.py"],
     imports = ["."],
     deps = [
-        ":scraper_lib",
+        ":backfill_silver_lib",
         "@pip//python_dotenv",
     ],
     python_version = "PY3",
@@ -127,7 +183,7 @@ py_test(
     srcs = ["worker_test.py"],
     imports = ["."],
     deps = [
-        ":scraper_lib",
+        ":worker_lib",
     ],
     python_version = "PY3",
 )
@@ -137,7 +193,7 @@ py_test(
     srcs = ["silver_worker_test.py"],
     imports = ["."],
     deps = [
-        ":scraper_lib",
+        ":silver_worker_lib",
     ],
     python_version = "PY3",
 )
@@ -147,7 +203,7 @@ py_test(
     srcs = ["silver_worker_mapped_test.py"],
     imports = ["."],
     deps = [
-        ":scraper_lib",
+        ":silver_worker_lib",
     ],
     python_version = "PY3",
 )
@@ -157,7 +213,7 @@ py_test(
     srcs = ["silver_worker_detail_request_test.py"],
     imports = ["."],
     deps = [
-        ":scraper_lib",
+        ":silver_worker_lib",
     ],
     python_version = "PY3",
 )
@@ -167,7 +223,7 @@ py_test(
     srcs = ["ingest_events_test.py"],
     imports = ["."],
     deps = [
-        ":scraper_lib",
+        ":ingest_events",
     ],
     python_version = "PY3",
 )
@@ -177,7 +233,7 @@ py_test(
     srcs = ["backfill_silver_test.py"],
     imports = ["."],
     deps = [
-        ":scraper_lib",
+        ":backfill_silver_lib",
     ],
     python_version = "PY3",
 )
@@ -263,3 +319,27 @@ py_test(
     python_version = "PY3",
 )
 
+
+# The dependency closures of the two worker images, which worker_closure_test
+# checks for the crawler's stack.
+genquery(
+    name = "worker_closure",
+    expression = "deps(//scraper:worker)",
+    scope = [":worker"],
+)
+
+genquery(
+    name = "silver_worker_closure",
+    expression = "deps(//scraper:silver_worker)",
+    scope = [":silver_worker"],
+)
+
+py_test(
+    name = "worker_closure_test",
+    srcs = ["worker_closure_test.py"],
+    data = [
+        ":silver_worker_closure",
+        ":worker_closure",
+    ],
+    python_version = "PY3",
+)
