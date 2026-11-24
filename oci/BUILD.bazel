@@ -1,22 +1,21 @@
-load("@aspect_bazel_lib//lib:transitions.bzl", "platform_transition_filegroup")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load", "oci_push")
 load("@rules_pkg//:pkg.bzl", "pkg_tar")
+load(":py_layer.bzl", "py_app_layer", "py_entrypoint")
 
 package(default_visibility = ["//visibility:private"])
 
 # The cluster node this ships to is amd64, so every py_binary packaged below
-# is cross-compiled to this platform via platform_transition_filegroup, but
-# only the interpreter follows that transition. pip.parse() in MODULE.bazel
-# declares no platforms, so each wheel is resolved once against whatever
-# machine invokes `bazel build`, independent of this package's transition.
-# An image built on a non-linux/amd64 host therefore bundles a linux x86_64
-# interpreter next to host-native compiled wheels: it builds and loads
-# without complaint, then fails at the first compiled import. These images
-# are authoritative only when built on linux/amd64, which in practice means
-# CI. The base images are referenced through their platform-suffixed repo
-# (e.g. @playwright_python_linux_amd64) rather than the plain alias, since
-# the plain alias is a select() keyed on the *current* configuration's cpu
-# and would fail to resolve when this package is built from an arm64 host.
+# is cross-compiled to this platform by py_app_layer, but only the interpreter
+# follows that transition. pip.parse() in MODULE.bazel declares no platforms,
+# so each wheel is resolved once against whatever machine invokes `bazel build`,
+# independent of this package's transition. An image built on a non-linux/amd64
+# host therefore bundles a linux x86_64 interpreter next to host-native compiled
+# wheels: it builds and loads without complaint, then fails at the first
+# compiled import. These images are authoritative only when built on
+# linux/amd64, which in practice means CI. The base images are referenced
+# through their platform-suffixed repo (e.g. @distroless_cc_linux_amd64) rather
+# than the plain alias, since the plain alias is a select() keyed on the
+# *current* configuration's cpu and would fail to resolve from an arm64 host.
 platform(
     name = "linux_x86_64",
     constraint_values = [
@@ -27,27 +26,17 @@ platform(
 
 # --- Crawler: //scraper:main, Scrapy + Playwright spider runner ---
 
-platform_transition_filegroup(
-    name = "crawler_binary",
-    srcs = ["//scraper:main"],
+py_app_layer(
+    name = "crawler_layer",
+    binary = "//scraper:main",
     target_platform = ":linux_x86_64",
-)
-
-pkg_tar(
-    name = "crawler_tar",
-    srcs = [":crawler_binary"],
-    include_runfiles = True,
-    package_dir = "/app",
 )
 
 oci_image(
     name = "crawler_image",
     base = "@playwright_python_linux_amd64",
-    tars = [":crawler_tar"],
-    # The base has /usr/bin/env, being a full Ubuntu image with a shell, so
-    # the py_binary stub's own `#!/usr/bin/env python3` shebang resolves and
-    # the stub then re-execs into the hermetic 3.12 runfiles interpreter.
-    entrypoint = ["/app/main"],
+    tars = [":crawler_layer"],
+    entrypoint = py_entrypoint("main"),
     user = "65532",
     workdir = "/app",
 )
@@ -62,8 +51,8 @@ oci_push(
     name = "crawler_push",
     image = ":crawler_image",
     repository = "ghcr.io/oberpierre/jobsensai-crawler",
-    # This target is deliberately not the one wrapped by platform_transition_filegroup
-    # above: it inherits whatever platform `bazel run` is invoked under, which is the
+    # This target is deliberately not the one py_app_layer transitions: it
+    # inherits whatever platform `bazel run` is invoked under, which is the
     # host's by default. Restricting it to linux/x86_64 makes a push from any other
     # host refuse instead of publishing an image whose wheels are that host's.
     target_compatible_with = [
@@ -74,30 +63,17 @@ oci_push(
 
 # --- Bronze worker: //scraper:worker, Redis to Postgres Bronze ingest ---
 
-platform_transition_filegroup(
-    name = "bronze_worker_binary",
-    srcs = ["//scraper:worker"],
+py_app_layer(
+    name = "bronze_worker_layer",
+    binary = "//scraper:worker",
     target_platform = ":linux_x86_64",
-)
-
-pkg_tar(
-    name = "bronze_worker_tar",
-    srcs = [":bronze_worker_binary"],
-    include_runfiles = True,
-    package_dir = "/app",
 )
 
 oci_image(
     name = "bronze_worker_image",
-    base = "@distroless_python3_linux_amd64",
-    tars = [":bronze_worker_tar"],
-    # distroless has neither a shell nor /usr/bin/env, so the shebang line
-    # in the py_binary stub is unreachable. Invoke the base's own python3
-    # directly on the stub instead: it reads as a plain script (the shebang
-    # is just a comment to the interpreter) and re-execs into the hermetic
-    # 3.12 interpreter bundled in the runfiles tree, which is what actually
-    # runs the worker. The base's 3.11 never executes application code.
-    entrypoint = ["/usr/bin/python3", "/app/worker"],
+    base = "@distroless_cc_linux_amd64",
+    tars = [":bronze_worker_layer"],
+    entrypoint = py_entrypoint("worker"),
     user = "65532",
     workdir = "/app",
 )
@@ -120,24 +96,17 @@ oci_push(
 
 # --- Silver worker: //scraper:silver_worker, Silver extraction ---
 
-platform_transition_filegroup(
-    name = "silver_worker_binary",
-    srcs = ["//scraper:silver_worker"],
+py_app_layer(
+    name = "silver_worker_layer",
+    binary = "//scraper:silver_worker",
     target_platform = ":linux_x86_64",
-)
-
-pkg_tar(
-    name = "silver_worker_tar",
-    srcs = [":silver_worker_binary"],
-    include_runfiles = True,
-    package_dir = "/app",
 )
 
 oci_image(
     name = "silver_worker_image",
-    base = "@distroless_python3_linux_amd64",
-    tars = [":silver_worker_tar"],
-    entrypoint = ["/usr/bin/python3", "/app/silver_worker"],
+    base = "@distroless_cc_linux_amd64",
+    tars = [":silver_worker_layer"],
+    entrypoint = py_entrypoint("silver_worker"),
     user = "65532",
     workdir = "/app",
 )
@@ -160,38 +129,32 @@ oci_push(
 
 # --- Web: //api:server, serving the API and the built SPA from one image ---
 
-platform_transition_filegroup(
-    name = "web_binary",
-    srcs = ["//api:server"],
+py_app_layer(
+    name = "web_layer",
+    binary = "//api:server",
     target_platform = ":linux_x86_64",
 )
 
-pkg_tar(
-    name = "web_tar",
-    srcs = [":web_binary"],
-    include_runfiles = True,
-    package_dir = "/app",
-)
-
-# Built HTML/CSS/JS, so unlike web_binary above it carries no platform
+# Built HTML/CSS/JS, so unlike web_layer above it carries no platform
 # transition: there is no compiled wheel or interpreter in it to cross-build,
 # and aspect_rules_js resolves its own toolchain for the host regardless.
 pkg_tar(
     name = "web_dist_tar",
     srcs = ["//web:dist"],
+    extension = "tar.gz",
     package_dir = "/app/web",
 )
 
 oci_image(
     name = "web_image",
-    base = "@distroless_python3_linux_amd64",
+    base = "@distroless_cc_linux_amd64",
     tars = [
-        ":web_tar",
+        ":web_layer",
         ":web_dist_tar",
     ],
-    entrypoint = ["/usr/bin/python3", "/app/server"],
+    entrypoint = py_entrypoint("server"),
     # web_dist_tar nests //web:dist's contents under its own basename inside
-    # package_dir, verified by extracting web_dist_tar.tar.
+    # package_dir, verified by extracting web_dist_tar's archive.
     env = {"WEB_DIST_DIR": "/app/web/dist"},
     user = "65532",
     workdir = "/app",

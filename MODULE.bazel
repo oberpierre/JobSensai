@@ -8,6 +8,17 @@ python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
     python_version = "3.12",
 )
+
+# The images ship this interpreter, and the default install_only build keeps its
+# debug symbols: about 520 MB against 93 MB stripped. Same release and patch
+# version rules_python 1.6.3 resolves "3.12" to, so only the symbols change.
+python.single_version_platform_override(
+    platform = "x86_64-unknown-linux-gnu",
+    python_version = "3.12.11",
+    sha256 = "62eefeedf68d14d8378b904fb9dc1db76afab445de293c1391bc244b84d2412a",
+    strip_prefix = "python",
+    urls = ["https://github.com/astral-sh/python-build-standalone/releases/download/20250808/cpython-3.12.11+20250808-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"],
+)
 use_repo(python, "python_3_12")
 
 # Python dependencies managed via pip and requirements.in
@@ -50,13 +61,15 @@ oci.pull(
 )
 use_repo(oci, "playwright_python", "playwright_python_linux_amd64")
 
+# glibc and libstdc++ with no Python of its own, the hermetic interpreter in each
+# image's app layer being the only one that ever runs.
 oci.pull(
-    name = "distroless_python3",
-    image = "gcr.io/distroless/python3-debian12",
-    digest = "sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
+    name = "distroless_cc",
+    image = "gcr.io/distroless/cc-debian12",
+    digest = "sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa",
     platforms = ["linux/amd64"],
 )
-use_repo(oci, "distroless_python3", "distroless_python3_linux_amd64")
+use_repo(oci, "distroless_cc", "distroless_cc_linux_amd64")
 
 # JS rules for the web/ frontend. rules_js fetches its own hermetic Node and
 # pnpm, so the host needs neither.

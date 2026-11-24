@@ -87,13 +87,12 @@ jobs:
           bazel run //oci:silver_worker_load
           bazel run //oci:web_load
 
-      # No entrypoint override: this is the one image whose entrypoint mechanism
-      # is worth exercising, since /app/main depends on the base having
-      # /usr/bin/env so the py_binary stub's shebang resolves and re-execs into
-      # the hermetic interpreter (see the comment on crawler_image). Scrapy logs
-      # its own startup banner before the spider opens, and the pipeline needs
-      # Redis at spider-open time, so with none reachable here the process
-      # exits on its own without ever requesting a page.
+      - name: Check image size budgets
+        run: oci/ci/check_image_sizes.sh
+
+      # Scrapy logs its own startup banner before the spider opens, and the
+      # pipeline needs Redis at spider-open time, so with none reachable here the
+      # process exits on its own without ever requesting a page.
       - name: Smoke test crawler image
         run: |
           set +e
