@@ -4,7 +4,7 @@
 set -euo pipefail
 
 budgets=(
-  "jobsensai-crawler:3000"
+  "jobsensai-crawler:1100"
   "jobsensai-bronze-worker:130"
   "jobsensai-silver-worker:160"
   "jobsensai-web:150"

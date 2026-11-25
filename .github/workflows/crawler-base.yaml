@@ -1,16 +1,11 @@
 name: Crawler base image
 
 # Builds the Chromium-only base the crawler image is layered on. A pull request
-# builds it without publishing. A push to main publishes it, and MODULE.bazel then
-# pins the new digest in a commit of its own.
+# builds it without publishing. Publishing is a manual dispatch, run on the pull
+# request's own branch, so the digest can be pinned in MODULE.bazel within that
+# same pull request and smoke-tested there before anything merges.
 on:
   pull_request:
-    branches:
-      - main
-    paths:
-      - "oci/crawler-base/**"
-      - ".github/workflows/crawler-base.yaml"
-  push:
     branches:
       - main
     paths:
@@ -23,7 +18,7 @@ permissions:
   packages: write
 
 jobs:
-  build-push:
+  build:
     # amd64, matching the cluster node and the release workflow's build host.
     runs-on: ubuntu-latest
     env:
@@ -32,21 +27,37 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      # oci/ci/check_crawler_base.sh compares this label with the Dockerfile the
+      # release builds from, which is what catches a pin left behind by an edit.
       - name: Build
-        run: docker build --tag "$IMAGE:sha-$(git rev-parse --short=7 HEAD)" oci/crawler-base
+        run: |
+          tag="$IMAGE:sha-$(git rev-parse --short=7 HEAD)"
+          dockerfile_sha256=$(sha256sum oci/crawler-base/Dockerfile | cut -d' ' -f1)
+          docker build \
+            --label "jobsensai.crawler-base.dockerfile-sha256=$dockerfile_sha256" \
+            --tag "$tag" oci/crawler-base
+          echo "TAG=$tag" >> "$GITHUB_ENV"
 
       - name: Report size
-        run: docker image inspect --format '{{.Size}}' "$IMAGE:sha-$(git rev-parse --short=7 HEAD)"
+        run: docker image inspect --format '{{.Size}}' "$TAG"
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      # No latest tag, because the only consumer is MODULE.bazel's crawler_base
-      # pull and it pins the digest printed here.
       - name: Push
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          SHA_TAG="$IMAGE:sha-$(git rev-parse --short=7 HEAD)"
-          docker push "$SHA_TAG"
-          docker image inspect --format '{{index .RepoDigests 0}}' "$SHA_TAG"
+          docker push "$TAG"
+          digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$TAG")
+          digest="${digest#*@}"
+          {
+            echo "### Published $TAG"
+            echo
+            echo 'Pin it in `MODULE.bazel`, in the `crawler_base` pull:'
+            echo
+            echo '```'
+            echo "    digest = \"$digest\","
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$digest"

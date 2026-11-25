@@ -1,6 +1,7 @@
 # Chromium's headless shell and the system libraries it needs, at the revision
 # playwright==1.55.0 expects, and nothing else. The crawler image layers its
 # Bazel-built app, interpreter and Playwright driver on top.
+# The version below must equal requirements_lock.txt's, so bump both in one PR.
 FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright

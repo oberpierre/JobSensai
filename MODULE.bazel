@@ -51,15 +51,15 @@ bazel_dep(name = "aspect_bazel_lib", version = "2.22.5")
 # The cluster node these images run on is amd64, so the dev machine's own
 # architecture is irrelevant to what gets built here.
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+# Chromium's headless shell at the playwright==1.55.0 revision, built from
+# oci/crawler-base by the crawler-base workflow, which prints this digest.
 oci.pull(
-    name = "playwright_python",
-    image = "mcr.microsoft.com/playwright/python",
-    # v1.55.0-noble multi-arch index, matching the playwright==1.55.0 pin in
-    # requirements_lock.txt. Confirmed to exist 2026-08-03.
-    digest = "sha256:640d578aae63cfb632461d1b0aecb01414e4e020864ac3dd45a868dc0eff3078",
+    name = "crawler_base",
+    image = "ghcr.io/oberpierre/jobsensai-crawler-base",
+    digest = "sha256:2228941b4061475563a997e311204a814d2c4baf2a2324a408ba0a446afba556",
     platforms = ["linux/amd64"],
 )
-use_repo(oci, "playwright_python", "playwright_python_linux_amd64")
+use_repo(oci, "crawler_base", "crawler_base_linux_amd64")
 
 # glibc and libstdc++ with no Python of its own, the hermetic interpreter in each
 # image's app layer being the only one that ever runs.
