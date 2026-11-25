@@ -56,7 +56,7 @@ oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
     name = "crawler_base",
     image = "ghcr.io/oberpierre/jobsensai-crawler-base",
-    digest = "sha256:f63b64bb2430b94ae4153b2b8cb8b14c09729e3fa6dfa40cb5f6a6d215b66d19",
+    digest = "sha256:2228941b4061475563a997e311204a814d2c4baf2a2324a408ba0a446afba556",
     platforms = ["linux/amd64"],
 )
 use_repo(oci, "crawler_base", "crawler_base_linux_amd64")
