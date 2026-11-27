@@ -1,0 +1,5 @@
+gate: "bazel build -- //... && bazel test -- //..."
+commit_style: arlo-features
+tracker: github
+standards:
+  - docs/CONTRIBUTING.md
